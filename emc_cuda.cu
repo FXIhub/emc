@@ -209,18 +209,19 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
   int i_image = blockIdx.x;
   int i_slice = blockIdx.y;
   int N_images = gridDim.x;
-  /*
+
   cuda_calculate_responsability_poisson(&slices[i_slice*N_2d],
 					&images[i_image*N_2d],mask,
 					sigma,scaling[i_image], N_2d, tid,step,
 					sum_cache,count_cache);
-  */
 
+
+  /* This one was used for best result so far.
   cuda_calculate_responsability_absolute(&slices[i_slice*N_2d],
 					&images[i_image*N_2d],mask,
 					sigma,scaling[i_image], N_2d, tid,step,
 					sum_cache,count_cache);
-
+  */
   inblock_reduce(sum_cache);
   inblock_reduce(count_cache);
   
@@ -466,7 +467,7 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
   }
 }
 
-void cuda_update_slices_final(real * d_images, real * d_slices, real *h_slices, int * d_mask,
+void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
 			real * d_respons, real * d_scaling, int * d_active_images, int N_images,
 			int slice_start, int slice_chunk, int N_2d,
 			sp_3matrix * model, real * d_model,
@@ -495,8 +496,9 @@ void cuda_update_slices_final(real * d_images, real * d_slices, real *h_slices, 
 					     sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
 					     sp_3matrix_x(model),sp_3matrix_y(model),
 					     sp_3matrix_z(model),d_weights);  
+
   cudaThreadSynchronize();
-  cudaMemcpy(h_slices,d_slices,N_2d*sizeof(real)*slice_chunk,cudaMemcpyDeviceToHost);
+  //cudaMemcpy(h_slices,d_slices,N_2d*sizeof(real)*slice_chunk,cudaMemcpyDeviceToHost);
   insert_slices_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_respons,
 					     d_scaling, N_images, N_2d,
 					     d_slices_total_respons, d_rot,d_x_coordinates,
@@ -537,10 +539,9 @@ void cuda_allocate_mask(int ** d_mask, sp_imatrix * mask){
 }
 
 void cuda_allocate_rotations(real ** d_rotations, Quaternion ** rotations,  int N_slices){
-
   cudaMalloc(d_rotations,sizeof(real)*4*N_slices);
   for(int i = 0;i<N_slices;i++){
-    cudaMemcpy(&(*d_rotations)[4*i],rotations[i]->q,sizeof(real)*4,cudaMemcpyHostToDevice);
+    cudaMemcpy(&((*d_rotations)[4*i]),rotations[i]->q,sizeof(real)*4,cudaMemcpyHostToDevice);
   }
 }
 

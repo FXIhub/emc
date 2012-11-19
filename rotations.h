@@ -11,6 +11,11 @@ typedef struct{
 Quaternion *quaternion_alloc();
 
 /*
+  Copy quaternion
+*/
+Quaternion *quaternion_copy(Quaternion *a);
+
+/*
   Make the quaternion a rotation by putting total sum of squares to 1.
  */
 void quaternion_normalize(Quaternion *a);

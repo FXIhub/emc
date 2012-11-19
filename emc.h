@@ -16,24 +16,24 @@ typedef struct{
 }Setup;
 
   typedef struct{
-    long int model_side;
-    long int read_stride;
+    int model_side;
+    int read_stride;
     double wavelength;
     double pixel_size;
-    long int detector_size;
+    int detector_size;
     double detector_distance;
-    long int rotations_n;
+    int rotations_n;
     double sigma;
-    long int slice_chunk;
-    long int N_images;
-    long int max_iterations;
+    int slice_chunk;
+    int N_images;
+    int max_iterations;
     int blur_image;
     double blur_sigma;
     const char *mask_file;
     const char *image_prefix;
     int normalize_images;
     int known_intensity;
-    long int model_input;
+    int model_input;
     const char *model_file;
     int exclude_images;
     double exclude_ratio;
@@ -52,7 +52,7 @@ typedef struct{
 			  real  *x_coordinates, real *y_coordinates,
 			  real *z_coordinates, real *d_rotations, real * weights,
 			  real * d_weight,sp_matrix ** images);
-  void cuda_update_slices_final(real * d_images, real * d_slices, real * h_slices, int * d_mask,
+  void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
 			  real * d_respons, real * d_scaling, int * d_active_images, int N_images,
 			  int slice_start, int slice_chunk, int N_2d,
 			  sp_3matrix * model, real * d_model, 

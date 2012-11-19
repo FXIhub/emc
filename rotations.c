@@ -12,6 +12,12 @@ Quaternion *quaternion_alloc()
   return res;
 }
 
+Quaternion *quaternion_copy(Quaternion *a) {
+  Quaternion *res = quaternion_alloc();
+  memcpy(res->q, a->q, 4*sizeof(real));
+  return res;
+}
+
 void quaternion_normalize(Quaternion *a)
 {
   real abs = sqrt(pow(a->q[0],2) + pow(a->q[1],2) + pow(a->q[2],2) + pow(a->q[3],2));
@@ -98,7 +104,8 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   
   /* get edges */
   /* all pairs of of vertices whose sum is longer than 3 is an edge */
-  FILE *f = fopen("debug_edges.data","wp");
+  FILE *f;
+  //FILE *f = fopen("debug_edges.data","wp");
   real dist2;
   int count = 0.0;
   real edge_cutoff = 3.0;
@@ -115,12 +122,12 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
 	edges[count][0] = i;
 	edges[count][1] = j;
 	count++;
-	fprintf(f,"%d %d %g\n",i,j,sqrt(dist2));
+	//fprintf(f,"%d %d %g\n",i,j,sqrt(dist2));
       }
     }
   }
   printf("%d edges\n",count);
-  fclose(f);
+  //fclose(f);
 
   /* get faces */
   /* all pairs of edge and vertice whith a sum larger than 7.5 is a face */
@@ -327,33 +334,78 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
     }
   }
   printf("debug_count = %d\n",debug_count);
-
-  real weight_sum = 0.0;
-  //for (int i = edges_base; i < edges_base + edge_verts*720; i++) {
-  for (int i = 0; i < number_of_samples; i++) {
-    weight_sum += weights[i];
-  }
-  printf("weights sum = %g\n",weight_sum);
-  for (int i = 0; i < number_of_samples; i++) {
-    weights[i] /= weight_sum;
-  }
   
   for (int i = 0; i < 120; i++) {
     free(rotation_list[i]);
   }
   free(rotation_list);
 
-  return_list[0] = new_list;
-  return_weights[0] = weights;
+  /* prune list */
+  /* Choose only quaternions with positive first element. If it is zero, the second element must be positive and so on. */
+  const int number_of_rotations = n_to_samples(n);
+  Quaternion **pruned_list = malloc(number_of_rotations/2*sizeof(Quaternion *));
+  real *pruned_weights = malloc(number_of_rotations/2*sizeof(real));
+  
+  int counter = 0;
+  
+  Quaternion *this_quaternion;
+  int keep_this;
+  for (int i = 0; i < number_of_rotations; ++i) {
+    this_quaternion = new_list[i];
+    keep_this = 0;
+    if (this_quaternion->q[0] > 0) {
+      keep_this = 1;
+    } else if (this_quaternion->q[0] == 0.) {
+      if (this_quaternion->q[1] > 0) {
+	keep_this = 1;
+      } else if(this_quaternion->q[1] == 0.) {
+	if (this_quaternion->q[2] > 0) {
+	  keep_this = 1;
+	} else if(this_quaternion->q[2] == 0.) {
+	  if (this_quaternion->q[3] > 0) {
+	    keep_this = 1;
+	  }
+	}
+      }
+    }
+    if (keep_this == 1) {
+      pruned_list[counter] = quaternion_copy(this_quaternion);
+      pruned_weights[counter] = weights[i];
+      counter++;
+    }
+  }
+  printf("%d quaternions of %d copied\n", counter, number_of_rotations);
+  /* end prune */
+
+  real weight_sum = 0.0;
+  //for (int i = edges_base; i < edges_base + edge_verts*720; i++) {
+  for (int i = 0; i < number_of_samples/2; i++) {
+    //weight_sum += weights[i];
+    weight_sum += pruned_weights[i];
+  }
+  printf("weights sum = %g\n",weight_sum);
+  for (int i = 0; i < number_of_samples/2; i++) {
+    //weights[i] /= weight_sum;
+    pruned_weights[i] /= weight_sum;
+  }
+
+  //return_list[0] = new_list;
+  return_list[0] = pruned_list;
+  //return_weights[0] = weights;
+  return_weights[0] = pruned_weights;
 
   f =  fopen("debug_samples.data","wp");
-  for (int i = 0; i < number_of_samples; i++) {
-    quaternion_normalize(new_list[i]);
-    fprintf(f,"%g %g %g %g\n",new_list[i]->q[0],new_list[i]->q[1],new_list[i]->q[2],new_list[i]->q[3]);
+  for (int i = 0; i < number_of_samples/2; i++) {
+    //quaternion_normalize(new_list[i]);
+    quaternion_normalize(pruned_list[i]);
+    //fprintf(f,"%g %g %g %g\n",new_list[i]->q[0],new_list[i]->q[1],new_list[i]->q[2],new_list[i]->q[3]);
+    fprintf(f,"%g %g %g %g\n",pruned_list[i]->q[0],pruned_list[i]->q[1],pruned_list[i]->q[2],pruned_list[i]->q[3]);
   }
   fclose(f);
 
-  return number_of_samples;
+  
+
+  return number_of_samples/2;
 }
 
 void quaternion_to_euler(Quaternion *q, real *a, real *b, real *c) {

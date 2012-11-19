@@ -5,10 +5,28 @@
 #include "emc.h"
 //#include "rotations.h"
 #include <libconfig.h>
+#include <signal.h>
 
+static int quit_requested = 0;
+
+void nice_exit(int sig) {
+  quit_requested = 1;
+}
+
+
+/*
 int compare_real(real *a, real *b){
   if (*a < *b) {return -1;}
   else if (*a > *b) {return 1;}
+  else {return 0;}
+}
+*/
+int compare_real(const void *pa, const void *pb) {
+  real a = *(const real*)pa;
+  real b = *(const real*)pb;
+
+  if (a < b) {return -1;}
+  else if (a > b) {return 1;}
   else {return 0;}
 }
 
@@ -92,7 +110,6 @@ void get_slice(sp_3matrix *model, sp_matrix *slice, Quaternion *rot,
 {
   const int x_max = sp_matrix_rows(slice);
   const int y_max = sp_matrix_cols(slice);
-  int pixel_r;
   //tabulate angle later
   real new_x, new_y, new_z;
   int round_x, round_y, round_z;
@@ -140,7 +157,6 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 {
   const int x_max = sp_matrix_rows(slice);
   const int y_max = sp_matrix_cols(slice);
-  int pixel_r;
   //tabulate angle later
   real new_x, new_y, new_z;
   int round_x, round_y, round_z;
@@ -397,9 +413,7 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
   sp_matrix **images = malloc(conf.N_images*sizeof(sp_matrix *));
   //masks = malloc(conf.N_images*sizeof(sp_imatrix *));
   Image *img;
-  real new_intensity;
   real *intensities = malloc(conf.N_images*sizeof(real));
-  real scale_sum = 0.0;
   char buffer[1000];
 
   for (int i = 0; i < conf.N_images; i++) {
@@ -455,7 +469,7 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 	  }
 	}
 	sp_matrix_set(images[i],x,y,pixel_sum);
-	if (mask_sum == 3) {
+	if (mask_sum > 1) {
 	  sp_imatrix_set(masks[i],x,y,1);
 	} else {
 	  sp_imatrix_set(masks[i],x,y,0);
@@ -544,16 +558,15 @@ void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
 
 int main(int argc, char **argv)
 {
-  Configuration conf;
+  signal(SIGINT, nice_exit);
+  signal(SIGKILL, nice_exit);
+    Configuration conf;
   if (argc > 1) {
     conf = read_configuration_file(argv[1]);
   } else {
     conf = read_configuration_file("emc.conf");
   }
   const int start_iteration = 0;
-  const int rescale_intensity = 0;
-  const real intensity_fluct = 0.2; //when reading images they are randomly rescaled. Temporary.
-
   const int N_images = conf.N_images;
   const int slice_chunk = conf.slice_chunk;
   const int output_period = 10;
@@ -563,8 +576,8 @@ int main(int argc, char **argv)
 
   Quaternion **rotations;
   real *weights;
-  const long long int N_slices = generate_rotation_list(n,&rotations,&weights);
-  printf("%lld rotations sampled\n",N_slices);
+  const int N_slices = generate_rotation_list(n,&rotations,&weights);
+  printf("%d rotations sampled\n",N_slices);
 
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_taus);
   //  gsl_rng_set(rng,time(NULL));
@@ -596,7 +609,7 @@ int main(int argc, char **argv)
   Image *write_image = sp_image_alloc(conf.model_side,conf.model_side,1);
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i]) {
+      if (masks[i_image]->data[i]) {
 	sp_real(write_image->image->data[i]) = images[i_image]->data[i];
       } else {
 	sp_real(write_image->image->data[i]) = 0.0;
@@ -625,10 +638,12 @@ int main(int argc, char **argv)
   /* create and fill model */
   Image *model_out = sp_image_alloc(conf.model_side,conf.model_side,conf.model_side);
   sp_3matrix *model = sp_3matrix_alloc(conf.model_side,conf.model_side,conf.model_side);
+  /*
   real model_d = 1.0/(conf.pixel_size*(real)conf.detector_size/conf.detector_distance*
 		      conf.wavelength);
+  */
   sp_3matrix *weight = sp_3matrix_alloc(conf.model_side,conf.model_side,conf.model_side);
-  const long long int N_model = conf.model_side*conf.model_side*conf.model_side;
+  const int N_model = conf.model_side*conf.model_side*conf.model_side;
 
   //change later to random rotations
 
@@ -753,9 +768,7 @@ int main(int argc, char **argv)
   
   /*real respons[N_slices][N_images];*/
   real *respons = malloc(N_slices*N_images*sizeof(real));
-  real sum, total_respons, overal_respons, min_resp, max_resp;
-  real image_power, weighted_power, correlation, scaling_error;
-  real model_sum;
+  real sum, total_respons;
   FILE *likelihood = fopen("likelihood.data","wp");
 
   real * slices;
@@ -816,8 +829,26 @@ int main(int argc, char **argv)
   FILE *responsabilities_file;// = fopen("output/responsability.data","wp");
   FILE *sorted_resp_file = fopen("output/total_resp.data","wp");
 
+  for (int i_image = 0; i_image < N_images; i_image++) {
+    for (int i = 0; i < N_2d; i++) {
+      if (masks[i_image]->data[i] == 0) {
+	images[i_image]->data[i] = -1.0;
+      }
+    }
+  }
+
+  real * d_masked_images;
+  cuda_allocate_images(&d_masked_images,images,N_images);
+
   int current_chunk;
+  real sigma_half_life = 200.; // 1000.
+  real sigma_start = conf.sigma;
+  real sigma_final = conf.sigma*0.5; // 0.2
   for (int iteration = start_iteration; iteration < conf.max_iterations; iteration++) {
+    if (quit_requested == 1) {
+      break;
+    }
+    conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life);
     sum = cuda_model_max(d_model,N_model);
     printf("model max = %g\n",sum);
 
@@ -831,7 +862,7 @@ int main(int argc, char **argv)
 	current_chunk = slice_chunk;
       }
       if ((slice_start/slice_chunk)%output_period == 0) {
-	printf("calculate presponsabilities chunk %d\n", slice_start/slice_chunk);
+	printf("calculate responsabilities chunk %d\n", slice_start/slice_chunk);
       }
 
       cuda_get_slices(model,d_model,slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,slice_start,current_chunk);
@@ -979,7 +1010,8 @@ int main(int argc, char **argv)
       cuda_calculate_fit(slices, d_images, d_mask, d_scaling,
 			 d_respons, d_fit, conf.sigma, N_2d, N_images,
 			 slice_start, current_chunk);
-      if (iteration % radial_fit_n == 0 && iteration != 0 || iteration == conf.max_iterations-1) {
+      //if (iteration % radial_fit_n == 0 && iteration != 0 || iteration == conf.max_iterations-1) {
+      if (iteration % radial_fit_n == 0 && iteration != 0) {
 	cuda_calculate_radial_fit(slices, d_images, d_mask,
 				  d_scaling, d_respons, d_radial_fit,
 				  d_radial_fit_weight, d_radius,
@@ -995,8 +1027,9 @@ int main(int argc, char **argv)
     fprintf(fit_file, "\n");
     fflush(fit_file);
 
-    /* finis calculating radial fit */
-    if ((iteration % radial_fit_n == 0 && iteration != 0) || iteration == conf.max_iterations-1) {
+    /* finish calculating radial fit */
+    //if ((iteration % radial_fit_n == 0 && iteration != 0) || iteration == conf.max_iterations-1) {
+    if ((iteration % radial_fit_n == 0 && iteration != 0)) {
       cuda_copy_real_to_host(radial_fit, d_radial_fit, conf.model_side/2);
       cuda_copy_real_to_host(radial_fit_weight, d_radial_fit_weight, conf.model_side/2);
       for (int i = 0; i < conf.model_side/2; i++) {
@@ -1185,10 +1218,25 @@ int main(int argc, char **argv)
 		      slice_start, current_chunk);
       //cuda_copy_slice_chunk_to_device(slices_on_host, slices, slice_start, slice_chunk, N_2d);
 
+      /*      
+      if (iteration == conf.max_iterations-1) {
+	cuda_update_slices_final(d_masked_images, slices, d_mask, //should be d_masked_images
+				 d_respons, d_scaling, d_active_images,
+				 N_images, slice_start, current_chunk, N_2d,
+				 model,d_model_updated, d_x_coord, d_y_coord,
+				 d_z_coord, &d_rotations[slice_start*4],
+				 &weights[slice_start], d_weight,images);
+      } else {
+      */
       cuda_update_slices(d_images, slices, d_mask,
-			 d_respons, d_scaling, d_active_images, N_images, slice_start, current_chunk, N_2d,
+			 d_respons, d_scaling, d_active_images,
+			 N_images, slice_start, current_chunk, N_2d,
 			 model,d_model_updated, d_x_coord, d_y_coord,
-			 d_z_coord, &d_rotations[slice_start*4], &weights[slice_start], d_weight,images);
+			 d_z_coord, &d_rotations[slice_start*4],
+			 &weights[slice_start], d_weight,images);
+      /*
+      }
+      */
     }
     d_model_tmp = d_model_updated;
     d_model_updated = d_model;
@@ -1229,6 +1277,7 @@ int main(int argc, char **argv)
   cuda_reset_model(model,d_model_updated);
   cuda_reset_model(weight,d_weight);
 
+  /*
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
       if (masks[i_image]->data[i] == 0) {
@@ -1239,8 +1288,7 @@ int main(int argc, char **argv)
 
   real * d_masked_images;
   cuda_allocate_images(&d_masked_images,images,N_images);
-
-  real *h_slices = malloc(slice_chunk*N_2d*sizeof(real));
+  */
 
   /* put together the model one last time for output.
      This time more of the middle data is used */
@@ -1260,24 +1308,15 @@ int main(int argc, char **argv)
     */
     //cuda_copy_slice_chunk_to_device(slices_on_host, slices, slice_start, slice_chunk, N_2d);
 
-    cuda_update_slices_final(d_masked_images, slices, h_slices, d_mask,
+    //try this. Should actually be cuda_update_slices_final
+
+    cuda_update_slices_final(d_masked_images, slices, d_mask,
 			     d_respons, d_scaling, d_active_images,
 			     N_images, slice_start, current_chunk, N_2d,
 			     model,d_model_updated, d_x_coord, d_y_coord,
 			     d_z_coord, &d_rotations[slice_start*4],
 			     &weights[slice_start], d_weight,images);
-    /*
-    write_image = sp_image_alloc(conf.model_side,conf.model_side,1);
-    for (int i_slice = 0; i_slice < current_chunk; i_slice++) {
-      for (int i = 0; i < N_2d; i++) {
-	sp_real(write_image->image->data[i]) = h_slices[i_slice*N_2d + i];
-	sp_imag(write_image->image->data[i]) = 0.0;
-      }
-      sprintf(buffer,"debug/slice_%.6d.png",slice_start+i_slice);
-      sp_image_write(write_image,buffer,SpColormapLogScale|SpColormapJet);
-    }
-    sp_image_free(write_image);
-    */
+
   }
   real *debug_model = malloc(conf.model_side*conf.model_side*conf.model_side*sizeof(real));
   real *debug_weight = malloc(conf.model_side*conf.model_side*conf.model_side*sizeof(real));
