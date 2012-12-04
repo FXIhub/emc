@@ -35,6 +35,10 @@ __global__ void calculate_fit_kernel(real *slices, real *images, int *mask,
 				     real *respons, real *fit, real sigma,
 				     real *scaling, int N_2d, int slice_start);
 
+__global__ void calculate_fit_best_rot_kernel(real *slices, real *images, int *mask,
+					      int *best_rot, real *fit,
+					      real *scaling, int N_2d, int slice_start);
+
 __global__ void calculate_radial_fit_kernel(real *slices, real *images, int *mask,
 					    real *respons, real *scaling, real *radial_fit,
 					    real *radial_fit_weight, real *radius,
@@ -75,7 +79,19 @@ __device__ void inblock_maximum(T * data){
   }  
 }
 
-
+template<typename T>
+__device__ void inblock_maximum_index(T * data, int *index) {
+  __syncthreads();
+  for (unsigned int s=blockDim.x/2; s>0; s>>=1){
+    if (threadIdx.x < s){
+      if (data[threadIdx.x] < data[threadIdx.x + s]) {
+	data[threadIdx.x] = data[threadIdx.x + s];
+	index[threadIdx.x] = index[threadIdx.x + s];
+      }
+    }
+    __syncthreads();
+  }
+}
 
 __device__ void cuda_get_slice(real *model, real *slice,
 			       real *rot, real *x_coordinates,
@@ -148,7 +164,7 @@ __device__ void cuda_calculate_responsability_absolute(float *slice, float *imag
   const int i_max = N_2d;
   int count = 0;
   for (int i = tid; i < i_max; i+=step) {
-    if (mask[i] != 0 && slice[i] >= 0.0f) {
+    if (mask[i] != 0 && slice[i] > 0.0f) {
       sum += pow(slice[i] - image[i]/scaling,2);
       count++;
     }
@@ -158,6 +174,22 @@ __device__ void cuda_calculate_responsability_absolute(float *slice, float *imag
   //  return -sum/2.0/(real)count/pow(sigma,2); //return in log scale.
 }
 
+__device__ void cuda_calculate_responsability_relative(float *slice, float *image, int *mask, real sigma, real scaling, int N_2d, int tid, int step, real *sum_cache, int *count_cache)
+{
+  real sum = 0.0;
+  const int i_max = N_2d;
+  int count = 0;
+  for (int i = tid; i < i_max; i+=step) {
+    if (mask[i] != 0 && slice[i] > 0.f) {
+      sum += pow((slice[i] - image[i]/scaling) / (slice[i] + image[i]/scaling), 2);
+      count++;
+    }
+  }
+  sum_cache[tid] = sum;
+  count_cache[tid] = count;
+}
+
+
 /* This responsability does not yet take scaling of patterns into accoutnt. */
 __device__ void cuda_calculate_responsability_poisson(float *slice, float *image, int *mask, real sigma, real scaling, int N_2d, int tid, int step, real * sum_cache, int * count_cache)
 {
@@ -165,7 +197,7 @@ __device__ void cuda_calculate_responsability_poisson(float *slice, float *image
   const int i_max = N_2d;
   int count = 0;
   for (int i = tid; i < i_max; i+=step) {
-    if (mask[i] != 0 && slice[i] >= 0.0f) {
+    if (mask[i] != 0 && slice[i] > 0.0f) {
       //sum += pow((slice[i] - image[i]/scaling) / (sqrt(image[i])+0.4), 2);
       sum += pow((slice[i] - image[i]/scaling) / sqrt(image[i]+0.02), 2); // 0.2 worked
       //sum += pow((slice[i] - image[i]/scaling) / sqrt(image[i]/0.5+10.0), 2); // 0.2 worked
@@ -187,7 +219,7 @@ __device__ void cuda_calculate_responsability_true_poisson(float *slice, float *
   const int i_max = N_2d;
   int count = 0;
   for (int i = tid; i < i_max; i+=step) {
-    if (mask[i] != 0 && slice[i] >= 0.0f) {
+    if (mask[i] != 0 && slice[i] > 0.0f) {
       sum += pow((slice[i]*scaling - image[i]) / 8.0, 2) / (image[i]/8.0 + 0.1) / 2.0;
       //sum += pow((slice[i] - image[i]/scaling) / sqrt(slice[i]+1.0), 2);
       count++;
@@ -210,21 +242,28 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
   int i_slice = blockIdx.y;
   int N_images = gridDim.x;
 
+  /*
+  cuda_calculate_responsability_relative(&slices[i_slice*N_2d],
+					 &images[i_image*N_2d],mask,
+					 sigma,scaling[i_image], N_2d, tid,step,
+					 sum_cache,count_cache);
+  */
+  /*n
   cuda_calculate_responsability_poisson(&slices[i_slice*N_2d],
 					&images[i_image*N_2d],mask,
 					sigma,scaling[i_image], N_2d, tid,step,
 					sum_cache,count_cache);
+  */
 
-
-  /* This one was used for best result so far.
+  /* This one was used for best result so far.*/
   cuda_calculate_responsability_absolute(&slices[i_slice*N_2d],
 					&images[i_image*N_2d],mask,
 					sigma,scaling[i_image], N_2d, tid,step,
 					sum_cache,count_cache);
-  */
+
   inblock_reduce(sum_cache);
   inblock_reduce(count_cache);
-  
+  __syncthreads(); //probably not needed
   if(tid == 0){
     respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2);
   }   
@@ -338,7 +377,7 @@ void cuda_update_weighted_power(real * d_images, real * d_slices, int * d_mask,
   int nthreads = 256;
   calculate_weighted_power_kernel<<<nblocks,nthreads>>>(d_images,d_slices,d_mask,
 							d_respons,d_weighted_power, N_images,
-						     slice_start,slice_chunk,N_2d);
+							slice_start,slice_chunk,N_2d);
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess){
     printf("CUDA Error: %s\n",cudaGetErrorString(status));
@@ -525,6 +564,7 @@ real cuda_model_max(real * model, int model_size){
 }
 
 void cuda_allocate_slices(real ** slices, int side, int N_slices){
+  cudaSetDevice(2);
   cudaMalloc(slices,sizeof(real)*side*side*N_slices);  
 }
 
@@ -644,6 +684,31 @@ void cuda_allocate_scaling(real ** d_scaling, int N_images){
   thrust::fill(p, p+N_images, real(1));
 }
 
+__global__ void cuda_normalize_responsabilities_single_kernel(real *respons, int N_slices, int N_images) {
+  __shared__ real max_cache[256];
+  __shared__ int index_cache[256];
+  int i_image = blockIdx.x;
+  int tid = threadIdx.x;
+  int step = blockDim.x;
+  real this_resp;
+  for (int i_slice= tid; i_slice < N_slices; i_slice += step) {
+    this_resp = respons[i_slice*N_images+i_image];
+      if (this_resp > max_cache[tid]) {
+      max_cache[tid] = this_resp;
+      index_cache[tid] = i_image;
+    }
+  }
+  inblock_maximum_index(max_cache, index_cache);
+  
+  for (int i_slice = tid; i_slice < N_slices; i_slice += step) {
+    respons[i_slice*N_images+i_image] = 0.;
+  }
+  __syncthreads();
+  if (tid == 0) {
+    respons[index_cache[0]*N_images + i_image] = 1.;
+  }
+}
+
 __global__ void cuda_normalize_responsabilities_uniform_kernel(real * respons, int N_slices, int N_images){
   __shared__ real cache[256];
   /*
@@ -674,6 +739,7 @@ __global__ void cuda_normalize_responsabilities_uniform_kernel(real * respons, i
   }
   inblock_maximum(cache);
   real max_resp = cache[0];
+  __syncthreads();
   for (int i_image = tid; i_image < N_images; i_image+= step) {
     respons[i_slice*N_images+i_image] -= max_resp;
   }
@@ -689,6 +755,7 @@ __global__ void cuda_normalize_responsabilities_uniform_kernel(real * respons, i
   }
   inblock_reduce(cache);
   real sum = cache[0];
+  __syncthreads();
   for (int i_image = tid; i_image < N_images; i_image+=step) {
     respons[i_slice*N_images+i_image] /= sum;
   }
@@ -726,6 +793,7 @@ __global__ void cuda_normalize_responsabilities_kernel(real * respons, int N_sli
   }
   inblock_maximum(cache);
   real max_resp = cache[0];
+  __syncthreads();
   for (int i_slice = tid; i_slice < N_slices; i_slice+= step) {
     respons[i_slice*N_images+i_image] -= max_resp;
   }
@@ -741,9 +809,20 @@ __global__ void cuda_normalize_responsabilities_kernel(real * respons, int N_sli
   }
   inblock_reduce(cache);
   real sum = cache[0];
-  sum = cache[0];
+  //sum = cache[0];
   for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
     respons[i_slice*N_images+i_image] /= sum;
+  }
+}
+
+void cuda_normalize_responsabilities_single(real *d_respons, int N_slices, int N_images) {
+  int nblocks = N_images;
+  int nthreads = 256;
+  
+  cuda_normalize_responsabilities_single_kernel<<<nblocks, nthreads>>>(d_respons, N_slices, N_images);
+  cudaError_t status = cudaGetLastError();
+  if (status != cudaSuccess) {
+    printf("CUDA Error (norm resp): %s\n", cudaGetErrorString(status));
   }
 }
 
@@ -829,6 +908,21 @@ void cuda_calculate_fit(real * slices, real * d_images, int * d_mask,
   }
 }
 
+void cuda_calculate_fit_best_rot(real *slices, real * d_images, int *d_mask,
+				 real *d_scaling, int *d_best_rot, real *d_fit,
+				 int N_2d, int N_images, int slice_start, int slice_chunk) {
+  dim3 nblocks(N_images, slice_chunk);
+  int nthreads = 256;
+  calculate_fit_best_rot_kernel<<<nblocks, nthreads>>>(slices, d_images, d_mask,
+						       d_best_rot, d_fit, d_scaling,
+						       N_2d, slice_start);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (fit): %s\n",cudaGetErrorString(status));
+  }
+}
+
+
 void cuda_calculate_radial_fit(real *slices, real *d_images, int *d_mask,
 			       real *d_scaling, real *d_respons, real *d_radial_fit,
 			       real *d_radial_fit_weight, real *d_radius,
@@ -843,5 +937,45 @@ void cuda_calculate_radial_fit(real *slices, real *d_images, int *d_mask,
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess) {
     printf("CUDA Error (radial fit): %s\n",cudaGetErrorString(status));
+  }
+}
+
+__global__ void calculate_best_rotation_kernel(real *respons, int *best_rotation, int N_slices) {
+  int tid = threadIdx.x;
+  int step = blockDim.x;
+  int i_image = blockIdx.x;
+  int N_images = gridDim.x;
+  
+  __shared__ real max_resp[256];
+  __shared__ int max_index[256];
+  max_resp[tid] = -1.e100;
+  max_index[tid] = 0;
+  real this_resp;
+  for (int i_slice = tid; i_slice < N_slices; i_slice += step) {
+    this_resp = respons[i_slice*N_images+i_image];
+    if (this_resp > max_resp[tid]) {
+      //printf("new best resp found at %d\n", i_slice);
+      max_resp[tid] = this_resp;
+      max_index[tid] = i_slice;
+      //printf("max_index set to %d\n", max_index[tid]);
+    }
+  }
+  //printf("before reduce max_index[%d] = %d %g)\n", tid, max_index[tid], max_resp[tid]);
+  inblock_maximum_index(max_resp, max_index);
+  if (tid == 0) {
+    best_rotation[i_image] = max_index[0];
+    //if (i_image < 4) {
+    //printf("best_rotation[%d] = %d (%g)\n", i_image, best_rotation[i_image], respons[best_rotation[i_image]*N_images+i_image]);
+      //}
+  }
+}
+
+void cuda_calculate_best_rotation(real *d_respons, int *d_best_rotation, int N_images, int N_slices){
+  int nblocks = N_images;
+  int nthreads = 256;
+  calculate_best_rotation_kernel<<<nblocks, nthreads>>>(d_respons, d_best_rotation, N_slices);
+  cudaError_t status = cudaGetLastError();
+  if (status != cudaSuccess) {
+    printf("CUDA Error (best rotation): %s\n", cudaGetErrorString(status));
   }
 }

@@ -258,6 +258,43 @@ __device__ void cuda_calculate_responsability_true_poisson_atomic(float *slice, 
   //  return -sum/2.0/(real)count/pow(sigma,2); //return in log scale.
 }
 
+__device__ void cuda_calculate_fit_error(float* slice, float *image,
+				   int *mask, real scaling,
+				   int N_2d, int tid, int step,
+				   real *sum_cache, int *count_cache) {
+  real sum = 0.0;
+  const int i_max = N_2d;
+  int count = 0;
+  for (int i = tid; i < i_max; i+=step) {
+    if (mask[i] != 0 && slice[i] >= 0.0f) {
+      sum += abs((slice[i] - image[i]/scaling) / (slice[i] + image[i]/scaling));
+      count++;
+    }
+  }
+  sum_cache[tid] = sum;
+  count_cache[tid] = count;
+}
+
+__device__ real cuda_calculate_single_fit_error(float* slice, float *image,
+						int *mask, real scaling,
+						int N_2d, int tid, int step) {
+  __shared__ real sum_cache[256];
+  __shared__ int count_cache[256];
+  real sum = 0.0;
+  const int i_max = N_2d;
+  int count = 0;
+  for (int i = tid; i < i_max; i+=step) {
+    if (mask[i] != 0 && slice[i] >= 0.0f) {
+      sum += abs((slice[i] - image[i]/scaling) / (slice[i] + image[i]/scaling));
+      count++;
+    }
+  }
+  sum_cache[tid] = sum;
+  count_cache[tid] = count;
+  inblock_reduce(sum_cache);
+  inblock_reduce(count_cache);
+  return sum_cache[0]/count_cache[0];
+}
 
 __global__ void calculate_fit_kernel(real *slices, real *images, int *mask,
 				     real *respons, real *fit, real sigma,
@@ -270,11 +307,15 @@ __global__ void calculate_fit_kernel(real *slices, real *images, int *mask,
   int i_slice = blockIdx.y;
   int N_images = gridDim.x;
 
+  cuda_calculate_fit_error(&slices[i_slice*N_2d], &images[i_image*N_2d], mask,
+		     scaling[i_image], N_2d, tid, step, sum_cache, count_cache);
+
+  /*
   cuda_calculate_responsability_poisson_atomic(&slices[i_slice*N_2d],
 					       &images[i_image*N_2d],mask,
 					       sigma,scaling[i_image], N_2d, tid,step,
 					       sum_cache,count_cache);
-
+  */
   /*
   cuda_calculate_responsability_absolute_atomic(&slices[i_slice*N_2d],
 						&images[i_image*N_2d],mask,
@@ -283,20 +324,52 @@ __global__ void calculate_fit_kernel(real *slices, real *images, int *mask,
   */
   inblock_reduce(sum_cache);
   inblock_reduce(count_cache);
-  
+  __syncthreads();
+  if (tid == 0) {
+    atomicAdd(&fit[i_image], sum_cache[0]/count_cache[0]*respons[(slice_start+i_slice)*N_images+i_image]);
+    //atomicFloatAdd(&fit[i_image], respons[(slice_start+i_slice)*N_images+i_image]);
+    //atomicFloatAdd(&fit[i_image], 1.);
+  }
+  /*  
   if(tid == 0){
     atomicFloatAdd(&fit[i_image], expf(-sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2)) *
 		   respons[(slice_start+i_slice)*N_images+i_image]);
   }
+  */
+}
+
+__global__ void calculate_fit_best_rot_kernel(real *slices, real *images, int *mask,
+					      int *best_rot, real *fit,
+					      real *scaling, int N_2d, int slice_start){
+  __shared__ real sum_cache[256];
+  __shared__ int count_cache[256];
+  int tid = threadIdx.x;
+  int step = blockDim.x;
+  int i_image = blockIdx.x;
+  int i_slice = blockIdx.y;
+  int N_images = gridDim.x;
+  
+  real this_fit;
+  if (best_rot[i_image] == (slice_start+i_slice)) {
+    this_fit = cuda_calculate_single_fit_error(&slices[i_slice*N_2d], &images[i_image*N_2d], mask,
+					       scaling[i_image], N_2d, tid, step);
+    
+    if (tid == 0) {
+      fit[i_image] = this_fit;
+    }
+  }
 }
 
   /* calcualte the fit as a function of radius */
-__global__ void calculate_radial_fit_kernel(real *slices, real *images, int *mask,
-					    real *respons, real *scaling, real *radial_fit,
-					    real *radial_fit_weight, real *radius,
-					    int N_2d, int side, int slice_start){
-  __shared__ real sum_cache[256];
+__global__ void calculate_radial_fit_kernel(real * slices , real * images, int * mask,
+					    real * respons, real * scaling, real * radial_fit,
+					    real * radial_fit_weight, real * radius,
+					    int N_2d,  int side,  int slice_start){
+  __shared__ real sum_cache[256]; //256
   __shared__ real weight_cache[256];
+  const int max_radius = side/2;
+  //printf("before alloc\n");
+  //printf("after alloc\n");
   int tid = threadIdx.x;
   int step = blockDim.x;
   int i_image = blockIdx.x;
@@ -304,44 +377,38 @@ __global__ void calculate_radial_fit_kernel(real *slices, real *images, int *mas
   int N_images = gridDim.x;
   real error;
   int rad;
-  sum_cache[tid] = 0.0;
-  weight_cache[tid] = 0.0;
+
+  if (tid < max_radius) {
+    sum_cache[tid] = 0.0;
+    weight_cache[tid] = 0.0;
+  }
+
   __syncthreads();
   real this_resp = respons[(slice_start+i_slice)*N_images+i_image];
-  if (this_resp > 1.0e-10) {
-    for (int i = tid; i < N_2d; i+= step) {
-      if (mask[i] != 0 && slices[i_slice*N_2d+i] >= 0.0f) {
-	//error = abs(slices[i_slice*N_2d+i]*scaling[i_image] - images[i_image*N_2d+i]) /
-	//	  (slices[i_slice*N_2d+i]*scaling[i_image]) * this_resp;
-	/*
-	error = fabs(fabs(slices[i_slice*N_2d+i]*scaling[i_image]) -
-		     fabs(images[i_image*N_2d+i])) /
-	  (fabs(images[i_image*N_2d+i]) + 0.1) * this_resp;
-	*/
-	error = fabs(fabs(slices[i_slice*N_2d+i]*scaling[i_image]) -
-		     fabs(images[i_image*N_2d+i])) /
-	  (fabs(slices[i_slice*N_2d+i])*scaling[i_image]) * this_resp;
-	/*
-	error = fabs(fabs(slices[i_slice*N_2d+i]*scaling[i_image]) -
-		     fabs(images[i_image*N_2d+i])) * this_resp;
-	*/
-	/*
-	error = (fabs(fabs(slices[i_slice*N_2d+i]*scaling[i_image]) -
-		     fabs(images[i_image*N_2d+i])) /
-		 fabs(fabs(slices[i_slice*N_2d+i]*scaling[i_image]) +
-		      fabs(images[i_image*N_2d+i]))) * this_resp;
-	*/
-	rad = (int)radius[i];
-	//sum_cache[rad] += error;
-	//weight_cache[rad] += this_resp;
-	atomicFloatAdd(&sum_cache[rad],error);
-	atomicFloatAdd(&weight_cache[rad],this_resp);
+  //printf("%g\n", this_resp);
+  //if (this_resp > 1.0e-10) {
+  for (int i = tid; i < N_2d; i+= step) {
+    if (mask[i] != 0 && slices[i_slice*N_2d+i] > 0.0f) {
+      error = fabs((slices[i_slice*N_2d+i] - images[i_image*N_2d+i]/scaling[i_image]) / 
+		   (slices[i_slice*N_2d+i] + images[i_image*N_2d+i]/scaling[i_image]));
+      /*
+      if (i_image == 0 && i_slice == 0) {
+	printf("error[i_slice=%d, i_image=%d, i=%d] = %g, (%g ~ %g) (resp = %g)\n", i_slice, i_image, i, error, slices[i_slice*N_2d+i], images[i_image*N_2d+i]/scaling[i_image], this_resp);
+      }
+      */
+      rad = (int)radius[i];
+
+      if (rad < max_radius) {
+	atomicAdd(&sum_cache[rad],error*this_resp);
+	atomicAdd(&weight_cache[rad],this_resp);
       }
     }
   }
+    //}
   __syncthreads();
-  if (tid < 64) {
-    atomicFloatAdd(&radial_fit[tid],sum_cache[tid]);
-    atomicFloatAdd(&radial_fit_weight[tid],weight_cache[tid]);
+  if (tid < max_radius) {
+    atomicAdd(&radial_fit[tid],sum_cache[tid]);
+    atomicAdd(&radial_fit_weight[tid],weight_cache[tid]);
   }
 }
+ 

@@ -93,6 +93,7 @@ typedef struct{
   void cuda_allocate_int(int ** x, int n);
   void cuda_allocate_scaling(real ** scaling, int N_images);
   void cuda_normalize_responsabilities(real * d_respons, int N_slices, int N_images);
+  void cuda_normalize_responsabilities_single(real *d_respons, int N_slices, int N_images);
   real cuda_total_respons(real * d_respons, real * respons, int n);
   void cuda_set_to_zero(real * x, int n);
   void cuda_copy_real_to_device(real *x, real *d_x, int n);
@@ -104,11 +105,15 @@ typedef struct{
   void cuda_calculate_fit(real * slices, real * d_images, int * d_mask,
 			  real * d_scaling, real * d_respons, real * d_fit, real sigma,
 			  int N_2d, int N_images, int slice_start, int slice_chunk);
+  void cuda_calculate_fit_best_rot(real *slices, real * d_images, int *d_mask,
+				   real *d_scaling, int *d_best_rot, real *d_fit,
+				   int N_2d, int N_images, int slice_start, int slice_chunk);
   void cuda_calculate_radial_fit(real *slices, real *d_images, int *d_mask,
 				 real *d_scaling, real *d_respons, real *d_radial_fit,
 				 real *d_radial_fit_weight, real *d_radius,
 				 int N_2d, int side, int N_images, int slice_start,
 				 int slice_chunk);
+  void cuda_calculate_best_rotation(real *d_respons, int *d_best_rotation, int N_images, int N_slices);
 
 #ifdef __cplusplus
   }

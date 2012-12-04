@@ -10,9 +10,12 @@
 static int quit_requested = 0;
 
 void nice_exit(int sig) {
-  quit_requested = 1;
+  if (quit_requested == 0) {
+    quit_requested = 1;
+  } else {
+    exit(1);
+  }
 }
-
 
 /*
 int compare_real(real *a, real *b){
@@ -559,8 +562,8 @@ void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
 int main(int argc, char **argv)
 {
   signal(SIGINT, nice_exit);
-  signal(SIGKILL, nice_exit);
-    Configuration conf;
+  //signal(SIGKILL, nice_exit);
+  Configuration conf;
   if (argc > 1) {
     conf = read_configuration_file(argv[1]);
   } else {
@@ -606,6 +609,7 @@ int main(int argc, char **argv)
     normalize_images_individual_mask(images, masks, conf);
   }
   /* output images after preprocessing */
+
   Image *write_image = sp_image_alloc(conf.model_side,conf.model_side,1);
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
@@ -623,11 +627,13 @@ int main(int argc, char **argv)
   }
   sp_image_free(write_image);
 
+
   sp_matrix *x_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
   sp_matrix *y_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
   sp_matrix *z_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
   calculate_coordinates(conf.model_side, conf.pixel_size, conf.detector_distance, conf.wavelength,
 			x_coordinates, y_coordinates, z_coordinates);
+
 
   /* calculate correlation stuff */
   /*
@@ -807,6 +813,9 @@ int main(int argc, char **argv)
   real *fit = malloc(N_images*sizeof(real));
   real *d_fit;
   cuda_allocate_real(&d_fit,N_images);
+  real *fit_best_rot = malloc(N_images*sizeof(real));
+  real *d_fit_best_rot;
+  cuda_allocate_real(&d_fit_best_rot, N_images);
   int *active_images = malloc(N_images*sizeof(int));
   int *d_active_images;
   cuda_allocate_int(&d_active_images,N_images);
@@ -819,11 +828,17 @@ int main(int argc, char **argv)
   real *d_radial_fit_weight;
   cuda_allocate_real(&d_radial_fit, conf.model_side/2);
   cuda_allocate_real(&d_radial_fit_weight, conf.model_side/2);
+
+  int *best_rotation = malloc(N_images*sizeof(int));
+  int *d_best_rotation;
+  cuda_allocate_int(&d_best_rotation, N_images);
   
   real *sorted_resp = malloc(N_slices*sizeof(real));
   real *total_sorted_resp = malloc(N_slices*sizeof(real));
 
+  FILE *best_rot_file = fopen("debug/best_rot.data", "wp");
   FILE *fit_file = fopen("output/fit.data","wp");
+  FILE *fit_best_rot_file = fopen("output/fit_best_rot.data","wp");
   FILE *scaling_file = fopen("output/scaling.data","wp");
   FILE *radial_fit_file = fopen("output/radial_fit.data","wp");
   FILE *responsabilities_file;// = fopen("output/responsability.data","wp");
@@ -841,14 +856,18 @@ int main(int argc, char **argv)
   cuda_allocate_images(&d_masked_images,images,N_images);
 
   int current_chunk;
-  real sigma_half_life = 200.; // 1000.
-  real sigma_start = conf.sigma;
-  real sigma_final = conf.sigma*0.5; // 0.2
+  /*
+  real sigma_half_life = 50; // 1000.
+  real sigma_start = 0.6;   // relative: 0.09 -> 0.05
+  real sigma_final = 0.5; // 0.2
+  */
   for (int iteration = start_iteration; iteration < conf.max_iterations; iteration++) {
     if (quit_requested == 1) {
       break;
     }
-    conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life);
+    /*
+    conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life*log(2.));
+    */
     sum = cuda_model_max(d_model,N_model);
     printf("model max = %g\n",sum);
 
@@ -885,7 +904,16 @@ int main(int argc, char **argv)
 					N_images);
     
     printf("normalize resp\n");
+
     cuda_normalize_responsabilities(d_respons, N_slices, N_images);
+
+    /*
+    if (iteration < 100) {
+      cuda_normalize_responsabilities(d_respons, N_slices, N_images);
+    } else {
+      cuda_normalize_responsabilities_single(d_respons, N_slices, N_images);
+    }
+    */
     cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
     printf("normalize resp done\n");
 
@@ -896,6 +924,7 @@ int main(int argc, char **argv)
     int N_r = 80;
     int N_a = 60;
     */
+    /*
     real a,b,c;
     int a_int, r_int;
     Image *rotation_map = sp_image_alloc(N_r,N_a,1);
@@ -962,11 +991,16 @@ int main(int argc, char **argv)
     sp_image_write(rotation_map,buffer,SpColormapJet);
       
     sp_image_free(rotation_map);
+    */
 
     /* output responsabilities */
     sprintf(buffer,"output/responsabilities_%.4d.data",iteration);
     responsabilities_file = fopen(buffer, "wp");
-    for (int i_image = 0; i_image < 5; i_image++) {
+    int resp_out_len = 5;
+    if (iteration%50 == 0) {
+      resp_out_len = 261;
+    }
+    for (int i_image = 0; i_image < resp_out_len; i_image++) {
       for(int i_slice = 0; i_slice < N_slices; i_slice++) {
 	fprintf(responsabilities_file, "%g ", respons[i_slice*N_images+i_image]);
       }
@@ -988,17 +1022,25 @@ int main(int argc, char **argv)
       }
     }
     for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-      fprintf(sorted_resp_file,"%g ", total_sorted_resp[i_slice] / (real) N_images);
+      fprintf(sorted_resp_file, "%g ", total_sorted_resp[i_slice]);
     }
     fprintf(sorted_resp_file,"\n");
     fflush(sorted_resp_file);
 	
 
     /* check how well every image fit */
-    int radial_fit_n = 100000;
+    int radial_fit_n = 1;
     cuda_set_to_zero(d_fit,N_images);
     cuda_set_to_zero(d_radial_fit,conf.model_side/2);
     cuda_set_to_zero(d_radial_fit_weight,conf.model_side/2);
+    cuda_calculate_best_rotation(d_respons, d_best_rotation, N_images, N_slices);
+    cuda_copy_int_to_host(best_rotation, d_best_rotation, N_images);
+    for (int i_image = 0; i_image < N_images; i_image++) {
+      fprintf(best_rot_file, "%d ", best_rotation[i_image]);
+    }
+    fprintf(best_rot_file, "\n");
+    fflush(best_rot_file);
+
     for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
       if (slice_start + slice_chunk >= N_slices) {
 	current_chunk = N_slices - slice_start;
@@ -1010,22 +1052,31 @@ int main(int argc, char **argv)
       cuda_calculate_fit(slices, d_images, d_mask, d_scaling,
 			 d_respons, d_fit, conf.sigma, N_2d, N_images,
 			 slice_start, current_chunk);
+
+      cuda_calculate_fit_best_rot(slices, d_images, d_mask, d_scaling,
+				  d_best_rotation, d_fit_best_rot, N_2d, N_images,
+				  slice_start, current_chunk);
+      
       //if (iteration % radial_fit_n == 0 && iteration != 0 || iteration == conf.max_iterations-1) {
       if (iteration % radial_fit_n == 0 && iteration != 0) {
 	cuda_calculate_radial_fit(slices, d_images, d_mask,
 				  d_scaling, d_respons, d_radial_fit,
 				  d_radial_fit_weight, d_radius,
 				  N_2d, conf.model_side, N_images, slice_start,
-				  slice_chunk);
+				  current_chunk);
       }
     }
 
     cuda_copy_real_to_host(fit, d_fit, N_images);
+    cuda_copy_real_to_host(fit_best_rot, d_fit_best_rot, N_images);
     for (int i_image = 0; i_image < N_images; i_image++) {
       fprintf(fit_file, "%g ", fit[i_image]);
+      fprintf(fit_best_rot_file, "%g ", fit_best_rot[i_image]);
     }
     fprintf(fit_file, "\n");
+    fprintf(fit_best_rot_file, "\n");
     fflush(fit_file);
+    fflush(fit_best_rot_file);
 
     /* finish calculating radial fit */
     //if ((iteration % radial_fit_n == 0 && iteration != 0) || iteration == conf.max_iterations-1) {
@@ -1033,7 +1084,7 @@ int main(int argc, char **argv)
       cuda_copy_real_to_host(radial_fit, d_radial_fit, conf.model_side/2);
       cuda_copy_real_to_host(radial_fit_weight, d_radial_fit_weight, conf.model_side/2);
       for (int i = 0; i < conf.model_side/2; i++) {
-	printf("%d: %g %g\n", i, radial_fit[i], radial_fit_weight[i]);
+	//printf("%d: %g %g\n", i, radial_fit[i], radial_fit_weight[i]);
 	if (radial_fit_weight[i] > 0.0) {
 	  radial_fit[i] /= radial_fit_weight[i];
 	} else {
@@ -1269,7 +1320,9 @@ int main(int argc, char **argv)
     printf("wrote model\n");
   }
   fclose(likelihood);
+  fclose(best_rot_file);
   fclose(fit_file);
+  fclose(fit_best_rot_file);
   fclose(scaling_file);
   fclose(radial_fit_file);
   fclose(sorted_resp_file);
@@ -1346,22 +1399,22 @@ int main(int argc, char **argv)
   sp_image_write(model_out,"output/model_final.h5",0);
 
   
-  FILE *final_best_rotations = fopen("debug/final_best_rotations.data","wp");
+  FILE *final_best_rotations_file = fopen("debug/final_best_rotations.data","wp");
   real highest_resp, this_resp;
-  int best_rotation;
+  int final_best_rotation;
   for (int i_image = 0; i_image < N_images; i_image++) {
-    best_rotation = 0;
+    final_best_rotation = 0;
     highest_resp = respons[0*N_images+i_image];
     for (int i_slice = 1; i_slice < N_slices; i_slice++) {
       this_resp = respons[i_slice*N_images+i_image];
       if (this_resp > highest_resp) {
-	best_rotation = i_slice;
+	final_best_rotation = i_slice;
 	highest_resp = this_resp;
       }
     }
-    fprintf(final_best_rotations, "%g %g %g %g\n",
-	    rotations[best_rotation]->q[0], rotations[best_rotation]->q[1],
-	    rotations[best_rotation]->q[2], rotations[best_rotation]->q[3]);
+    fprintf(final_best_rotations_file, "%g %g %g %g\n",
+	    rotations[final_best_rotation]->q[0], rotations[final_best_rotation]->q[1],
+	    rotations[final_best_rotation]->q[2], rotations[final_best_rotation]->q[3]);
   }
-  fclose(final_best_rotations);
+  fclose(final_best_rotations_file);
 }
