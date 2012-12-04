@@ -588,6 +588,10 @@ int main(int argc, char **argv)
     }
   }
   */
+  /* Create output directories in case they don't exist */
+  mkdir("debug",0777);
+  mkdir("output",0777);
+
   if (conf.normalize_images) {
     //normalize_images(images, mask, conf);
     normalize_images_individual_mask(images, masks, conf);
