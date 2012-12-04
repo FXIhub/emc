@@ -564,7 +564,7 @@ real cuda_model_max(real * model, int model_size){
 }
 
 void cuda_allocate_slices(real ** slices, int side, int N_slices){
-  cudaSetDevice(2);
+  //cudaSetDevice(2);
   cudaMalloc(slices,sizeof(real)*side*side*N_slices);  
 }
 
