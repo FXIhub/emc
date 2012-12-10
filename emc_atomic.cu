@@ -266,7 +266,8 @@ __device__ void cuda_calculate_fit_error(float* slice, float *image,
   const int i_max = N_2d;
   int count = 0;
   for (int i = tid; i < i_max; i+=step) {
-    if (mask[i] != 0 && slice[i] >= 0.0f) {
+    //if (mask[i] != 0 && slice[i] >= 0.0f) {
+    if (mask[i] != 0 && slice[i] > 0.0f && image[i] >0.0f) {
       sum += abs((slice[i] - image[i]/scaling) / (slice[i] + image[i]/scaling));
       count++;
     }
@@ -284,7 +285,8 @@ __device__ real cuda_calculate_single_fit_error(float* slice, float *image,
   const int i_max = N_2d;
   int count = 0;
   for (int i = tid; i < i_max; i+=step) {
-    if (mask[i] != 0 && slice[i] >= 0.0f) {
+    //if (mask[i] != 0 && slice[i] >= 0.0f) {
+    if (mask[i] != 0 && slice[i] > 0.0f && image[i] >0.0f) {
       sum += abs((slice[i] - image[i]/scaling) / (slice[i] + image[i]/scaling));
       count++;
     }

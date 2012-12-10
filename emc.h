@@ -7,6 +7,8 @@
 extern "C"{
 #endif
 
+  enum diff_type {absolute=0, poisson, relative};
+
 typedef struct{
   int side;
   real wavelength;
@@ -67,9 +69,16 @@ typedef struct{
   void cuda_update_scaling(real * d_images, int * d_mask,
 			   real * d_scaling, real * d_weighted_power,
 			   int N_images, int N_slices, int N_2d, real * scaling);
+  void cuda_update_scaling_best(real *d_images, int *d_mask,
+				real *d_model, real *d_scaling, real *d_respons, real *d_rotations,
+				real *x_coordinates, real *y_coordinates, real *z_coordinates,
+				int N_images, int N_slices, int side, real *scaling);
+
+
   void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask,
 				       real sigma, real * d_scaling, real * d_respons, 
-				       int N_2d, int N_images, int slice_start, int slice_chunk);
+				       int N_2d, int N_images, int slice_start, int slice_chunk,
+				       enum diff_type diff);
   void cuda_calculate_responsabilities_sum(real * respons, real * d_respons, int N_slices,
 					   int N_images);
 

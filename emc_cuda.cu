@@ -199,7 +199,8 @@ __device__ void cuda_calculate_responsability_poisson(float *slice, float *image
   for (int i = tid; i < i_max; i+=step) {
     if (mask[i] != 0 && slice[i] > 0.0f) {
       //sum += pow((slice[i] - image[i]/scaling) / (sqrt(image[i])+0.4), 2);
-      sum += pow((slice[i] - image[i]/scaling) / sqrt(image[i]+0.02), 2); // 0.2 worked
+      //sum += pow((slice[i] - image[i]/scaling) / sqrt(image[i]+0.02), 2); // 0.2 worked. this was used latest
+      sum += pow((slice[i] - image[i]/scaling) / sqrt(slice[i]+0.02), 2); // 0.2 worked. this was used latest
       //sum += pow((slice[i] - image[i]/scaling) / sqrt(image[i]/0.5+10.0), 2); // 0.2 worked
       //sum += pow((slice[i]*scaling - image[i])/8.0/ (sqrt(image[i]/8.0 + 1.0)), 2); // 0.2 worked
       count++;
@@ -233,7 +234,7 @@ __device__ void cuda_calculate_responsability_true_poisson(float *slice, float *
 /* Now takes a starting slice. Otherwise unchanged */
 __global__ void calculate_responsabilities_kernel(float * slices, float * images, int * mask,
 						  real sigma, real * scaling, real * respons, 
-						  int N_2d, int slice_start){
+						  int N_2d, int slice_start, enum diff_type diff){
   __shared__ real sum_cache[256];
   __shared__ int count_cache[256];
   int tid = threadIdx.x;
@@ -242,24 +243,23 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
   int i_slice = blockIdx.y;
   int N_images = gridDim.x;
 
-  /*
-  cuda_calculate_responsability_relative(&slices[i_slice*N_2d],
-					 &images[i_image*N_2d],mask,
-					 sigma,scaling[i_image], N_2d, tid,step,
-					 sum_cache,count_cache);
-  */
-  /*n
-  cuda_calculate_responsability_poisson(&slices[i_slice*N_2d],
-					&images[i_image*N_2d],mask,
-					sigma,scaling[i_image], N_2d, tid,step,
-					sum_cache,count_cache);
-  */
-
-  /* This one was used for best result so far.*/
-  cuda_calculate_responsability_absolute(&slices[i_slice*N_2d],
-					&images[i_image*N_2d],mask,
-					sigma,scaling[i_image], N_2d, tid,step,
-					sum_cache,count_cache);
+  if (diff == relative) {
+    cuda_calculate_responsability_relative(&slices[i_slice*N_2d],
+					   &images[i_image*N_2d],mask,
+					   sigma,scaling[i_image], N_2d, tid,step,
+					   sum_cache,count_cache);
+  } else if (diff == poisson) {
+    cuda_calculate_responsability_poisson(&slices[i_slice*N_2d],
+					  &images[i_image*N_2d],mask,
+					  sigma,scaling[i_image], N_2d, tid,step,
+					  sum_cache,count_cache);
+  } else if (diff == absolute) {
+    /* This one was used for best result so far.*/
+    cuda_calculate_responsability_absolute(&slices[i_slice*N_2d],
+					   &images[i_image*N_2d],mask,
+					   sigma,scaling[i_image], N_2d, tid,step,
+					   sum_cache,count_cache);
+  }
 
   inblock_reduce(sum_cache);
   inblock_reduce(count_cache);
@@ -273,7 +273,7 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
 /* Now takes start slice and slice chunk. Also removed memcopy, done separetely later. */
 void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask,
 				     real sigma, real * d_scaling, real * d_respons, 
-				     int N_2d, int N_images, int slice_start, int slice_chunk){
+				     int N_2d, int N_images, int slice_start, int slice_chunk, enum diff_type diff){
   cudaEvent_t k_begin;
   cudaEvent_t k_end;
   cudaEventCreate(&k_begin);
@@ -284,7 +284,7 @@ void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_m
   int nthreads = 256;
   calculate_responsabilities_kernel<<<nblocks,nthreads>>>(d_slices,d_images,d_mask,
 							  sigma,d_scaling,d_respons,
-							  N_2d, slice_start);
+							  N_2d, slice_start, diff);
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess){
     printf("CUDA Error (calc resp): %s\n",cudaGetErrorString(status));
@@ -424,6 +424,104 @@ void cuda_update_scaling(real * d_images, int * d_mask,
   cudaEventElapsedTime (&ms, begin, end);
   //printf("cuda update scaling time = %fms\n",ms);
 }
+
+__global__ void calculate_best_rotation_kernel(real *respons, int *best_rotation, int N_slices) {
+  int tid = threadIdx.x;
+  int step = blockDim.x;
+  int i_image = blockIdx.x;
+  int N_images = gridDim.x;
+  
+  __shared__ real max_resp[256];
+  __shared__ int max_index[256];
+  max_resp[tid] = -1.e100;
+  max_index[tid] = 0;
+  real this_resp;
+  for (int i_slice = tid; i_slice < N_slices; i_slice += step) {
+    this_resp = respons[i_slice*N_images+i_image];
+    if (this_resp > max_resp[tid]) {
+      //printf("new best resp found at %d\n", i_slice);
+      max_resp[tid] = this_resp;
+      max_index[tid] = i_slice;
+      //printf("max_index set to %d\n", max_index[tid]);
+    }
+  }
+  //printf("before reduce max_index[%d] = %d %g)\n", tid, max_index[tid], max_resp[tid]);
+  inblock_maximum_index(max_resp, max_index);
+  if (tid == 0) {
+    best_rotation[i_image] = max_index[0];
+    //if (i_image < 4) {
+    //printf("best_rotation[%d] = %d (%g)\n", i_image, best_rotation[i_image], respons[best_rotation[i_image]*N_images+i_image]);
+      //}
+  }
+}
+
+__device__ real calculate_scaling_poisson(real *image, real *slice, int *mask, int N_2d, int tid, int step){
+  __shared__ real sum_cache[256];
+  __shared__ int weight_cache[256];
+  sum_cache[tid] = 0.;
+  weight_cache[tid] = 0; 
+  for (int i = tid; i < N_2d; i+=step) {
+    if (mask[i] > 0 && slice[i] > 1.e-10) {
+      //if (mask[i] > 0) {
+      /*
+      sum_cache[tid] += image[i] / slice[i];
+      weight_cache[tid] += 1.;
+      */
+      sum_cache[tid] += image[i]*image[i]/slice[i];
+      weight_cache[tid] += image[i];
+    }
+  }
+  inblock_reduce(sum_cache);
+  inblock_reduce(weight_cache);
+  __syncthreads();
+  return sum_cache[0] / weight_cache[0];
+}
+
+__global__ void update_scaling_best_kernel(real *scaling, real *images, real *model, int *mask, real *rotations,
+					   real *x_coordinates, real *y_coordinates, real *z_coordinates,
+					   int side, int *best_rotation){
+  int step = blockDim.x;
+  int i_image = blockIdx.x;
+  int tid = threadIdx.x;
+  const int N_2d = side*side;
+  extern __shared__ real this_slice[];
+  /*
+  if (tid == 0) {
+    printf("best_rotation[%d] = %d\n", i_image, best_rotation[i_image]);
+  }
+  */
+  
+  cuda_get_slice(model, this_slice, &rotations[4*best_rotation[i_image]],
+		 x_coordinates, y_coordinates, z_coordinates,
+		 side, side, side, side, side, tid, step);
+  /*
+  if (tid == 0) {
+    printf("slice value [%d] = %g\n", i_image, this_slice[20*64 + 20]);
+  }
+  */
+
+  real this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], this_slice, mask, N_2d, tid, step);
+  if (tid == 0) {
+    scaling[i_image] = this_scaling;
+  }
+}
+
+void cuda_update_scaling_best(real *d_images, int *d_mask,
+			      real *d_model, real *d_scaling, real *d_respons, real *d_rotations,
+			      real *x_coordinates, real *y_coordinates, real *z_coordinates,
+			      int N_images, int N_slices, int side, real *scaling) {
+  int nblocks = N_images;
+  int nthreads = 256;
+  const int N_2d = side*side;
+  int *d_best_rotation;
+  cudaMalloc(&d_best_rotation, N_images*sizeof(int));
+  calculate_best_rotation_kernel<<<nblocks, nthreads>>>(d_respons, d_best_rotation, N_slices);
+  nthreads = 256;
+  nblocks = N_images;
+  update_scaling_best_kernel<<<nblocks,nthreads,N_2d*sizeof(real)>>>(d_scaling, d_images, d_model, d_mask, d_rotations, x_coordinates, y_coordinates, z_coordinates, side, d_best_rotation);
+  cudaMemcpy(scaling,d_scaling,sizeof(real)*N_images,cudaMemcpyDeviceToHost);
+}
+
 
 /* function now takes a start slice and a number of slices to retrieve */
 void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real * d_rot, 
@@ -622,17 +720,21 @@ void cuda_copy_model(sp_3matrix * model, real *d_model){
 
 __global__ void cuda_normalize_model_kernel(real * model, real * weight, int n){
   int i = threadIdx.x + blockIdx.x*blockDim.x;
-  if(weight[i] > 0.0f){
-    model[i] /= weight[i];
-  }else{
-    model[i] = 0.0f;
+  if (i < n) {
+    if(weight[i] > 0.0f){
+      model[i] /= weight[i];
+    }else{
+      model[i] = 0.0f;
+    }
   }
 }
 
 __global__ void cuda_mask_out_model_kernel(real *model, real *weight, int n){
   int i = threadIdx.x + blockIdx.x*blockDim.x;
-  if(weight[i] <= 0.0f){
-    model[i] = -1.0f;
+  if (i < n) {
+    if(weight[i] <= 0.0f){
+      model[i] = -1.0f;
+    }
   }
 }
 
@@ -642,11 +744,12 @@ void cuda_normalize_model(sp_3matrix * model, real * d_model, real * d_weight){
   int nblocks = (n+nthreads-1)/nthreads;
   cuda_normalize_model_kernel<<<nblocks,nthreads>>>(d_model,d_weight,n);
   cudaThreadSynchronize();
+  /*
   thrust::device_ptr<real> p(d_model);
   real model_sum = thrust::reduce(p, p+n, real(0), thrust::plus<real>());
   model_sum /= n;
-  /* model /= model_sum; */
   thrust::transform(p, p+n,thrust::make_constant_iterator(1.0f/model_sum), p, thrust::multiplies<real>()); 
+  */
   cuda_mask_out_model_kernel<<<nblocks,nthreads>>>(d_model,d_weight,n);
 }
 
@@ -937,36 +1040,6 @@ void cuda_calculate_radial_fit(real *slices, real *d_images, int *d_mask,
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess) {
     printf("CUDA Error (radial fit): %s\n",cudaGetErrorString(status));
-  }
-}
-
-__global__ void calculate_best_rotation_kernel(real *respons, int *best_rotation, int N_slices) {
-  int tid = threadIdx.x;
-  int step = blockDim.x;
-  int i_image = blockIdx.x;
-  int N_images = gridDim.x;
-  
-  __shared__ real max_resp[256];
-  __shared__ int max_index[256];
-  max_resp[tid] = -1.e100;
-  max_index[tid] = 0;
-  real this_resp;
-  for (int i_slice = tid; i_slice < N_slices; i_slice += step) {
-    this_resp = respons[i_slice*N_images+i_image];
-    if (this_resp > max_resp[tid]) {
-      //printf("new best resp found at %d\n", i_slice);
-      max_resp[tid] = this_resp;
-      max_index[tid] = i_slice;
-      //printf("max_index set to %d\n", max_index[tid]);
-    }
-  }
-  //printf("before reduce max_index[%d] = %d %g)\n", tid, max_index[tid], max_resp[tid]);
-  inblock_maximum_index(max_resp, max_index);
-  if (tid == 0) {
-    best_rotation[i_image] = max_index[0];
-    //if (i_image < 4) {
-    //printf("best_rotation[%d] = %d (%g)\n", i_image, best_rotation[i_image], respons[best_rotation[i_image]*N_images+i_image]);
-      //}
   }
 }
 

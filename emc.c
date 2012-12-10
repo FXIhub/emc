@@ -471,7 +471,7 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 	    mask_sum += sp_image_mask_get(img,(int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,(int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0);
 	  }
 	}
-	sp_matrix_set(images[i],x,y,pixel_sum);
+	sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
 	if (mask_sum > 1) {
 	  sp_imatrix_set(masks[i],x,y,1);
 	} else {
@@ -532,6 +532,37 @@ void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
       }
     }
     sum = (real)N_2d / sum;
+    for (int i = 0; i < N_2d; i++) {
+      images[i_image]->data[i] *= sum;
+    }
+  }
+}
+
+void normalize_images_central_part(sp_matrix **images, sp_imatrix *mask, real radius, Configuration conf) {
+  const int x_max = conf.model_side;
+  const int y_max = conf.model_side;
+  sp_imatrix * central_mask = sp_imatrix_alloc(x_max, y_max);
+  real r;
+  for (int x = 0; x < x_max; x++) {
+    for (int y = 0; y < y_max; y++) {
+      r = pow(x-x_max/2+0.5, 2) + pow(y-y_max/2+0.5, 2);
+      if (r < pow(radius,2)) {
+	sp_imatrix_set(central_mask, x, y, 1);
+      } else {
+	sp_imatrix_set(central_mask, x, y, 1);
+      }
+    }
+  }
+  real sum;
+  int N_2d = conf.model_side*conf.model_side;
+  for (int i_image = 0; i_image < conf.N_images; i_image++) {
+    sum = 0.;
+    for (int i = 0; i < N_2d; i++) {
+      if (mask->data[i] == 1 && central_mask->data[i] == 1) {
+	sum += images[i_image]->data[i];
+      }
+    }
+    sum = (real) N_2d / sum;
     for (int i = 0; i < N_2d; i++) {
       images[i_image]->data[i] *= sum;
     }
@@ -610,20 +641,34 @@ int main(int argc, char **argv)
 
   if (conf.normalize_images) {
     //normalize_images(images, mask, conf);
-    normalize_images_individual_mask(images, masks, conf);
+    //normalize_images_individual_mask(images, masks, conf);
+    normalize_images_central_part(images, mask, 20., conf);
   }
   /* output images after preprocessing */
 
+  real image_max = 0.;
+  for (int i_image = 0; i_image < N_images; i_image++) {
+    for (int i = 0; i < N_2d; i++) {
+      if (mask->data[i] == 1 && images[i_image]->data[i] > image_max) {
+	image_max = images[i_image]->data[i];
+      }
+    }
+  }
+
+  printf("image_max = %g\n", image_max);
   Image *write_image = sp_image_alloc(conf.model_side,conf.model_side,1);
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
-      if (masks[i_image]->data[i]) {
+      //if (masks[i_image]->data[i]) {
+      if (mask->data[i]) {
 	sp_real(write_image->image->data[i]) = images[i_image]->data[i];
       } else {
 	sp_real(write_image->image->data[i]) = 0.0;
       }
-      write_image->mask->data[i] = masks[i_image]->data[i];
+      //write_image->mask->data[i] = masks[i_image]->data[i];
+      write_image->mask->data[i] = mask->data[i];
     }
+    write_image->image->data[0] = sp_cinit(image_max, 0.);
     sprintf(buffer, "debug/image_%.4d.png", i_image);
     sp_image_write(write_image, buffer, SpColormapJet|SpColormapLogScale);
     sprintf(buffer, "debug/image_%.4d.h5", i_image);
@@ -860,18 +905,20 @@ int main(int argc, char **argv)
   cuda_allocate_images(&d_masked_images,images,N_images);
 
   int current_chunk;
-  /*
+
   real sigma_half_life = 50; // 1000.
-  real sigma_start = 0.6;   // relative: 0.09 -> 0.05
-  real sigma_final = 0.5; // 0.2
-  */
+  real sigma_start = 0.2;   // relative: 0.09 -> 0.05
+  real sigma_final = 0.13; // 0.2
+  enum diff_type diff = poisson;
+
   for (int iteration = start_iteration; iteration < conf.max_iterations; iteration++) {
     if (quit_requested == 1) {
       break;
     }
-    /*
+
     conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life*log(2.));
-    */
+    printf("sigma = %g\n", conf.sigma);
+
     sum = cuda_model_max(d_model,N_model);
     printf("model max = %g\n",sum);
 
@@ -897,7 +944,7 @@ int main(int argc, char **argv)
       cuda_calculate_responsabilities(slices, d_images, d_mask,
 				      conf.sigma, d_scaling,d_respons, 
 				      N_2d, N_images, slice_start,
-				      current_chunk);
+				      current_chunk, diff);
 
     }
     printf("calculated responsabilities\n");
@@ -1114,7 +1161,9 @@ int main(int argc, char **argv)
   
     if (conf.known_intensity == 0) {
       /* update scaling */
+
       clock_t local_t_i = clock();
+      /*
       cuda_set_to_zero(d_weighted_power,N_images);
       for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
 	if (slice_start + slice_chunk >= N_slices) {
@@ -1131,14 +1180,24 @@ int main(int argc, char **argv)
 			slice_start, current_chunk);
 	//cuda_copy_slice_chunk_to_device(slices_on_host, slices, slice_start, slice_chunk, N_2d);
 
+
 	cuda_update_weighted_power(d_images, slices, d_mask,
 				   d_respons, d_weighted_power, N_images,
 				   slice_start, current_chunk, N_2d);
 
-
       }
+
+
       cuda_update_scaling(d_images, d_mask, d_scaling, d_weighted_power,
 			  N_images, N_slices, N_2d, scaling);
+      */
+      if (iteration%30 == 0 && iteration != 0) {
+	cuda_update_scaling_best(d_images, d_mask,
+				 d_model, d_scaling, d_respons, d_rotations,
+				 d_x_coord, d_y_coord, d_z_coord,
+				 N_images, N_slices, conf.model_side, scaling);
+      }
+
       clock_t local_t_e = clock();
       printf("Update scaling time = %fs\n",(real)(local_t_e - local_t_i)/(real)CLOCKS_PER_SEC);
 
