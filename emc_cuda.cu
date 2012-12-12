@@ -12,7 +12,7 @@ __global__ void update_slices_kernel(real * images, real * slices, int * mask, r
 				     real * x_coord, real * y_coord, real * z_coord,
 				     real * model, real * weight,
 				     int slice_rows, int slice_cols,
-				     int model_x, int model_y, int model_z, real * weights);
+				     int model_x, int model_y, int model_z);
 
 __global__ void update_slices_final_kernel(real * images, real * slices, int * mask, real * respons,
 					   real * scaling, int * active_images, int N_images,
@@ -21,7 +21,7 @@ __global__ void update_slices_final_kernel(real * images, real * slices, int * m
 					   real * x_coord, real * y_coord, real * z_coord,
 					   real * model, real * weight,
 					   int slice_rows, int slice_cols,
-					   int model_x, int model_y, int model_z, real * weights);
+					   int model_x, int model_y, int model_z);
 
 __global__ void insert_slices_kernel(real * images, real * slices, int * mask, real * respons,
 					   real * scaling, int N_images, int N_2d,
@@ -29,7 +29,7 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
 					   real * x_coord, real * y_coord, real * z_coord,
 					   real * model, real * weight,
 					   int slice_rows, int slice_cols,
-					   int model_x, int model_y, int model_z, real * weights);
+					   int model_x, int model_y, int model_z);
 
 __global__ void calculate_fit_kernel(real *slices, real *images, int *mask,
 				     real *respons, real *fit, real sigma,
@@ -104,39 +104,31 @@ __device__ void cuda_get_slice(real *model, real *slice,
   //tabulate angle later
   real new_x, new_y, new_z;
   int round_x, round_y, round_z;
+  real m00 = rot[0]*rot[0] + rot[1]*rot[1] - rot[2]*rot[2] - rot[3]*rot[3];
+  real m01 = 2.0f*rot[1]*rot[2] - 2.0f*rot[0]*rot[3];
+  real m02 = 2.0f*rot[1]*rot[3] + 2.0f*rot[0]*rot[2];
+  real m10 = 2.0f*rot[1]*rot[2] + 2.0f*rot[0]*rot[3];
+  real m11 = rot[0]*rot[0] - rot[1]*rot[1] + rot[2]*rot[2] - rot[3]*rot[3];
+  real m12 = 2.0f*rot[2]*rot[3] - 2.0f*rot[0]*rot[1];
+  real m20 = 2.0f*rot[1]*rot[3] - 2.0f*rot[0]*rot[2];
+  real m21 = 2.0f*rot[2]*rot[3] + 2.0f*rot[0]*rot[1];
+  real m22 = rot[0]*rot[0] - rot[1]*rot[1] - rot[2]*rot[2] + rot[3]*rot[3];
   for (int x = 0; x < x_max; x++) {
     for (int y = tid; y < y_max; y+=step) {
       /* This is just a matrix multiplication with rot */
-      new_x =
-	(rot[0]*rot[0] + rot[1]*rot[1] -
-	 rot[2]*rot[2] - rot[3]*rot[3])*x_coordinates[y*x_max+x] +
-	(2.0f*rot[1]*rot[2] -
-	 2.0f*rot[0]*rot[3])*y_coordinates[y*x_max+x] +
-	(2.0f*rot[1]*rot[3] +
-	 2.0f*rot[0]*rot[2])*z_coordinates[y*x_max+x];
-      new_y =
-	(2.0f*rot[1]*rot[2] +
-	 2.0f*rot[0]*rot[3])*x_coordinates[y*x_max+x] +
-	(rot[0]*rot[0] - rot[1]*rot[1] +
-	 rot[2]*rot[2] - rot[3]*rot[3])*y_coordinates[y*x_max+x] +
-	(2.0f*rot[2]*rot[3] -
-	 2.0f*rot[0]*rot[1])*z_coordinates[y*x_max+x];
-      new_z =
-	(2.0f*rot[1]*rot[3] -
-	 2.0f*rot[0]*rot[2])*x_coordinates[y*x_max+x] +
-	(2.0f*rot[2]*rot[3] +
-	 2.0f*rot[0]*rot[1])*y_coordinates[y*x_max+x] +
-	(rot[0]*rot[0] - rot[1]*rot[1] -
-	 rot[2]*rot[2] + rot[3]*rot[3])*z_coordinates[y*x_max+x];
-      round_x = roundf(model_x/2.0f + 0.5f + new_x);
-      round_y = roundf(model_y/2.0f + 0.5f + new_y);
-      round_z = roundf(model_z/2.0f + 0.5f + new_z);
+      new_x = m00*x_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*z_coordinates[y*x_max+x];
+      new_y = m10*x_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*z_coordinates[y*x_max+x];
+      new_z = m20*x_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*z_coordinates[y*x_max+x];
+      /* changed the next lines +0.5 -> -0.5 (11 dec 2012)*/
+      round_x = lroundf(model_x/2.0f - 0.5f + new_x);
+      round_y = lroundf(model_y/2.0f - 0.5f + new_y);
+      round_z = lroundf(model_z/2.0f - 0.5f + new_z);
       if (round_x > 0 && round_x < model_x &&
 	  round_y > 0 && round_y < model_y &&
 	  round_z > 0 && round_z < model_z) {
-	slice[y*x_max+x] = model[(round_z*model_x*model_y + round_y*model_x + round_x)];
+	slice[y*x_max+x] = model[round_z*model_x*model_y + round_y*model_x + round_x];
       }else{
-	slice[y*x_max+x] = 0.0f;
+	slice[y*x_max+x] = -1.0f;
       }
     }
   }
@@ -233,7 +225,7 @@ __device__ void cuda_calculate_responsability_true_poisson(float *slice, float *
 
 /* Now takes a starting slice. Otherwise unchanged */
 __global__ void calculate_responsabilities_kernel(float * slices, float * images, int * mask,
-						  real sigma, real * scaling, real * respons, 
+						  real sigma, real * scaling, real * respons, real *weights, 
 						  int N_2d, int slice_start, enum diff_type diff){
   __shared__ real sum_cache[256];
   __shared__ int count_cache[256];
@@ -246,18 +238,18 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
   if (diff == relative) {
     cuda_calculate_responsability_relative(&slices[i_slice*N_2d],
 					   &images[i_image*N_2d],mask,
-					   sigma,scaling[i_image], N_2d, tid,step,
+					   sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,step,
 					   sum_cache,count_cache);
   } else if (diff == poisson) {
     cuda_calculate_responsability_poisson(&slices[i_slice*N_2d],
 					  &images[i_image*N_2d],mask,
-					  sigma,scaling[i_image], N_2d, tid,step,
+					  sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,step,
 					  sum_cache,count_cache);
   } else if (diff == absolute) {
     /* This one was used for best result so far.*/
     cuda_calculate_responsability_absolute(&slices[i_slice*N_2d],
 					   &images[i_image*N_2d],mask,
-					   sigma,scaling[i_image], N_2d, tid,step,
+					   sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,step,
 					   sum_cache,count_cache);
   }
 
@@ -265,14 +257,15 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
   inblock_reduce(count_cache);
   __syncthreads(); //probably not needed
   if(tid == 0){
-    respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2);
+    //respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2);
+    respons[(slice_start+i_slice)*N_images+i_image] = log(weights[slice_start+i_slice]) - sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2);
   }   
 }
 
 
 /* Now takes start slice and slice chunk. Also removed memcopy, done separetely later. */
 void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask,
-				     real sigma, real * d_scaling, real * d_respons, 
+				     real sigma, real * d_scaling, real * d_respons, real *d_weights, 
 				     int N_2d, int N_images, int slice_start, int slice_chunk, enum diff_type diff){
   cudaEvent_t k_begin;
   cudaEvent_t k_end;
@@ -282,8 +275,8 @@ void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_m
 
   dim3 nblocks(N_images,slice_chunk);
   int nthreads = 256;
-  calculate_responsabilities_kernel<<<nblocks,nthreads>>>(d_slices,d_images,d_mask,
-							  sigma,d_scaling,d_respons,
+  calculate_responsabilities_kernel<<<nblocks,nthreads>>>(d_slices, d_images, d_mask,
+							  sigma, d_scaling, d_respons, d_weights,
 							  N_2d, slice_start, diff);
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess){
@@ -477,6 +470,50 @@ __device__ real calculate_scaling_poisson(real *image, real *slice, int *mask, i
   return sum_cache[0] / weight_cache[0];
 }
 
+__device__ real calculate_scaling_absolute(real *image, real *slice, int *mask, int N_2d, int tid, int step){
+  __shared__ real sum_cache[256];
+  __shared__ int weight_cache[256];
+  sum_cache[tid] = 0.;
+  weight_cache[tid] = 0; 
+  for (int i = tid; i < N_2d; i+=step) {
+    if (mask[i] > 0 && slice[i] > 1.e-10) {
+      //if (mask[i] > 0) {
+      /*
+      sum_cache[tid] += image[i] / slice[i];
+      weight_cache[tid] += 1.;
+      */
+      sum_cache[tid] += image[i]*image[i];
+      weight_cache[tid] += image[i]*slice[i];
+    }
+  }
+  inblock_reduce(sum_cache);
+  inblock_reduce(weight_cache);
+  __syncthreads();
+  return sum_cache[0] / weight_cache[0];
+}
+
+__device__ real calculate_scaling_relative(real *image, real *slice, int *mask, int N_2d, int tid, int step){
+  __shared__ real sum_cache[256];
+  __shared__ int weight_cache[256];
+  sum_cache[tid] = 0.;
+  weight_cache[tid] = 0; 
+  for (int i = tid; i < N_2d; i+=step) {
+    if (mask[i] > 0 && slice[i] > 1.e-10) {
+      //if (mask[i] > 0) {
+      /*
+      sum_cache[tid] += image[i] / slice[i];
+      weight_cache[tid] += 1.;
+      */
+      sum_cache[tid] += image[i]*image[i]/(slice[i]*slice[i]);
+      weight_cache[tid] += image[i]/slice[i];
+    }
+  }
+  inblock_reduce(sum_cache);
+  inblock_reduce(weight_cache);
+  __syncthreads();
+  return sum_cache[0] / weight_cache[0];
+}
+
 __global__ void update_scaling_best_kernel(real *scaling, real *images, real *model, int *mask, real *rotations,
 					   real *x_coordinates, real *y_coordinates, real *z_coordinates,
 					   int side, int *best_rotation){
@@ -522,6 +559,32 @@ void cuda_update_scaling_best(real *d_images, int *d_mask,
   cudaMemcpy(scaling,d_scaling,sizeof(real)*N_images,cudaMemcpyDeviceToHost);
 }
 
+__global__ void update_scaling_full_kernel(real *images, real *slices, int *mask, real *scaling, int N_2d, int slice_start, enum diff_type diff) {
+  const int tid = threadIdx.x;
+  const int step = blockDim.x;
+  const int i_image = blockIdx.x;
+  const int i_slice = blockIdx.y;
+  const int N_images = gridDim.x;
+  real this_scaling;
+  if (diff == poisson) {
+    this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
+  } else if (diff == absolute) {
+    this_scaling = calculate_scaling_absolute(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
+  } else if (diff == relative) {
+    this_scaling = calculate_scaling_relative(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
+  }
+  __syncthreads();
+  if (tid == 0) {
+    scaling[(slice_start+i_slice)*N_images+i_image] = this_scaling;
+  }
+}
+
+void cuda_update_scaling_full(real *d_images, real *d_slices, int *d_mask, real *d_scaling,
+			      int N_2d, int N_images, int slice_start, int slice_chunk, enum diff_type diff) {
+  dim3 nblocks(N_images,slice_chunk);
+  int nthreads = 256;
+  update_scaling_full_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_scaling, N_2d, slice_start, diff);
+}
 
 /* function now takes a start slice and a number of slices to retrieve */
 void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real * d_rot, 
@@ -560,16 +623,18 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
 			int slice_start, int slice_chunk, int N_2d,
 			sp_3matrix * model, real * d_model,
 			real *d_x_coordinates, real *d_y_coordinates,
-			real *d_z_coordinates, real *d_rot, real * weights,
+			real *d_z_coordinates, real *d_rot,
 			real * d_weight, sp_matrix ** images){
   dim3 nblocks = slice_chunk;//N_slices;
   int nthreads = 256;
   real * d_slices_total_respons;
   cudaMalloc(&d_slices_total_respons,sizeof(real)*slice_chunk);
 
+  /*
   real * d_weights;
   cudaMalloc(&d_weights,sizeof(real)*slice_chunk);
   cudaMemcpy(d_weights,weights,sizeof(real)*slice_chunk,cudaMemcpyHostToDevice);
+  */
 
   cudaEvent_t k_begin;
   cudaEvent_t k_end;
@@ -583,7 +648,7 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
 					     d_y_coordinates,d_z_coordinates,d_model, d_weight,
 					     sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
 					     sp_3matrix_x(model),sp_3matrix_y(model),
-					     sp_3matrix_z(model),d_weights);  
+					     sp_3matrix_z(model));  
   cudaThreadSynchronize();
   insert_slices_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_respons,
 					     d_scaling, N_images, N_2d,
@@ -591,7 +656,7 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
 					     d_y_coordinates,d_z_coordinates,d_model, d_weight,
 					     sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
 					     sp_3matrix_x(model),sp_3matrix_y(model),
-					     sp_3matrix_z(model),d_weights);  
+					     sp_3matrix_z(model));  
   cudaEventRecord(k_end,0);
   cudaEventSynchronize(k_end);
   real k_ms;
@@ -609,16 +674,17 @@ void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
 			int slice_start, int slice_chunk, int N_2d,
 			sp_3matrix * model, real * d_model,
 			real *d_x_coordinates, real *d_y_coordinates,
-			real *d_z_coordinates, real *d_rot, real * weights,
+			real *d_z_coordinates, real *d_rot,
 			real * d_weight, sp_matrix ** images){
   dim3 nblocks = slice_chunk;//N_slices;
   int nthreads = 256;
   real * d_slices_total_respons;
   cudaMalloc(&d_slices_total_respons,sizeof(real)*slice_chunk);
-
+  /*
   real * d_weights;
   cudaMalloc(&d_weights,sizeof(real)*slice_chunk);
   cudaMemcpy(d_weights,weights,sizeof(real)*slice_chunk,cudaMemcpyHostToDevice);
+  */
 
   cudaEvent_t k_begin;
   cudaEvent_t k_end;
@@ -627,12 +693,12 @@ void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
   cudaEventRecord (k_begin,0);
 
   update_slices_final_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_respons,
-					     d_scaling, d_active_images, N_images, slice_start, N_2d,
-					     d_slices_total_respons, d_rot,d_x_coordinates,
-					     d_y_coordinates,d_z_coordinates,d_model, d_weight,
-					     sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
-					     sp_3matrix_x(model),sp_3matrix_y(model),
-					     sp_3matrix_z(model),d_weights);  
+						   d_scaling, d_active_images, N_images, slice_start, N_2d,
+						   d_slices_total_respons, d_rot,d_x_coordinates,
+						   d_y_coordinates,d_z_coordinates,d_model, d_weight,
+						   sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
+						   sp_3matrix_x(model),sp_3matrix_y(model),
+						   sp_3matrix_z(model));
 
   cudaThreadSynchronize();
   //cudaMemcpy(h_slices,d_slices,N_2d*sizeof(real)*slice_chunk,cudaMemcpyDeviceToHost);
@@ -642,7 +708,7 @@ void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
 					     d_y_coordinates,d_z_coordinates,d_model, d_weight,
 					     sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
 					     sp_3matrix_x(model),sp_3matrix_y(model),
-					     sp_3matrix_z(model),d_weights);  
+					     sp_3matrix_z(model));
   cudaEventRecord(k_end,0);
   cudaEventSynchronize(k_end);
   real k_ms;
@@ -659,6 +725,43 @@ real cuda_model_max(real * model, int model_size){
   thrust::device_ptr<real> p(model);
   real max = thrust::reduce(p, p+model_size, real(0), thrust::maximum<real>());
   return max;
+}
+
+__global__ void model_average_kernel(real *model, int model_size, real *average) {
+  const int tid = threadIdx.x;
+  const int step = blockDim.x;
+  //const int i1 = blockIdx.x;
+  __shared__ real sum_cache[256];
+  __shared__ int weight_cache[256];
+  sum_cache[tid] = 0.;
+  weight_cache[tid] = 0;
+  for (int i = tid; i < model_size; i+=step) {
+    if (model[i] > 0.) {
+      sum_cache[tid] += model[i];
+      weight_cache[tid] += 1;
+    }
+  }
+  inblock_reduce(sum_cache);
+  inblock_reduce(weight_cache);
+  __syncthreads();
+  if (tid == 0) {
+    *average = sum_cache[0] / weight_cache[0];
+  }
+}
+
+real cuda_model_average(real * model, int model_size) {
+  /*
+  thrust::device_ptr<real> p(model);
+  real sum = thrust::reduce(p, p+model_size, real(0), thrust::plus<real>());
+  return sum;
+  */
+  real *d_average;
+  cudaMalloc(&d_average, sizeof(real));
+  model_average_kernel<<<1,256>>>(model, model_size, d_average);
+  real average;
+  cudaMemcpy(&average, d_average, sizeof(real), cudaMemcpyDeviceToHost);
+  cudaFree(d_average);
+  return average;
 }
 
 void cuda_allocate_slices(real ** slices, int side, int N_slices){
@@ -718,13 +821,14 @@ void cuda_copy_model(sp_3matrix * model, real *d_model){
   cudaMemcpy(model->data,d_model,sizeof(real)*sp_3matrix_size(model),cudaMemcpyDeviceToHost);
 }
 
-__global__ void cuda_normalize_model_kernel(real * model, real * weight, int n){
+__global__ void cuda_divide_model_kernel(real * model, real * weight, int n){
   int i = threadIdx.x + blockIdx.x*blockDim.x;
   if (i < n) {
     if(weight[i] > 0.0f){
       model[i] /= weight[i];
     }else{
-      model[i] = 0.0f;
+      //model[i] = 0.0f;
+      model[i] = -1.f;
     }
   }
 }
@@ -738,19 +842,22 @@ __global__ void cuda_mask_out_model_kernel(real *model, real *weight, int n){
   }
 }
 
-void cuda_normalize_model(sp_3matrix * model, real * d_model, real * d_weight){
+void cuda_divide_model_by_weight(sp_3matrix * model, real * d_model, real * d_weight){
   int n = sp_3matrix_size(model);
   int nthreads = 256;
   int nblocks = (n+nthreads-1)/nthreads;
-  cuda_normalize_model_kernel<<<nblocks,nthreads>>>(d_model,d_weight,n);
+  cuda_divide_model_kernel<<<nblocks,nthreads>>>(d_model,d_weight,n);
   cudaThreadSynchronize();
-  /*
-  thrust::device_ptr<real> p(d_model);
-  real model_sum = thrust::reduce(p, p+n, real(0), thrust::plus<real>());
-  model_sum /= n;
-  thrust::transform(p, p+n,thrust::make_constant_iterator(1.0f/model_sum), p, thrust::multiplies<real>()); 
-  */
   cuda_mask_out_model_kernel<<<nblocks,nthreads>>>(d_model,d_weight,n);
+}
+
+void cuda_normalize_model(sp_3matrix *model, real *d_model) {
+  int n = sp_3matrix_size(model);
+  thrust::device_ptr<real> p(d_model);
+  real model_average = cuda_model_average(d_model, sp_3matrix_size(model));
+  //real model_sum = thrust::reduce(p, p+n, real(0), thrust::plus<real>());
+  //model_sum /= (real) n;
+  thrust::transform(p, p+n,thrust::make_constant_iterator(1.0f/model_average), p, thrust::multiplies<real>());
 }
 
 void cuda_allocate_real(real ** x, int n){
@@ -785,6 +892,12 @@ void cuda_allocate_scaling(real ** d_scaling, int N_images){
   cudaMalloc(d_scaling,N_images*sizeof(real));
   thrust::device_ptr<real> p(*d_scaling);
   thrust::fill(p, p+N_images, real(1));
+}
+
+void cuda_allocate_scaling_full(real **d_scaling, int N_images, int N_slices) {
+  cudaMalloc(d_scaling, N_images*N_slices*sizeof(real));
+  thrust::device_ptr<real> p(*d_scaling);
+  thrust::fill(p, p+N_images*N_slices, real(1.));
 }
 
 __global__ void cuda_normalize_responsabilities_single_kernel(real *respons, int N_slices, int N_images) {

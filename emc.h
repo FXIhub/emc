@@ -52,14 +52,14 @@ typedef struct{
 			  int slice_start, int slice_chunk, int N_2d,
 			  sp_3matrix * model, real * d_model, 
 			  real  *x_coordinates, real *y_coordinates,
-			  real *z_coordinates, real *d_rotations, real * weights,
-			  real * d_weight,sp_matrix ** images);
+			  real *z_coordinates, real *d_rotations,
+			  real * d_weight, sp_matrix ** images);
   void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
 			  real * d_respons, real * d_scaling, int * d_active_images, int N_images,
 			  int slice_start, int slice_chunk, int N_2d,
 			  sp_3matrix * model, real * d_model, 
 			  real  *x_coordinates, real *y_coordinates,
-			  real *z_coordinates, real *d_rotations, real * weights,
+			  real *z_coordinates, real *d_rotations,
 			  real * d_weight,sp_matrix ** images);
 
   void cuda_update_weighted_power(real * d_images, real * d_slices, int * d_mask,
@@ -73,10 +73,12 @@ typedef struct{
 				real *d_model, real *d_scaling, real *d_respons, real *d_rotations,
 				real *x_coordinates, real *y_coordinates, real *z_coordinates,
 				int N_images, int N_slices, int side, real *scaling);
+  void cuda_update_scaling_full(real *d_images, real *d_slices, int *d_mask, real *d_scaling,
+				int N_2d, int N_images, int slice_start, int slice_chunk, enum diff_type diff);
 
 
   void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask,
-				       real sigma, real * d_scaling, real * d_respons, 
+				       real sigma, real * d_scaling, real * d_respons, real *d_weights, 
 				       int N_2d, int N_images, int slice_start, int slice_chunk,
 				       enum diff_type diff);
   void cuda_calculate_responsabilities_sum(real * respons, real * d_respons, int N_slices,
@@ -88,11 +90,13 @@ typedef struct{
 
   void cuda_allocate_slices(real ** slices, int side, int N_slices);
   real cuda_model_max(real * model, int model_size);
+  real cuda_model_average(real * model, int model_size);
   void cuda_allocate_model(real ** d_model, sp_3matrix * model);
   void cuda_allocate_mask(int ** d_mask, sp_imatrix * mask);
   void cuda_reset_model(sp_3matrix * model, real * d_model);
   void cuda_copy_model(sp_3matrix * model, real *d_model);
-  void cuda_normalize_model(sp_3matrix * model, real * d_model, real * d_weight);
+  void cuda_divide_model_by_weight(sp_3matrix * model, real * d_model, real * d_weight);
+  void cuda_normalize_model(sp_3matrix * model, real * d_model);
   void cuda_allocate_rotations(real ** d_rotations, Quaternion ** rotations, int N_slices);
   void cuda_allocate_images(real ** d_images, sp_matrix ** images, int N_images);
   void cuda_allocate_masks(int ** d_images, sp_imatrix ** images,  int N_images);
@@ -101,6 +105,7 @@ typedef struct{
   void cuda_allocate_real(real ** x, int n);
   void cuda_allocate_int(int ** x, int n);
   void cuda_allocate_scaling(real ** scaling, int N_images);
+  void cuda_allocate_scaling_full(real ** scaling, int N_images, int N_slices);
   void cuda_normalize_responsabilities(real * d_respons, int N_slices, int N_images);
   void cuda_normalize_responsabilities_single(real *d_respons, int N_slices, int N_images);
   real cuda_total_respons(real * d_respons, real * respons, int n);

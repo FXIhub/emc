@@ -25,45 +25,37 @@ __device__ void cuda_insert_slice(real *model, real *weight, real *slice,
   //tabulate angle later
   real new_x, new_y, new_z;
   int round_x, round_y, round_z;
+  real m00 = rot[0]*rot[0] + rot[1]*rot[1] - rot[2]*rot[2] - rot[3]*rot[3];
+  real m01 = 2.0f*rot[1]*rot[2] - 2.0f*rot[0]*rot[3];
+  real m02 = 2.0f*rot[1]*rot[3] + 2.0f*rot[0]*rot[2];
+  real m10 = 2.0f*rot[1]*rot[2] + 2.0f*rot[0]*rot[3];
+  real m11 = rot[0]*rot[0] - rot[1]*rot[1] + rot[2]*rot[2] - rot[3]*rot[3];
+  real m12 = 2.0f*rot[2]*rot[3] - 2.0f*rot[0]*rot[1];
+  real m20 = 2.0f*rot[1]*rot[3] - 2.0f*rot[0]*rot[2];
+  real m21 = 2.0f*rot[2]*rot[3] + 2.0f*rot[0]*rot[1];
+  real m22 = rot[0]*rot[0] - rot[1]*rot[1] - rot[2]*rot[2] + rot[3]*rot[3];
   for (int x = 0; x < x_max; x++) {
     for (int y = tid; y < y_max; y+=step) {
       //if (mask[y*x_max + x] == 1) {
-      if (slice[y*x_max + x] >= 0.0) {
+      if (mask[y*x_max + x] == 1 && slice[y*x_max + x] >= 0.0) {
 	/* This is just a matrix multiplication with rot */
-	new_x =
-	  (rot[0]*rot[0] + rot[1]*rot[1] -
-	   rot[2]*rot[2] - rot[3]*rot[3])*x_coordinates[y*x_max+x] +
-	  (2.0f*rot[1]*rot[2] -
-	   2.0f*rot[0]*rot[3])*y_coordinates[y*x_max+x] +
-	  (2.0f*rot[1]*rot[3] +
-	   2.0f*rot[0]*rot[2])*z_coordinates[y*x_max+x];
-	new_y =
-	  (2.0f*rot[1]*rot[2] +
-	   2.0f*rot[0]*rot[3])*x_coordinates[y*x_max+x] +
-	  (rot[0]*rot[0] - rot[1]*rot[1] +
-	   rot[2]*rot[2] - rot[3]*rot[3])*y_coordinates[y*x_max+x] +
-	  (2.0f*rot[2]*rot[3] -
-	   2.0f*rot[0]*rot[1])*z_coordinates[y*x_max+x];
-	new_z =
-	  (2.0f*rot[1]*rot[3] -
-	   2.0f*rot[0]*rot[2])*x_coordinates[y*x_max+x] +
-	  (2.0f*rot[2]*rot[3] +
-	   2.0f*rot[0]*rot[1])*y_coordinates[y*x_max+x] +
-	  (rot[0]*rot[0] - rot[1]*rot[1] -
-	   rot[2]*rot[2] + rot[3]*rot[3])*z_coordinates[y*x_max+x];
-	round_x = roundf(model_x/2.0f + 0.5f + new_x);
-	round_y = roundf(model_y/2.0f + 0.5f + new_y);
-	round_z = roundf(model_z/2.0f + 0.5f + new_z);
+	new_x = m00*x_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*z_coordinates[y*x_max+x];
+	new_y =	m10*x_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*z_coordinates[y*x_max+x];
+	new_z = m20*x_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*z_coordinates[y*x_max+x];
+	/* changed the next lines +0.5 -> -0.5 (11 dec 2012)*/
+	round_x = lroundf(model_x/2.0f - 0.5f + new_x);
+	round_y = lroundf(model_y/2.0f - 0.5f + new_y);
+	round_z = lroundf(model_z/2.0f - 0.5f + new_z);
 	if (round_x >= 0 && round_x < model_x &&
 	    round_y >= 0 && round_y < model_y &&
 	    round_z >= 0 && round_z < model_z) {
 	  /* this is a simple compile time check that can go bad at runtime, but such is life */
 #if __CUDA_ARCH__ >= 200
-	  atomicAdd(&model[(int)(round_z*model_x*model_y + round_y*model_x + round_x)], w * slice[y*x_max + x]);
-	  atomicAdd(&weight[(int)(round_z*model_x*model_y + round_y*model_x + round_x)], w);
+	  atomicAdd(&model[round_z*model_x*model_y + round_y*model_x + round_x], w * slice[y*x_max + x]);
+	  atomicAdd(&weight[round_z*model_x*model_y + round_y*model_x + round_x], w);
 #else
-	  atomicFloatAdd(&model[(int)(round_z*model_x*model_y + round_y*model_x + round_x)], w * slice[y*x_max + x]);
-	  atomicFloatAdd(&weight[(int)(round_z*model_x*model_y + round_y*model_x + round_x)], w);
+	  atomicFloatAdd(&model[round_z*model_x*model_y + round_y*model_x + round_x], w * slice[y*x_max + x]);
+	  atomicFloatAdd(&weight[round_z*model_x*model_y + round_y*model_x + round_x], w);
 #endif
 	  //	  model[(round_z*model_x*model_y + round_y*model_x + round_x)] += w * slice[y*x_max + x];	    
 	  //	  weight[(round_z*model_x*model_y + round_y*model_x + round_x)] += w;
@@ -80,20 +72,20 @@ __global__ void update_slices_kernel(real * images, real * slices, int * mask, r
 				     real * x_coord, real * y_coord, real * z_coord,
 				     real * model, real * weight,
 				     int slice_rows, int slice_cols,
-				     int model_x, int model_y, int model_z, real * weights){
+				     int model_x, int model_y, int model_z){
   /* each block takes care of 1 slice */
-  int bid = blockIdx.x;
+  int i_slice = blockIdx.x;
   int tid = threadIdx.x;
   int step = blockDim.x;
   real total_respons = 0.0f;
-  int i_slice = bid;
+
   for (int i = tid; i < N_2d; i+=step) {
     if (mask[i] != 0) {
       real sum = 0;
       for (int i_image = 0; i_image < N_images; i_image++) {
-	if (active_images[i_image]) {
+	if (active_images[i_image] > 0) {
 	  sum += images[i_image*N_2d+i]*
-	    respons[(slice_start+i_slice)*N_images+i_image]/scaling[i_image];
+	    respons[(slice_start+i_slice)*N_images+i_image]/scaling[(slice_start+i_slice)*N_images+i_image];
 	}
       }
       slices[i_slice*N_2d+i] = sum;
@@ -102,13 +94,13 @@ __global__ void update_slices_kernel(real * images, real * slices, int * mask, r
     }
   }
   for (int i_image = 0; i_image < N_images; i_image++) {
-    if (active_images[i_image]) {
+    if (active_images[i_image] > 0) {
       total_respons += respons[(slice_start+i_slice)*N_images+i_image];
     }
   }
   if(tid == 0){    
-    slices_total_respons[bid] =  total_respons;
-  }  
+    slices_total_respons[i_slice] =  total_respons;
+  }
   if(total_respons > 1e-10f){
     for (int i = tid; i < N_2d; i+=step) {
       if (mask[i] != 0) {
@@ -116,7 +108,6 @@ __global__ void update_slices_kernel(real * images, real * slices, int * mask, r
       }
     }
   }
-  
 }
 
 __global__ void update_slices_final_kernel(real * images, real * slices, int * mask, real * respons,
@@ -126,7 +117,7 @@ __global__ void update_slices_final_kernel(real * images, real * slices, int * m
 					   real * x_coord, real * y_coord, real * z_coord,
 					   real * model, real * weight,
 					   int slice_rows, int slice_cols,
-					   int model_x, int model_y, int model_z, real * weights){
+					   int model_x, int model_y, int model_z){
   /* each block takes care of 1 slice */
   int bid = blockIdx.x;
   int tid = threadIdx.x;
@@ -139,7 +130,7 @@ __global__ void update_slices_final_kernel(real * images, real * slices, int * m
     for (int i_image = 0; i_image < N_images; i_image++) {
       if (active_images[i_image] && images[i_image*N_2d+i] >= 0.0) {
 	sum += images[i_image*N_2d+i]*
-	  respons[(slice_start+i_slice)*N_images+i_image]/scaling[i_image];
+	  respons[(slice_start+i_slice)*N_images+i_image]/scaling[(slice_start+i_slice)*N_images+i_image];
 	count += respons[(slice_start+i_slice)*N_images+i_image];
       }
     }
@@ -174,7 +165,7 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
 				     real * x_coord, real * y_coord, real * z_coord,
 				     real * model, real * weight,
 				     int slice_rows, int slice_cols,
-				     int model_x, int model_y, int model_z, real * weights){
+				     int model_x, int model_y, int model_z){
   /* each block takes care of 1 slice */
   int bid = blockIdx.x;
   int tid = threadIdx.x;
@@ -182,9 +173,9 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
   int i_slice = bid;
   real total_respons = slices_total_respons[bid];
   if(total_respons > 1e-10f){
-    cuda_insert_slice(model,weight,&slices[i_slice*N_2d],mask,weights[i_slice]*total_respons,
-		      &rot[4*i_slice],x_coord,y_coord,z_coord,
-		      slice_rows,slice_cols,model_x,model_y,model_z,tid,step);
+    cuda_insert_slice(model, weight, &slices[i_slice*N_2d], mask, total_respons,
+		      &rot[4*i_slice], x_coord, y_coord, z_coord,
+		      slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
   }  
 }
 
@@ -310,18 +301,18 @@ __global__ void calculate_fit_kernel(real *slices, real *images, int *mask,
   int N_images = gridDim.x;
 
   cuda_calculate_fit_error(&slices[i_slice*N_2d], &images[i_image*N_2d], mask,
-		     scaling[i_image], N_2d, tid, step, sum_cache, count_cache);
+			   scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step, sum_cache, count_cache);
 
   /*
   cuda_calculate_responsability_poisson_atomic(&slices[i_slice*N_2d],
 					       &images[i_image*N_2d],mask,
-					       sigma,scaling[i_image], N_2d, tid,step,
+					       sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,step,
 					       sum_cache,count_cache);
   */
   /*
   cuda_calculate_responsability_absolute_atomic(&slices[i_slice*N_2d],
 						&images[i_image*N_2d],mask,
-						sigma,scaling[i_image], N_2d, tid,step,
+						sigma,scaling[(slisce_start+i_slice)*N_images+i_image], N_2d, tid,step,
 						sum_cache,count_cache);
   */
   inblock_reduce(sum_cache);
@@ -343,8 +334,6 @@ __global__ void calculate_fit_kernel(real *slices, real *images, int *mask,
 __global__ void calculate_fit_best_rot_kernel(real *slices, real *images, int *mask,
 					      int *best_rot, real *fit,
 					      real *scaling, int N_2d, int slice_start){
-  __shared__ real sum_cache[256];
-  __shared__ int count_cache[256];
   int tid = threadIdx.x;
   int step = blockDim.x;
   int i_image = blockIdx.x;
@@ -354,7 +343,7 @@ __global__ void calculate_fit_best_rot_kernel(real *slices, real *images, int *m
   real this_fit;
   if (best_rot[i_image] == (slice_start+i_slice)) {
     this_fit = cuda_calculate_single_fit_error(&slices[i_slice*N_2d], &images[i_image*N_2d], mask,
-					       scaling[i_image], N_2d, tid, step);
+					       scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step);
     
     if (tid == 0) {
       fit[i_image] = this_fit;
@@ -391,8 +380,8 @@ __global__ void calculate_radial_fit_kernel(real * slices , real * images, int *
   //if (this_resp > 1.0e-10) {
   for (int i = tid; i < N_2d; i+= step) {
     if (mask[i] != 0 && slices[i_slice*N_2d+i] > 0.0f) {
-      error = fabs((slices[i_slice*N_2d+i] - images[i_image*N_2d+i]/scaling[i_image]) / 
-		   (slices[i_slice*N_2d+i] + images[i_image*N_2d+i]/scaling[i_image]));
+      error = fabs((slices[i_slice*N_2d+i] - images[i_image*N_2d+i]/scaling[(slice_start+i_slice)*N_images+i_image]) / 
+		   (slices[i_slice*N_2d+i] + images[i_image*N_2d+i]/scaling[(slice_start+i_slice)*N_images+i_image]));
       /*
       if (i_image == 0 && i_slice == 0) {
 	printf("error[i_slice=%d, i_image=%d, i=%d] = %g, (%g ~ %g) (resp = %g)\n", i_slice, i_image, i, error, slices[i_slice*N_2d+i], images[i_image*N_2d+i]/scaling[i_image], this_resp);

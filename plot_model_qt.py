@@ -16,14 +16,21 @@ class Model(QtCore.QObject):
     def __init__(self, iteration_number):
         super(Model, self).__init__()
         self._current_iteration = iteration_number
+        self._image_type = 0 # 0 = image, 1 = weight
         self._read_image()
 
     def _image_changed(self):
-        self._read_image()
+        if self._image_type == 0:
+            self._read_image()
+        elif self._image_type == 1:
+            self._read_weight()
         self.image_changed.emit(self._current_iteration)
 
     def _read_image(self):
         self._image, self._mask = sphelper.import_spimage('output/model_%.4d.h5' % self._current_iteration, ['image', 'mask'])
+
+    def _read_weight(self):
+        self._image, self._mask = sphelper.import_spimage('output/weight_%.4d.h5' % self._current_iteration, ['image', 'mask'])
 
     def next_image(self):
         self._current_iteration += 1
@@ -45,6 +52,16 @@ class Model(QtCore.QObject):
 
     def get_mask(self):
         return self._mask
+
+    def set_display_image(self):
+        self._image_type = 0
+        self._image_changed()
+
+    def set_display_weight(self):
+        self._image_type = 1
+        self._image_changed()
+        
+        
     
 class Viewer(QtCore.QObject):
     def __init__(self, model):
@@ -194,9 +211,20 @@ class StartMain(QtGui.QMainWindow):
         self._slice_log_scale_box.stateChanged.connect(viewer.set_log_scale)
         self._slice_controll_widget.setLayout(self._slice_controll_layout)
 
+        #image type selector setup
+        self._model_radio = QtGui.QRadioButton("Model")
+        self._model_radio.setChecked(True)
+        self._weight_radio = QtGui.QRadioButton("Weight")
+        self._image_type_layout = QtGui.QVBoxLayout()
+        self._image_type_layout.addWidget(self._model_radio)
+        self._image_type_layout.addWidget(self._weight_radio)
+        self._model_radio.clicked.connect(self._model.set_display_image)
+        self._weight_radio.clicked.connect(self._model.set_display_weight)
+
         self._main_layout = QtGui.QVBoxLayout()
         self._main_layout.addWidget(self._mode_button)
         self._main_layout.addLayout(self._iteration_layout)
+        self._main_layout.addLayout(self._image_type_layout)
         self._main_layout.addWidget(self._surface_controll_widget)
         self._main_layout.addWidget(self._slice_controll_widget)
         self._slice_controll_widget.hide()
