@@ -46,6 +46,34 @@ real n_to_theta(int n){return 4.0 / (real) n / pow(tau,3);}
 
 int theta_to_n(real theta){return (int) ceil(4.0 / theta / pow(tau,3));}
 
+real scalar_product_with_best_center(Quaternion * quaternion, real * centers) {
+  /* find closest center */
+  real best_dist = 0.;
+  int best_index = 0;
+  real dist;
+  for (int i = 0; i < 600; i++) {
+    /*
+    dist = sqrt(pow(quaternion->q[0] - centers[4*i+0], 2) + pow(quaternion->q[1] - centers[4*i+1], 2) +
+		pow(quaternion->q[2] - centers[4*i+2], 2) + pow(quaternion->q[3] - centers[4*i+3], 2));
+    */
+    dist = ((quaternion->q[0] * centers[4*i+0] + quaternion->q[1] * centers[4*i+1] +
+	     quaternion->q[2] * centers[4*i+2] + quaternion->q[3] * centers[4*i+3]) / 
+	    sqrt(pow(quaternion->q[0], 2) + pow(quaternion->q[1], 2) + pow(quaternion->q[2], 2) + pow(quaternion->q[3], 2)));
+    if (isinf(dist) || isnan(dist)) {
+      printf("%d : %g %g %g %g\n", i, quaternion->q[0], quaternion->q[1], quaternion->q[2], quaternion->q[3]);
+    }
+    if (dist > best_dist) {
+      best_dist = dist;
+      best_index = i;
+    }
+  }
+  /* calculate scalar product */
+  real scalar_product = ((quaternion->q[0] * centers[4*best_index+0] + quaternion->q[1] * centers[4*best_index+1] +
+			  quaternion->q[2] * centers[4*best_index+2] + quaternion->q[3] * centers[4*best_index+3]) /
+			 sqrt(pow(quaternion->q[0], 2) + pow(quaternion->q[1], 2) + pow(quaternion->q[2], 2) + pow(quaternion->q[3], 2)));
+  return scalar_product;
+}
+
 int generate_rotation_list(const int n, Quaternion ***return_list, real **return_weights) {
   Quaternion **rotation_list = malloc(120*sizeof(Quaternion *));
 
@@ -107,7 +135,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   FILE *f;
   //FILE *f = fopen("debug_edges.data","wp");
   real dist2;
-  int count = 0.0;
+  int count = 0;
   real edge_cutoff = 3.0;
 
   int edges[720][2];
@@ -176,6 +204,8 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   for (int i = 0; i < 120; i++) {cell_done[i] = 0;}
   count = 0;
   int cells[600][4];
+  real cell_centers[4*600];
+  real cell_center_norm;
   for (int j = 0; j < 120; j++) {
     cell_done[j] = 1;
     for (int i = 0; i < 1200; i++) {
@@ -204,6 +234,19 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
 	cells[count][1] = faces[i][1];
 	cells[count][2] = faces[i][2];
 	cells[count][3] = j;
+	
+	cell_centers[4*count+0] = (rotation_list[cells[count][0]]->q[0] + rotation_list[cells[count][1]]->q[0] +
+				  rotation_list[cells[count][2]]->q[0] + rotation_list[cells[count][3]]->q[0]);
+	cell_centers[4*count+1] = (rotation_list[cells[count][0]]->q[1] + rotation_list[cells[count][1]]->q[1] +
+				  rotation_list[cells[count][2]]->q[1] + rotation_list[cells[count][3]]->q[1]);
+	cell_centers[4*count+2] = (rotation_list[cells[count][0]]->q[2] + rotation_list[cells[count][1]]->q[2] +
+				  rotation_list[cells[count][2]]->q[2] + rotation_list[cells[count][3]]->q[2]);
+	cell_centers[4*count+3] = (rotation_list[cells[count][0]]->q[3] + rotation_list[cells[count][1]]->q[3] +
+				  rotation_list[cells[count][2]]->q[3] + rotation_list[cells[count][3]]->q[3]);
+	cell_center_norm = (sqrt(pow(cell_centers[4*count+0], 2) + pow(cell_centers[4*count+1], 2) +
+				 pow(cell_centers[4*count+2], 2) + pow(cell_centers[4*count+3], 2)));
+	cell_centers[4*count+0] /= cell_center_norm; cell_centers[4*count+1] /= cell_center_norm;
+	cell_centers[4*count+2] /= cell_center_norm; cell_centers[4*count+3] /= cell_center_norm;
 	count++;
       }
     }
@@ -226,6 +269,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
 
   real *weights = malloc(number_of_samples*sizeof(real));
   real dist3;
+  real scalar_product;
 
   /* copy vertices */
   for (int i = 0; i < 120; i++) {
@@ -237,7 +281,8 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
 		pow(new_list[i]->q[1],2)+
 		pow(new_list[i]->q[2],2)+
 		pow(new_list[i]->q[3],2),(real)3/(real)2);
-    weights[i] = f0/(real)number_of_samples/dist3;
+    scalar_product = scalar_product_with_best_center(new_list[i], cell_centers);
+    weights[i] = f0*scalar_product/(real)number_of_samples/dist3;
   }
 
   /* split edges */
@@ -255,7 +300,8 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
       }
       dist3 = pow(pow(new_list[index]->q[0],2) + pow(new_list[index]->q[1],2) +
 		  pow(new_list[index]->q[2],2) + pow(new_list[index]->q[3],2), (real)3/(real)2);
-      weights[index] = f1/(real)number_of_samples/dist3;
+      scalar_product = scalar_product_with_best_center(new_list[index], cell_centers);
+      weights[index] = f1*scalar_product/(real)number_of_samples/dist3;
     }
   }
 
@@ -286,7 +332,8 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
 	    //printf("a = %g\nb = %g\nc = %g\n",a,b,c);
 	    dist3 = pow(pow(new_list[index]->q[0],2) + pow(new_list[index]->q[1],2) +
 			pow(new_list[index]->q[2],2) + pow(new_list[index]->q[3],2), (real)3/(real)2);
-	    weights[index] = f2/(real)number_of_samples/dist3;
+	    scalar_product = scalar_product_with_best_center(new_list[index], cell_centers);
+	    weights[index] = f2*scalar_product/(real)number_of_samples/dist3;
 	    count++;
 	  }
 	}
@@ -323,7 +370,8 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
 	      }
 	      dist3 = pow(pow(new_list[index]->q[0],2) + pow(new_list[index]->q[1],2) +
 			  pow(new_list[index]->q[2],2) + pow(new_list[index]->q[3],2), (real)3/(real)2);
-	      weights[index] = f3/(real)number_of_samples/dist3;
+	      scalar_product = scalar_product_with_best_center(new_list[index], cell_centers);
+	      weights[index] = f3*scalar_product/(real)number_of_samples/dist3;
 	      count++;
 	      debug_count++;
 	      //printf("\na = %g\nb = %g\nc = %g\nd = %g\n",a,b,c,d);
