@@ -631,10 +631,10 @@ int main(int argc, char **argv)
 
   int current_chunk;
 
-  real sigma_half_life = 25; // 1000.
-  real sigma_start = 0.2;   // relative: 0.09 -> 0.05
-  real sigma_final = 0.2; // 0.2
-  enum diff_type diff = poisson;
+  real sigma_half_life = 100; // 1000.
+  real sigma_start = 0.12;   // relative: 0.09 -> 0.05
+  real sigma_final = 0.; // 0.2
+  enum diff_type diff = relative;
 
   for (int iteration = start_iteration; iteration < conf.max_iterations; iteration++) {
     if (quit_requested == 1) {
@@ -995,7 +995,7 @@ int main(int argc, char **argv)
 	model_out->image->data[i] = sp_cinit(0., 0.);
       }
     }
-    sprintf(buffer,"output/model_%.4d.h5",iteration);
+    sprintf(buffer,"output/model_%.4d.h5", iteration);
     sp_image_write(model_out,buffer,0);
     /* write weight */
     for (int i = 0; i < N_model; i++) {

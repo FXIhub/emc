@@ -70,7 +70,7 @@ __global__ void update_slices_kernel(real * images, real * slices, int * mask, r
 				     real * scaling, int * active_images, int N_images, int slice_start, int N_2d,
 				     real * slices_total_respons, real * rot,
 				     real * x_coord, real * y_coord, real * z_coord,
-				     real * model, real * weight,
+				     real * model,
 				     int slice_rows, int slice_cols,
 				     int model_x, int model_y, int model_z){
   /* each block takes care of 1 slice */
@@ -167,16 +167,15 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
 				     int slice_rows, int slice_cols,
 				     int model_x, int model_y, int model_z){
   /* each block takes care of 1 slice */
-  int bid = blockIdx.x;
+  int i_slice = blockIdx.x;
   int tid = threadIdx.x;
   int step = blockDim.x;
-  int i_slice = bid;
-  real total_respons = slices_total_respons[bid];
+  real total_respons = slices_total_respons[i_slice];
   if(total_respons > 1e-10f){
     cuda_insert_slice(model, weight, &slices[i_slice*N_2d], mask, total_respons,
 		      &rot[4*i_slice], x_coord, y_coord, z_coord,
 		      slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
-  }  
+  }
 }
 
 template<typename T>

@@ -10,8 +10,7 @@ __global__ void update_slices_kernel(real * images, real * slices, int * mask, r
 				     int slice_start, int N_2d,
 				     real * slices_total_respons, real * rot,
 				     real * x_coord, real * y_coord, real * z_coord,
-				     real * model, real * weight,
-				     int slice_rows, int slice_cols,
+				     real * model, int slice_rows, int slice_cols,
 				     int model_x, int model_y, int model_z);
 
 __global__ void update_slices_final_kernel(real * images, real * slices, int * mask, real * respons,
@@ -173,7 +172,7 @@ __device__ void cuda_calculate_responsability_relative(float *slice, float *imag
   int count = 0;
   for (int i = tid; i < i_max; i+=step) {
     if (mask[i] != 0 && slice[i] > 0.f) {
-      sum += pow((slice[i] - image[i]/scaling) / (slice[i] + image[i]/scaling), 2);
+      sum += pow((slice[i] - image[i]/scaling) / slice[i], 2);
       count++;
     }
   }
@@ -645,7 +644,7 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
   update_slices_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_respons,
 					     d_scaling, d_active_images, N_images, slice_start, N_2d,
 					     d_slices_total_respons, d_rot,d_x_coordinates,
-					     d_y_coordinates,d_z_coordinates,d_model, d_weight,
+					     d_y_coordinates,d_z_coordinates,d_model,
 					     sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
 					     sp_3matrix_x(model),sp_3matrix_y(model),
 					     sp_3matrix_z(model));  

@@ -37,7 +37,6 @@ class Model(QtCore.QObject):
         self._image_changed()
 
     def previous_image(self):
-        print "previous image"
         if self._current_iteration >= 0:
             self._current_iteration -= 1
             self._image_changed()
@@ -101,7 +100,6 @@ class Viewer(QtCore.QObject):
         #mlab.show()
 
     def _plot_slices(self):
-        print "plot_slices"
         self._slices = []
         self._slices.append(mlab.pipeline.image_plane_widget(self._scalar_field, plane_orientation='x_axes',
                                                              slice_index=shape(self._model.get_image())[0]/2))
@@ -117,7 +115,6 @@ class Viewer(QtCore.QObject):
         return self._surface.contour.contours[0]/self._scalar_field_max
 
     def set_log_scale(self, state):
-        print "log scale to %d" % state
         self._log_scale = state
         self._update_scalar_field()
         
@@ -206,8 +203,11 @@ class StartMain(QtGui.QMainWindow):
         #slice controll widget setup
         self._slice_controll_widget = QtGui.QWidget()
         self._slice_log_scale_box = QtGui.QCheckBox()
-        self._slice_controll_layout = QtGui.QVBoxLayout()
+        self._slice_log_scale_label = QtGui.QLabel('Log scale')
+        self._slice_controll_layout = QtGui.QHBoxLayout()
         self._slice_controll_layout.addWidget(self._slice_log_scale_box)
+        self._slice_controll_layout.addWidget(self._slice_log_scale_label)
+        self._slice_controll_layout.addStretch()
         self._slice_log_scale_box.stateChanged.connect(viewer.set_log_scale)
         self._slice_controll_widget.setLayout(self._slice_controll_layout)
 
@@ -233,13 +233,11 @@ class StartMain(QtGui.QMainWindow):
         self.setCentralWidget(self._controller_widget)
 
     def _set_surface_mode(self):
-        print "surface mode"
         self._slice_controll_widget.hide()
         self._surface_controll_widget.show()
         self._viewer.set_surface_mode()
 
     def _set_slice_mode(self):
-        print "slice mode"
         self._surface_controll_widget.hide()
         self._slice_controll_widget.show()
         self._viewer.set_slice_mode()
