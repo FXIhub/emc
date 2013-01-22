@@ -15,6 +15,8 @@ FIND_PACKAGE(SpImage REQUIRED)
 	
 FIND_PACKAGE(CUDA REQUIRED)
 set(CUDA_NVCC_FLAGS "-arch sm_20")
+#cuda_add_library(_emc emc.c rotations.c emc_cuda.cu emc_atomic.cu)
+#cuda_add_cufft_to_target(_emc)
 
 find_package(GSL REQUIRED)
 
@@ -25,5 +27,6 @@ find_package(GSL REQUIRED)
 
 
 cuda_add_executable(emc emc.c rotations.c emc_cuda.cu emc_atomic.cu)
+cuda_add_cufft_to_target(emc)
 target_link_libraries(emc spimage config gsl gslcblas)
 

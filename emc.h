@@ -25,7 +25,10 @@ typedef struct{
     int detector_size;
     double detector_distance;
     int rotations_n;
-    double sigma;
+    double sigma_start;
+    double sigma_final;
+    int sigma_half_life;
+    enum diff_type diff;
     int slice_chunk;
     int N_images;
     int max_iterations;
@@ -39,6 +42,7 @@ typedef struct{
     const char *model_file;
     int exclude_images;
     double exclude_ratio;
+    double model_blur;
   }Configuration;
 
   void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
@@ -95,6 +99,7 @@ typedef struct{
   void cuda_allocate_mask(int ** d_mask, sp_imatrix * mask);
   void cuda_reset_model(sp_3matrix * model, real * d_model);
   void cuda_copy_model(sp_3matrix * model, real *d_model);
+  void cuda_output_device_model(real *d_model, char *filename, int side);
   void cuda_divide_model_by_weight(sp_3matrix * model, real * d_model, real * d_weight);
   void cuda_normalize_model(sp_3matrix * model, real * d_model);
   void cuda_allocate_rotations(real ** d_rotations, Quaternion ** rotations, int N_slices);
@@ -102,12 +107,18 @@ typedef struct{
   void cuda_allocate_masks(int ** d_images, sp_imatrix ** images,  int N_images);
   void cuda_allocate_coords(real ** d_x, real ** d_y, real ** d_z, sp_matrix * x,
 			  sp_matrix * y, sp_matrix * z);
+  void cuda_set_device(int i_device);
+  int cuda_get_best_device();
+  void cuda_choose_best_device();
+  void cuda_print_device_info();
+  int cuda_get_device();
   void cuda_allocate_real(real ** x, int n);
   void cuda_allocate_int(int ** x, int n);
   void cuda_allocate_scaling(real ** scaling, int N_images);
   void cuda_allocate_scaling_full(real ** scaling, int N_images, int N_slices);
   void cuda_normalize_responsabilities(real * d_respons, int N_slices, int N_images);
   void cuda_normalize_responsabilities_single(real *d_respons, int N_slices, int N_images);
+  void cuda_collapse_responsabilities(real *d_respons, int N_slices, int N_images);
   real cuda_total_respons(real * d_respons, real * respons, int n);
   void cuda_set_to_zero(real * x, int n);
   void cuda_copy_real_to_device(real *x, real *d_x, int n);
@@ -128,6 +139,7 @@ typedef struct{
 				 int N_2d, int side, int N_images, int slice_start,
 				 int slice_chunk);
   void cuda_calculate_best_rotation(real *d_respons, int *d_best_rotation, int N_images, int N_slices);
+  void cuda_blur_model(real *d_model, const int model_side, const real sigma);
 
 #ifdef __cplusplus
   }

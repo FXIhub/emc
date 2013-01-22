@@ -3,6 +3,7 @@
 #include <thrust/host_vector.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/fill.h>
+#include <cufft.h>
 
 
 __global__ void update_slices_kernel(real * images, real * slices, int * mask, real * respons,
@@ -475,7 +476,7 @@ __device__ real calculate_scaling_absolute(real *image, real *slice, int *mask, 
   sum_cache[tid] = 0.;
   weight_cache[tid] = 0; 
   for (int i = tid; i < N_2d; i+=step) {
-    if (mask[i] > 0 && slice[i] > 1.e-10) {
+    if (mask[i] > 0 && slice[i] > 1.e-10 && image[i] > 1.e-10) {
       //if (mask[i] > 0) {
       /*
       sum_cache[tid] += image[i] / slice[i];
@@ -565,6 +566,8 @@ __global__ void update_scaling_full_kernel(real *images, real *slices, int *mask
   const int i_slice = blockIdx.y;
   const int N_images = gridDim.x;
   real this_scaling;
+  this_scaling = calculate_scaling_absolute(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
+  /*
   if (diff == poisson) {
     this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
   } else if (diff == absolute) {
@@ -572,6 +575,8 @@ __global__ void update_scaling_full_kernel(real *images, real *slices, int *mask
   } else if (diff == relative) {
     this_scaling = calculate_scaling_relative(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
   }
+  */
+  //this_scaling *= 0.5;
   __syncthreads();
   if (tid == 0) {
     scaling[(slice_start+i_slice)*N_images+i_image] = this_scaling;
@@ -820,6 +825,26 @@ void cuda_copy_model(sp_3matrix * model, real *d_model){
   cudaMemcpy(model->data,d_model,sizeof(real)*sp_3matrix_size(model),cudaMemcpyDeviceToHost);
 }
 
+void cuda_output_device_model(real *d_model, char *filename, int side) {
+  real *model = (real *)malloc(side*side*side*sizeof(real));
+  cuda_copy_real_to_host(model, d_model, side*side*side);
+  Image *model_out = sp_image_alloc(side, side, side);
+  for (int i = 0; i < side*side*side; i++) {
+    if (model[i] >= 0.) {
+      model_out->image->data[i] = sp_cinit(model[i], 0.);
+      model_out->mask->data[i] = 1;
+    } else {
+      //model_out->image->data[i] = sp_cinit(0., 0.);
+      model_out->image->data[i] = sp_cinit(model[i], 0.);
+      model_out->mask->data[i] = 0;
+    }
+  }
+  sp_image_write(model_out, filename, 0);
+  free(model);
+  sp_image_free(model_out);
+}
+
+
 __global__ void cuda_divide_model_kernel(real * model, real * weight, int n){
   int i = threadIdx.x + blockIdx.x*blockDim.x;
   if (i < n) {
@@ -854,9 +879,81 @@ void cuda_normalize_model(sp_3matrix *model, real *d_model) {
   int n = sp_3matrix_size(model);
   thrust::device_ptr<real> p(d_model);
   real model_average = cuda_model_average(d_model, sp_3matrix_size(model));
+  printf("model average before normalization = %g\n", model_average);
   //real model_sum = thrust::reduce(p, p+n, real(0), thrust::plus<real>());
   //model_sum /= (real) n;
   thrust::transform(p, p+n,thrust::make_constant_iterator(1.0f/model_average), p, thrust::multiplies<real>());
+}
+
+void cuda_print_device_info() {
+  int i_device = cuda_get_device();
+  cudaDeviceProp properties;
+  cudaGetDeviceProperties(&properties, i_device);
+  
+  printf("Name: %s\n", properties.name);
+  printf("Compute Capability: %d.%d\n", properties.major, properties.minor);
+  printf("Memory: %g GB\n", properties.totalGlobalMem/(1024.*1024.*1024.));
+  printf("Number of cores: %d\n", 8*properties.multiProcessorCount);
+
+}
+
+int cuda_get_best_device() {
+  int N_devices;
+  cudaDeviceProp properties;
+  cudaGetDeviceCount(&N_devices);
+  int core_count = 0;
+  int best_device = 0;
+  for (int i_device = 0; i_device < N_devices; i_device++) {
+    cudaGetDeviceProperties(&properties, i_device);
+    if (properties.multiProcessorCount > core_count) {
+      best_device = i_device;
+      core_count = properties.multiProcessorCount;
+    }
+  }
+  return best_device;
+  //cuda_set_device(best_device);
+
+  /* should use cudaSetValidDevices() instead */
+}
+
+
+int compare(const void *a, const void *b) {
+  return *(int*)b - *(int*)a;
+}
+
+/* this function is much safer than cuda_get_best_device() since it works together
+   with exclusive mode */
+void cuda_choose_best_device() {
+  int N_devices;
+  cudaDeviceProp properties;
+  cudaGetDeviceCount(&N_devices);
+  int *core_count = (int *)malloc(N_devices*sizeof(int));
+  int **core_count_pointers = (int **)malloc(N_devices*sizeof(int *));
+  for (int i_device = 0; i_device < N_devices; i_device++) {
+    cudaGetDeviceProperties(&properties, i_device);
+    core_count[i_device] = properties.multiProcessorCount;
+    core_count_pointers[i_device] = &core_count[i_device];
+  }
+  
+  qsort(core_count_pointers, N_devices, sizeof(core_count_pointers[0]), compare);
+  int *device_priority = (int *)malloc(N_devices*sizeof(int));
+  for (int i_device = 0; i_device < N_devices; i_device++) {
+    device_priority[i_device] = (int) (core_count_pointers[i_device] - core_count);
+  }
+  cudaSetValidDevices(device_priority, N_devices);
+  free(core_count_pointers);
+  free(core_count);
+  free(device_priority);
+}
+
+int cuda_get_device() {
+  int i_device;
+  cudaGetDevice(&i_device);
+  return i_device;
+}
+
+void cuda_set_device(int i_device) {
+  cudaSetDevice(i_device);
 }
 
 void cuda_allocate_real(real ** x, int n){
@@ -877,6 +974,10 @@ void cuda_copy_real_to_device(real *x, real *d_x, int n){
 
 void cuda_copy_real_to_host(real *x, real *d_x, int n){
   cudaMemcpy(x,d_x,n*sizeof(real),cudaMemcpyDeviceToHost);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_copy_real_to_host: copy): %s\n",cudaGetErrorString(status));
+  }
 }
 
 void cuda_copy_int_to_device(int *x, int *d_x, int n){
@@ -1051,6 +1152,39 @@ void cuda_normalize_responsabilities(real * d_respons, int N_slices, int N_image
   }
 }
 
+__global__ void collapse_responsabilities_kernel(real *respons, int N_slices) {
+  int i_image = blockIdx.x;
+  int N_images = gridDim.x;
+  int step = blockDim.x;
+  int tid = threadIdx.x;
+
+  real this_resp;
+  real best_resp = 0.;
+  int best_resp_index = 0;
+  for (int i_slice = tid; i_slice < N_slices; i_slice += step) {
+    this_resp = respons[i_slice*N_images + i_image];
+    if (this_resp > best_resp) {
+      best_resp = this_resp;
+      best_resp_index = i_slice;
+    }
+  }
+  
+  for (int i_slice = tid; i_slice < N_slices; i_slice += step) {
+    respons[i_slice*N_images + i_image] = 0.;
+  }
+  respons[best_resp_index*N_images + i_image] = 1.;
+}
+
+void cuda_collapse_responsabilities(real *d_respons, int N_slices, int N_images) {
+  int nblocks = N_images;
+  int nthreads = 256;
+  collapse_responsabilities_kernel<<<nblocks,nthreads>>>(d_respons, N_slices);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (norm resp): %s\n",cudaGetErrorString(status));
+  }
+}
+
 // x_log_x<T> computes the f(x) -> x*log(x)
 template <typename T>
 struct x_log_x
@@ -1164,3 +1298,94 @@ void cuda_calculate_best_rotation(real *d_respons, int *d_best_rotation, int N_i
     printf("CUDA Error (best rotation): %s\n", cudaGetErrorString(status));
   }
 }
+
+__global__ void multiply_by_gaussian_kernel(cufftComplex *model, const real sigma) {
+  const int tid = threadIdx.x;
+  const int step = blockDim.x;
+  const int y = blockIdx.x;
+  const int z = blockIdx.y;
+  const int model_side = gridDim.x;
+  
+  real radius2;
+  real sigma2 = pow(sigma/(real)model_side, 2);
+  int dx, dy, dz;
+  if (model_side - y < y) {
+    dy = model_side - y;
+  } else {
+    dy = y;
+  }
+  if (model_side - z < z) {
+    dz = model_side - z;
+  } else {
+    dz = z;
+  }
+
+  for (int x = tid; x < (model_side/2+1); x += step) {
+    if (model_side - x < x) {
+      dx = model_side - x;
+    } else { 
+      dx = x;
+    }
+
+    // find distance to top left
+    radius2 = pow((real)dx, 2) + pow((real)dy, 2) + pow((real)dz, 2);
+    // calculate gaussian kernel
+
+    /*
+    model[z*model_side*(model_side/2+1) + y*(model_side/2+1) + x].x *= exp(-2.*pow(M_PI, 2)*radius2*sigma2/((real)model_side))/(pow((real)model_side, 3));
+    model[z*model_side*(model_side/2+1) + y*(model_side/2+1) + x].y *= exp(-2.*pow(M_PI, 2)*radius2*sigma2/((real)model_side))/(pow((real)model_side, 3));
+    */
+
+    model[z*model_side*(model_side/2+1) + y*(model_side/2+1) + x].x *= exp(-2.*pow(M_PI, 2)*radius2*sigma2)/(pow((real)model_side, 3));
+    model[z*model_side*(model_side/2+1) + y*(model_side/2+1) + x].y *= exp(-2.*pow(M_PI, 2)*radius2*sigma2)/(pow((real)model_side, 3));
+
+    /*
+    model[z*model_side*model_side + y*model_side + x].x *= exp(-2.*pow(M_PI, 2)*radius2*sigma2)/(pow((real)model_side, 3));
+    model[z*model_side*model_side + y*model_side + x].y *= exp(-2.*pow(M_PI, 2)*radius2*sigma2)/(pow((real)model_side, 3));
+    */
+  }
+}
+
+__global__ void get_mask_from_model(real *model, int *mask, int size) {
+  int i = blockIdx.x*blockDim.x + threadIdx.x;
+  if (i < size) {
+    if (model[i] < 0.) {
+      mask[i] = 0;
+      model[i] = 0.;
+    } else {
+      mask[i] = 1;
+    }
+  }
+}
+
+__global__ void apply_mask(real *model, int *mask, int size) {
+  int i = blockIdx.x*blockDim.x + threadIdx.x;
+  if (i < size) {
+    if (mask[i] == 0) {
+      model[i] = -1.;
+    }
+  }
+}
+
+void cuda_blur_model(real *d_model, const int model_side, const real sigma) {
+  cufftComplex *ft;
+  cudaMalloc((void **)&ft, model_side*model_side*(model_side/2+1)*sizeof(cufftComplex));
+
+  int *d_mask;
+  cudaMalloc(&d_mask, model_side*model_side*model_side*sizeof(int));
+  get_mask_from_model<<<(pow(model_side,3)/256+1), 256>>>(d_model, d_mask, pow(model_side, 3));
+
+  cufftHandle plan;
+  cufftPlan3d(&plan, model_side, model_side, model_side, CUFFT_R2C);
+  cufftExecR2C(plan, d_model, ft);//, CUFFT_FORWARD);
+  //multiply by gaussian kernel
+
+  int nthreads = 256;
+  dim3 nblocks(model_side, model_side);
+  multiply_by_gaussian_kernel<<<nblocks,nthreads>>>(ft, sigma);
+  cufftPlan3d(&plan, model_side, model_side, model_side, CUFFT_C2R);
+  cufftExecC2R(plan, ft, d_model);//, CUFFT_INVERSE);
+  apply_mask<<<(pow(model_side,3)/256+1),256>>>(d_model, d_mask, pow(model_side,3));
+
+}
+

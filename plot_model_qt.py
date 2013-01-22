@@ -5,6 +5,8 @@ import sphelper
 import sys
 import numpy
 import time
+import rotations
+import icosahedral_sphere
 from enthought.mayavi import mlab
 from optparse import OptionParser
 from PySide import QtCore, QtGui
@@ -16,8 +18,35 @@ class Model(QtCore.QObject):
     def __init__(self, iteration_number):
         super(Model, self).__init__()
         self._current_iteration = iteration_number
-        self._image_type = 0 # 0 = image, 1 = weight
+        self._image_type = 0 # 0 = image, 1 = weight, 2 = rotations
+        self._rotation_type = 0 # 0 = average, 1 = single
+        self._rotation_image_number = 0
+        self._setup_rotations()
         self._read_image()
+
+
+    def _setup_rotations(self):
+        def closest_coordinate(coordinate, points_list):
+            return (((points_list - coordinate)**2).sum(axis=1)).argmax()
+        
+        self._rotations = loadtxt('output/rotations.data')
+        self._euler_angles = array([rotations.quaternion_to_euler_angle(rotation) for rotation in self._rotations])
+        self._coordinates = transpose(array([sin(self._euler_angles[:, 0])*cos(self._euler_angles[:, 1]),
+                                             cos(self._euler_angles[:, 0])*cos(self._euler_angles[:, 1]),
+                                             sin(self._euler_angles[:, 1])]))
+
+        number_of_rotations = len(self._rotations)
+        self._rotation_sphere_coordinates = array(icosahedral_sphere.sphere_sampling(rotations.rots_to_n(number_of_rotations)))
+        number_of_bins = len(self._rotation_sphere_coordinates)
+        self._rotation_sphere_weights = zeros(number_of_bins)
+        self._rotation_sphere_bins = zeros(number_of_bins)
+        self._rotation_mapping_table = zeros(number_of_rotations, dtype='int32')
+        for i, c in enumerate(self._coordinates):
+            index = closest_coordinate(c, self._rotation_sphere_coordinates)
+            self._rotation_sphere_weights[index] += 1.
+            self._rotation_mapping_table[i] = index
+        self._rotation_sphere_good_indices = self._rotation_sphere_weights > 0.
+
 
     def _image_changed(self):
         if self._image_type == 0:
@@ -27,10 +56,19 @@ class Model(QtCore.QObject):
         self.image_changed.emit(self._current_iteration)
 
     def _read_image(self):
-        self._image, self._mask = sphelper.import_spimage('output/model_%.4d.h5' % self._current_iteration, ['image', 'mask'])
+        if self._current_iteration >= 0:
+            self._image, self._mask = sphelper.import_spimage('output/model_%.4d.h5' % self._current_iteration, ['image', 'mask'])
+        elif self._current_iteration == -1:
+            self._image, self._mask = sphelper.import_spimage('output/model_init.h5', ['image', 'mask'])
+        elif self._current_iteration == -2:
+            self._image, self._mask = sphelper.import_spimage('output/model_final.h5', ['image', 'mask'])
 
     def _read_weight(self):
-        self._image, self._mask = sphelper.import_spimage('output/weight_%.4d.h5' % self._current_iteration, ['image', 'mask'])
+        if self._current_iteration >= 0:
+            self._image, self._mask = sphelper.import_spimage('output/weight_%.4d.h5' % self._current_iteration, ['image', 'mask'])
+        elif self._current_iteration == -1:
+            self._image, self._mask = sphelper.import_spimage('output/model_init.h5', ['image', 'mask'])
+
 
     def next_image(self):
         self._current_iteration += 1
@@ -42,7 +80,7 @@ class Model(QtCore.QObject):
             self._image_changed()
 
     def set_iteration(self, iteration):
-        if iteration >= 0:
+        if iteration >= -2:
             self._current_iteration = iteration
             self._image_changed()
 
@@ -59,18 +97,51 @@ class Model(QtCore.QObject):
     def set_display_weight(self):
         self._image_type = 1
         self._image_changed()
-        
-        
+
+    def get_rotation_coordinates(self):
+        # best_index = list(int32(loadtxt('output/best_rot.data')[self._current_iteration]))
+        # return self._rotation_sphere_coordinates
+        return self._rotation_sphere_coordinates
+
+    def get_rotation_values(self):
+        if self._rotation_type == 0:
+            average_resp = loadtxt('output/average_resp_%.4d.data' % self._current_iteration)
+            for i, r in enumerate(average_resp):
+                self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
+        elif self._rotation_type == 1:
+            resp = loadtxt('output/responsabilities_%.4d.data' % self._current_iteration)
+            for i, r in enumerate(resp[self._rotation_image_number, :]):
+                self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
+        self._rotation_sphere_bins[self._rotation_sphere_good_indices] /= self._rotation_sphere_weights[self._rotation_sphere_good_indices]
+        return self._rotation_sphere_bins
+
+    def get_image_side(self):
+        return shape(self._image)[0]
+
+    def set_rotation_type_average(self):
+        self._rotation_type = 0
+        self.image_changed.emit(self._current_iteration)
+
+    def set_rotation_type_single(self):
+        self._rotation_type = 1
+        self.image_changed.emit(self._current_iteration)
+
+    def set_rotation_image_number(self, image_number):
+        self._rotation_image_number = image_number
+        self.image_changed.emit(self._current_iteration)
+            
+
     
 class Viewer(QtCore.QObject):
     def __init__(self, model):
         super(Viewer, self).__init__()
         self._model = model
         #QtCore.QObject.connect(self._model, QtCore.SIGNAL('image_changed(int)'), self._update_scalar_field)
-        self._model.image_changed.connect(self._update_scalar_field)
+        self._model.image_changed.connect(self._data_changed)
         self._initialize_scalar_field()
         self._surface = None
         self._slices = None
+        self._points = None
         self._plot_surface()
         self._log_scale = False
         self._mode = 0
@@ -80,7 +151,7 @@ class Viewer(QtCore.QObject):
         self._scalar_field = mlab.pipeline.scalar_field(self._model.get_image())
         self._scalar_field_max = self._scalar_field.scalar_data.max()
 
-    def _update_scalar_field(self, dummy=0):
+    def _data_changed(self, dummy=0):
         if self._mode == 1:
             if self._log_scale:
                 self._scalar_field.scalar_data = log10(self._model.get_image() + self._model.get_image().max()*0.001)
@@ -93,7 +164,17 @@ class Viewer(QtCore.QObject):
             # old_surface_level = self.get_surface_level()
             # self._scalar_field_max = self._scalar_field.scalar_data.max()
             # self.set_surface_level(old_surface_level)
-
+        elif self._mode == 2:
+            #self._points.glyph.glyph.input.points = self._model.get_rotation_coordinates()
+            values = self._model.get_rotation_values()
+            self._points.glyph.glyph.input.point_data.scalars = values
+            self._points.glyph.glyph.input.point_data.modified()
+            self._points.actor.mapper.lookup_table.range = (0., values.max())
+            self._points.glyph.glyph.modified()
+            self._points.update_pipeline()
+            self._points.actor.render()
+            mlab.draw()
+            
 
     def _plot_surface(self):
         self._surface = mlab.pipeline.iso_surface(self._scalar_field, contours=[0.5*self._scalar_field_max])
@@ -107,6 +188,16 @@ class Viewer(QtCore.QObject):
                                                              slice_index=shape(self._model.get_image())[1]/2))
         #mlab.show()
 
+    def _plot_rotations(self):
+        coordinates = (self._model.get_rotation_coordinates()*self._model.get_image_side()/4.)+self._model.get_image_side()/2.
+        values = self._model.get_rotation_values()
+        values /= values.max()
+        self._points = mlab.points3d(coordinates[:, 0], coordinates[:, 1], coordinates[:, 2], values, scale_mode='none')
+        self._points.glyph.glyph.modified()
+        self._points.actor.mapper.lookup_table.range = (0., values.max())
+        self._points.update_pipeline()
+        self._points.actor.render()
+
     def set_surface_level(self, new_level):
         self._surface_level = new_level
         self._surface.contour.contours[0] = self._surface_level*self._scalar_field_max
@@ -116,30 +207,49 @@ class Viewer(QtCore.QObject):
 
     def set_log_scale(self, state):
         self._log_scale = state
-        self._update_scalar_field()
+        self._data_changed()
         
     def set_surface_mode(self):
         if self._slices:
             self._slices[0].visible = False
             self._slices[1].visible = False
+        if self._points:
+            self._points.visible = False
+            self._points.module_manager.scalar_lut_manager.show_scalar_bar = False
         if not self._surface:
             self._plot_surface()
         else:
             self._surface.visible = True
         self._mode = 0
-        self._update_scalar_field()
+        self._data_changed()
 
     def set_slice_mode(self):
         if self._surface:
             self._surface.visible = False
+        if self._points:
+            self._points.visible = False
+            self._points.module_manager.scalar_lut_manager.show_scalar_bar = False
         if not self._slices:
             self._plot_slices()
         else:
             self._slices[0].visible = True
             self._slices[1].visible = True
         self._mode = 1
-        self._update_scalar_field()
+        self._data_changed()
 
+    def set_rotations_mode(self):
+        if self._surface:
+            self._surface.visible = False
+        if self._slices:
+            self._slices[0].visible = False
+            self._slices[1].visible = False
+        if not self._points:
+            self._plot_rotations()
+        else:
+            self._points.visible = True
+        self._points.module_manager.scalar_lut_manager.show_scalar_bar = True
+        self._mode = 2
+        self._data_changed()
 
 class StartMain(QtGui.QMainWindow):
     def __init__(self, model, viewer, parent=None):
@@ -162,8 +272,11 @@ class StartMain(QtGui.QMainWindow):
         self._surface_action.triggered.connect(self._set_surface_mode)
         self._slice_action = QtGui.QAction("Slice", self)
         self._slice_action.triggered.connect(self._set_slice_mode)
+        self._rotations_action = QtGui.QAction("Best Rotations", self)
+        self._rotations_action.triggered.connect(self._set_rotations_mode)
         self._mode_menu.addAction(self._surface_action)
         self._mode_menu.addAction(self._slice_action)
+        self._mode_menu.addAction(self._rotations_action)
         self._mode_button.setMenu(self._mode_menu)
         
         self._previous_button = QtGui.QPushButton("Previous")
@@ -173,7 +286,7 @@ class StartMain(QtGui.QMainWindow):
         self._next_button.pressed.connect(self._model.next_image)
 
         self._iteration_box = QtGui.QSpinBox()
-        self._iteration_box.setRange(-1, 10000)
+        self._iteration_box.setRange(-2, 10000)
         #self._iteration_box.valueChanged.connect(self._model.set_iteration)
         self._iteration_box.editingFinished.connect(self._spinbox_value_changed)
         self._model.image_changed.connect(self._on_model_image_changed)
@@ -221,26 +334,60 @@ class StartMain(QtGui.QMainWindow):
         self._model_radio.clicked.connect(self._model.set_display_image)
         self._weight_radio.clicked.connect(self._model.set_display_weight)
 
+        #rotations controll widget setup
+        # show average or single
+        self._show_average_rotation_radio = QtGui.QRadioButton("Average rot")
+        self._show_average_rotation_radio.setChecked(True)
+        self._show_single_rotation_radio = QtGui.QRadioButton("Single rot")
+
+        self._rotations_controll_layout = QtGui.QVBoxLayout()
+        self._rotations_controll_layout.addWidget(self._show_average_rotation_radio)
+        self._rotations_controll_layout.addWidget(self._show_single_rotation_radio)
+        self._show_average_rotation_radio.clicked.connect(self._rotation_type_average)
+        self._show_single_rotation_radio.clicked.connect(self._rotation_type_single)
+
+        self._rotation_image_number_box = QtGui.QSpinBox()
+        self._rotation_image_number_box.setRange(-1, 10000)
+        self._rotation_image_number_box.editingFinished.connect(self._image_number_changed)
+        self._rotations_controll_layout.addWidget(self._rotation_image_number_box)
+        self._rotation_image_number_box.hide()
+
+        self._rotations_controll_widget = QtGui.QWidget()
+        self._rotations_controll_widget.setLayout(self._rotations_controll_layout)
+
+        #setup main layout and widget
         self._main_layout = QtGui.QVBoxLayout()
         self._main_layout.addWidget(self._mode_button)
         self._main_layout.addLayout(self._iteration_layout)
         self._main_layout.addLayout(self._image_type_layout)
         self._main_layout.addWidget(self._surface_controll_widget)
         self._main_layout.addWidget(self._slice_controll_widget)
+        self._main_layout.addWidget(self._rotations_controll_widget)
         self._slice_controll_widget.hide()
+        self._rotations_controll_widget.hide()
     
         self._controller_widget.setLayout(self._main_layout)
         self.setCentralWidget(self._controller_widget)
 
+
     def _set_surface_mode(self):
         self._slice_controll_widget.hide()
+        self._rotations_controll_widget.hide()
         self._surface_controll_widget.show()
         self._viewer.set_surface_mode()
 
     def _set_slice_mode(self):
         self._surface_controll_widget.hide()
+        self._rotations_controll_widget.hide()
         self._slice_controll_widget.show()
         self._viewer.set_slice_mode()
+
+    def _set_rotations_mode(self):
+        self._surface_controll_widget.hide()
+        self._slice_controll_widget.hide()
+        self._rotations_controll_widget.show()
+        self._viewer.set_rotations_mode()
+        
 
     def _on_model_image_changed(self, iteration):
         self._iteration_box.setValue(iteration)
@@ -251,7 +398,22 @@ class StartMain(QtGui.QMainWindow):
     def _slider_changed(self, value):
         self._viewer.set_surface_level((value/float(SLIDER_LENGTH))**2)
 
-        
+    def _image_number_changed(self):
+        #connect to model, probably without this function
+        self._model.set_rotation_image_number(self._rotation_image_number_box.value())
+
+    def _rotation_type_average(self):
+        # change visibility
+        self._rotation_image_number_box.hide()
+        # connect to model
+        self._model.set_rotation_type_average()
+
+    def _rotation_type_single(self):
+        # change visibility
+        self._rotation_image_number_box.show()
+        # connect to model
+        self._model.set_rotation_type_single()
+
 if __name__ == "__main__":
     parser = OptionParser(usage="%prog <3d_file.h5>")
     parser.add_option("-s", action="store_true", dest="surface", help="Plot image as isosurface.")

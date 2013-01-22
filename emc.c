@@ -102,6 +102,51 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
   }
 }
 
+void test_blur() {
+  int i_device = cuda_get_device();
+  printf("device id = %d\n", i_device);
+  /* test blur */
+  const int image_side = 10;
+  const int N_3d = pow(image_side, 3);
+
+  real *image = malloc(N_3d*sizeof(real));
+  for (int i = 0; i < N_3d; i++) {
+    image[i] = 0.;
+  }
+  //image[image_side*image_side*image_side/2 + image_side*image_side/2 + image_side/2] = 1.;
+  image[image_side*image_side*2 + image_side*3 + 3] = 1.;
+  image[image_side*image_side*7 + image_side*8 + 5] = 1.;
+  image[image_side*image_side*5 + image_side*5 + 5] = -1.;
+  FILE *blur_out = fopen("debug/blur_before.data", "wp");
+  for (int i = 0; i < N_3d; i++) {
+    fprintf(blur_out, "%g\n", image[i]);
+  }
+  fclose(blur_out);
+  real *d_image;
+  cuda_allocate_real(&d_image, N_3d);
+  cuda_copy_real_to_device(image, d_image, N_3d);
+
+
+  int *mask = malloc(N_3d*sizeof(int));
+  for (int i = 0; i < N_3d; i++) {
+    mask[i] = 1;
+  }
+  int *d_mask;
+  cuda_allocate_int(&d_mask, N_3d);
+  cuda_copy_int_to_device(mask, d_mask, N_3d);
+
+  cuda_blur_model(d_image, image_side, 1.);
+
+  cuda_copy_real_to_host(image, d_image, N_3d);
+  blur_out = fopen("debug/blur_after.data", "wp");
+  for (int i = 0; i < N_3d; i++) {
+    fprintf(blur_out, "%g\n", image[i]);
+  }
+  fclose(blur_out);
+  exit(0);
+  /* done testing blur */
+}
+
 Configuration read_configuration_file(const char *filename)
 {
   Configuration config_out;
@@ -121,7 +166,9 @@ Configuration read_configuration_file(const char *filename)
   config_lookup_int(&config,"detector_size",&config_out.detector_size);
   config_lookup_float(&config,"detector_distance",&config_out.detector_distance);
   config_lookup_int(&config,"rotations_n",&config_out.rotations_n);
-  config_lookup_float(&config,"sigma",&config_out.sigma);
+  config_lookup_float(&config,"sigma_start",&config_out.sigma_start);
+  config_lookup_float(&config,"sigma_final",&config_out.sigma_final);
+  config_lookup_int(&config,"sigma_half_life",&config_out.sigma_half_life);
   config_lookup_int(&config,"slice_chunk",&config_out.slice_chunk);
   config_lookup_int(&config,"N_images",&config_out.N_images);
   config_lookup_int(&config,"max_iterations",&config_out.max_iterations);
@@ -135,6 +182,16 @@ Configuration read_configuration_file(const char *filename)
   config_lookup_string(&config,"model_file",&config_out.model_file);
   config_lookup_bool(&config,"exclude_images",&config_out.exclude_images);
   config_lookup_float(&config,"exclude_ratio",&config_out.exclude_ratio);
+  const char *diff_type_string = malloc(20*sizeof(char));
+  config_lookup_string(&config,"diff_type",&diff_type_string);
+  if (strcmp(diff_type_string, "absolute") == 0) {
+    config_out.diff = absolute;
+  } else if (strcmp(diff_type_string, "poisson") == 0) {
+    config_out.diff = poisson;
+  } else if (strcmp(diff_type_string, "poisson") == 0) {
+    config_out.diff = relative;
+  }
+  config_lookup_float(&config,"model_blur",&config_out.model_blur);
 
   return config_out;
 }
@@ -298,6 +355,7 @@ void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
 
 int main(int argc, char **argv)
 {
+  //test_blur();
   signal(SIGINT, nice_exit);
   //signal(SIGKILL, nice_exit);
   Configuration conf;
@@ -319,6 +377,12 @@ int main(int argc, char **argv)
   real *weights;
   const int N_slices = generate_rotation_list(n,&rotations,&weights);
   real *d_weights;
+  //cuda_set_device(1);
+  //cuda_set_device(cuda_get_best_device());
+  cuda_choose_best_device();
+  cuda_print_device_info();
+  printf("Running on device %d\n", cuda_get_device());
+  
   cuda_allocate_real(&d_weights, N_slices);
   cuda_copy_real_to_device(weights, d_weights, N_slices);
   printf("%d rotations sampled\n",N_slices);
@@ -329,7 +393,7 @@ int main(int argc, char **argv)
   }
   fclose(weights_file);
   /* output rotations */
-  FILE *rotations_file = fopen("debug/rotations.data", "wp");
+  FILE *rotations_file = fopen("output/rotations.data", "wp");
   for (int i_slice = 0; i_slice < N_slices; i_slice++) {
     fprintf(rotations_file, "%g %g %g %g\n", rotations[i_slice]->q[0],rotations[i_slice]->q[1], rotations[i_slice]->q[2], rotations[i_slice]->q[3]);
   }
@@ -609,14 +673,16 @@ int main(int argc, char **argv)
   
   real *sorted_resp = malloc(N_slices*sizeof(real));
   real *total_sorted_resp = malloc(N_slices*sizeof(real));
+  real *average_resp = malloc(N_slices*sizeof(real));
 
-  FILE *best_rot_file = fopen("debug/best_rot.data", "wp");
+  FILE *best_rot_file = fopen("output/best_rot.data", "wp");
   FILE *fit_file = fopen("output/fit.data","wp");
   FILE *fit_best_rot_file = fopen("output/fit_best_rot.data","wp");
   FILE *scaling_file;// = fopen("output/scaling.data","wp");
   FILE *radial_fit_file = fopen("output/radial_fit.data","wp");
   FILE *responsabilities_file;// = fopen("output/responsability.data","wp");
   FILE *sorted_resp_file = fopen("output/total_resp.data","wp");
+  FILE *average_resp_file;// = fopen("output/average_resp.data","wp");
 
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
@@ -631,19 +697,29 @@ int main(int argc, char **argv)
 
   int current_chunk;
 
-  real sigma_half_life = 100; // 1000.
+  
+  /*
+  real sigma_half_life = 25; // 1000.
+  real sigma_start = 0.12;   // relative: 0.09 -> 0.05
+  real sigma_final = 0.0; // 0.2
+  enum diff_type diff = poisson;
+  */
+  /*
+  real sigma_half_life = 25; // 1000.
   real sigma_start = 0.12;   // relative: 0.09 -> 0.05
   real sigma_final = 0.; // 0.2
-  enum diff_type diff = relative;
-
+  enum diff_type diff = poisson;
+  */
+  real sigma;
   for (int iteration = start_iteration; iteration < conf.max_iterations; iteration++) {
     if (quit_requested == 1) {
       break;
     }
     printf("iteration %d\n", iteration);
 
-    conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life*log(2.));
-    printf("sigma = %g\n", conf.sigma);
+    //conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life*log(2.));
+    sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
+    printf("sigma = %g\n", sigma);
 
     sum = cuda_model_max(d_model, N_model);
     printf("model max = %g\n",sum);
@@ -670,7 +746,7 @@ int main(int argc, char **argv)
 	cuda_get_slices(model, d_model, slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
 			slice_start, current_chunk);
 	
-	cuda_update_scaling_full(d_images, slices, d_mask, d_scaling, N_2d, N_images, slice_start, current_chunk, diff);
+	cuda_update_scaling_full(d_images, slices, d_mask, d_scaling, N_2d, N_images, slice_start, current_chunk, conf.diff);
       }
 
       /* output scaling */
@@ -686,10 +762,9 @@ int main(int argc, char **argv)
 	fprintf(scaling_file, "\n");
       }
       fclose(scaling_file);
-
     }
-    fprintf(scaling_file, "\n");
-    fflush(scaling_file);
+    //fprintf(scaling_file, "\n");
+    //fclose(scaling_file);
     /* end update scaling */
 
     /* test scaling by outputting two */
@@ -736,9 +811,35 @@ int main(int argc, char **argv)
 	current_chunk = slice_chunk;
       }
       cuda_get_slices(model,d_model,slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,slice_start,current_chunk);
+
+      /* start output best fitting slices */
+
+      Image *slice_out_img = sp_image_alloc(conf.model_side, conf.model_side, 1);
+      real *slice_out = malloc(N_2d*sizeof(real));
+
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	if (best_rotation[i_image] >= slice_start && best_rotation[i_image] < slice_start + current_chunk) {
+	  //printf("best_rotation[%d] = %d (%d) -> %d\n", i_image, best_rotation[i_image], N_slices, best_rotation[i_image] - slice_start);
+
+	  cuda_copy_real_to_host(slice_out, &slices[(best_rotation[i_image] - slice_start)*N_2d], N_2d);
+
+	  for (int i = 0; i < N_2d; i++) {
+	    slice_out_img->image->data[i] = sp_cinit(slice_out[i], 0.);
+	  }
+	  sprintf(buffer, "output/best_slice_%.4d_%.4d.h5", iteration, i_image);
+	  sp_image_write(slice_out_img, buffer, 0);
+
+	}
+      }
+
+      sp_image_free(slice_out_img);
+      free(slice_out);
+
+      /* end output best fitting slices */
+
       
       cuda_calculate_fit(slices, d_images, d_mask, d_scaling,
-			 d_respons, d_fit, conf.sigma, N_2d, N_images,
+			 d_respons, d_fit, sigma, N_2d, N_images,
 			 slice_start, current_chunk);
 
       cuda_calculate_fit_best_rot(slices, d_images, d_mask, d_scaling,
@@ -794,13 +895,13 @@ int main(int argc, char **argv)
       } else {
 	current_chunk = slice_chunk;
       }
-
+      
       cuda_get_slices(model,d_model,slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,slice_start,current_chunk);
 
       cuda_calculate_responsabilities(slices, d_images, d_mask,
-				      conf.sigma, d_scaling, d_respons, d_weights, 
+				      sigma, d_scaling, d_respons, d_weights, 
 				      N_2d, N_images, slice_start,
-				      current_chunk, diff);
+				      current_chunk, conf.diff);
 
     }
     cuda_calculate_responsabilities_sum(respons, d_respons, N_slices, N_images);
@@ -818,6 +919,23 @@ int main(int argc, char **argv)
     }
     fclose(responsabilities_file);
 
+    /* output average responsabilities */
+    sprintf(buffer, "output/average_resp_%.4d.data", iteration);
+    average_resp_file = fopen(buffer, "wp");
+    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+      average_resp[i_slice] = 0.;
+    }
+    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	average_resp[i_slice] += respons[i_slice*N_images+i_image];
+      }
+    }
+    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+      fprintf(average_resp_file, "%g\n", average_resp[i_slice]);
+    }
+    fclose(average_resp_file);
+    
+
     /* output sorted responsabilities */
     for (int i_slice = 0; i_slice < N_slices; i_slice++) {
       total_sorted_resp[i_slice] = 0.0;
@@ -832,7 +950,7 @@ int main(int argc, char **argv)
       }
     }
     for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-      fprintf(sorted_resp_file, "%g ", total_sorted_resp[i_slice]);
+      fprintf(sorted_resp_file, "%g ", total_sorted_resp[i_slice] / (float) N_images);
     }
     fprintf(sorted_resp_file,"\n");
     fflush(sorted_resp_file);
@@ -954,6 +1072,22 @@ int main(int argc, char **argv)
     cuda_copy_int_to_device(active_images, d_active_images, N_images);
     /* end exclude images */
 
+    /* start update scaling second time (test) */
+    if (conf.known_intensity == 0) {
+      for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
+	if (slice_start + slice_chunk >= N_slices) {
+	  current_chunk = N_slices - slice_start;
+	} else {
+	  current_chunk = slice_chunk;
+	}
+	cuda_get_slices(model, d_model, slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
+			slice_start, current_chunk);
+	
+	cuda_update_scaling_full(d_images, slices, d_mask, d_scaling, N_2d, N_images, slice_start, current_chunk, conf.diff);
+      }
+    }
+    /* end update scaling second time (test) */
+
     /* start update model */
     for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
       if (slice_start + slice_chunk >= N_slices) {
@@ -981,6 +1115,13 @@ int main(int argc, char **argv)
 
     cuda_divide_model_by_weight(model, d_model, d_weight);
     cuda_normalize_model(model, d_model);
+
+    //sprintf(buffer, "debug/model_before_blur_%.4d.h5", iteration);
+    //cuda_output_device_model(d_model, buffer, conf.model_side);
+    cuda_blur_model(d_model, conf.model_side, conf.model_blur);
+    //sprintf(buffer, "debug/model_after_blur_%.4d.h5", iteration);
+    //cuda_output_device_model(d_model, buffer, conf.model_side);
+
     cuda_copy_model(model, d_model);
     cuda_copy_model(weight, d_weight);
 
@@ -1011,9 +1152,10 @@ int main(int argc, char **argv)
   fclose(best_rot_file);
   fclose(fit_file);
   fclose(fit_best_rot_file);
-  fclose(scaling_file);
+  //fclose(scaling_file);
   fclose(radial_fit_file);
   fclose(sorted_resp_file);
+  //fclose(average_resp_file);
 
   cuda_reset_model(model,d_model_updated);
   cuda_reset_model(weight,d_weight);
@@ -1033,6 +1175,9 @@ int main(int argc, char **argv)
 
   /* put together the model one last time for output.
      This time more of the middle data is used */
+
+  //cuda_collapse_responsabilities(d_respons, N_slices, N_images);
+
   for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
     if (slice_start + slice_chunk >= N_slices) {
       current_chunk = N_slices - slice_start;
@@ -1048,8 +1193,6 @@ int main(int argc, char **argv)
 		    slice_start, current_chunk);
     */
     //cuda_copy_slice_chunk_to_device(slices_on_host, slices, slice_start, slice_chunk, N_2d);
-
-    //try this. Should actually be cuda_update_slices_final
 
     cuda_update_slices_final(d_masked_images, slices, d_mask,
 			     d_respons, d_scaling, d_active_images,
