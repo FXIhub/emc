@@ -7,9 +7,17 @@ import numpy
 import time
 import rotations
 import icosahedral_sphere
-from enthought.mayavi import mlab
+try:
+    from mayavi import mlab
+except ImportError:
+    from enthought.mayavi import mlab
 from optparse import OptionParser
-from PySide import QtCore, QtGui
+try:
+    from PySide import QtCore, QtGui
+except ImportError:
+    from PyQt4 import QtCore, QtGui
+    QtCore.Signal = QtCore.pyqtSignal
+    QtCore.Slot = QtCore.pyqtSlot
 
 SLIDER_LENGTH = 100
 
@@ -195,6 +203,7 @@ class Viewer(QtCore.QObject):
         self._points = mlab.points3d(coordinates[:, 0], coordinates[:, 1], coordinates[:, 2], values, scale_mode='none')
         self._points.glyph.glyph.modified()
         self._points.actor.mapper.lookup_table.range = (0., values.max())
+        self._points.module_manager.scalar_lut_manager.data_name = "Resp"
         self._points.update_pipeline()
         self._points.actor.render()
 
