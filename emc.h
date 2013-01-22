@@ -140,6 +140,8 @@ typedef struct{
 				 int slice_chunk);
   void cuda_calculate_best_rotation(real *d_respons, int *d_best_rotation, int N_images, int N_slices);
   void cuda_blur_model(real *d_model, const int model_side, const real sigma);
+  void cuda_allocate_weight_map(real **d_weight_map, int image_side);
+  void cuda_calculate_weight_map(real *d_weight_map, int image_side, real width, real falloff);
 
 #ifdef __cplusplus
   }

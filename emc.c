@@ -147,6 +147,27 @@ void test_blur() {
   /* done testing blur */
 }
 
+void test_weight_map() {
+  int image_side = 100;
+  real width = 20.;
+  real falloff = 10.;
+
+  real *d_weight_map;
+  cuda_allocate_weight_map(&d_weight_map, image_side);
+
+  cuda_calculate_weight_map(d_weight_map, image_side, width, falloff);
+
+  real *weight_map = malloc(image_side*image_side*sizeof(real));
+  cuda_copy_real_to_host(weight_map, d_weight_map, image_side*image_side);
+
+  FILE *weight_map_out = fopen("debug/weight_map.data", "wp");
+  for (int i = 0; i < image_side*image_side; i++) {
+    fprintf(weight_map_out, "%g\n", weight_map[i]);
+  }
+  fclose(weight_map_out);
+  exit(0);
+}
+
 Configuration read_configuration_file(const char *filename)
 {
   Configuration config_out;
@@ -355,8 +376,15 @@ void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
 
 int main(int argc, char **argv)
 {
-  //test_blur();
   signal(SIGINT, nice_exit);
+  //cuda_set_device(1);
+  //cuda_set_device(cuda_get_best_device());
+  cuda_choose_best_device();
+  cuda_print_device_info();
+
+  //test_blur();
+  //test_weight_map();
+
   //signal(SIGKILL, nice_exit);
   Configuration conf;
   if (argc > 1) {
@@ -377,11 +405,6 @@ int main(int argc, char **argv)
   real *weights;
   const int N_slices = generate_rotation_list(n,&rotations,&weights);
   real *d_weights;
-  //cuda_set_device(1);
-  //cuda_set_device(cuda_get_best_device());
-  cuda_choose_best_device();
-  cuda_print_device_info();
-  printf("Running on device %d\n", cuda_get_device());
   
   cuda_allocate_real(&d_weights, N_slices);
   cuda_copy_real_to_device(weights, d_weights, N_slices);

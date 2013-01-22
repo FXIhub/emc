@@ -1389,3 +1389,41 @@ void cuda_blur_model(real *d_model, const int model_side, const real sigma) {
 
 }
 
+/* Allocates and sets all weights to 1. */
+void cuda_allocate_weight_map(real **d_weight_map, int image_side) {
+  cudaMalloc(d_weight_map, image_side*image_side*sizeof(real));
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_weight_map: copy): %s\n",cudaGetErrorString(status));
+  }
+  thrust::device_ptr<real> p(*d_weight_map);
+  thrust::fill(p, p+image_side*image_side, real(1));
+}
+
+__global__ void calculate_weight_map_kernel(real *weight_map, real width, real falloff) {
+  const int tid = threadIdx.x;
+  const int step = blockDim.x;
+  const int y = blockIdx.x;
+  const int image_side = gridDim.x;
+  
+  real radius;
+  real dx, dy;
+  dy = (y - image_side/2) + 0.5;
+  for (int x = tid; x < image_side; x += step) {
+    dx = (x - image_side/2) + 0.5;
+    // find distance to top left
+    radius = sqrt(pow(dx, 2) + pow(dy, 2));
+    // calculate logistic falloff
+    weight_map[y*image_side + x] = 1. / (1. + exp((radius - width) * 5. / falloff));
+  }
+}
+
+void cuda_calculate_weight_map(real *d_weight_map, int image_side, real width, real falloff) {
+  int nthreads = 256;
+  int nblocks = image_side;
+  calculate_weight_map_kernel<<<nblocks,nthreads>>>(d_weight_map, width, falloff);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_calculate_weight_map: copy): %s\n",cudaGetErrorString(status));
+  }
+}
