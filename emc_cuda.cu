@@ -134,6 +134,122 @@ __device__ void cuda_get_slice(real *model, real *slice,
   }
 }
 
+__device__ real interpolate_model_get(real *model, int model_x, int model_y, int model_z, real new_x, real new_y, real new_z) {
+  real interp_sum, interp_weight;
+  real weight_x, weight_y, weight_z;
+  int index_x, index_y, index_z;
+  real low_weight_x, low_weight_y, low_weight_z;
+  int low_x, low_y, low_z;
+  int out_of_range = 0;
+
+  if (new_x > -0.5 && new_x <= 0.) {
+    low_weight_x = 0.;
+    low_x = -1;
+  } else if (new_x > 0. && new_x <= (model_x-1)) {
+    low_weight_x = ceil(new_x) - new_x;
+    low_x = (int)ceil(new_x) - 1;
+  } else if (new_x > (model_x-1) && new_x < (model_x-0.5)) {
+    low_weight_x = 1.;
+    low_x = model_x-1;
+  } else {
+    out_of_range = 1;
+  }
+
+  if (new_y > -0.5 && new_y <= 0.) {
+    low_weight_y = 0.;
+    low_y = -1;
+  } else if (new_y > 0. && new_y <= (model_y-1)) {
+    low_weight_y = ceil(new_y) - new_y;
+    low_y = (int)ceil(new_y) - 1;
+  } else if (new_y > (model_y-1) && new_y < (model_y-0.5)) {
+    low_weight_y = 1.;
+    low_y = model_y-1;
+  } else {
+    out_of_range = 1;
+  }
+
+  if (new_z > -0.5 && new_z <= 0.) {
+    low_weight_z = 0.;
+    low_z = -1;
+  } else if (new_z > 0. && new_z <= (model_z-1)) {
+    low_weight_z = ceil(new_z) - new_z;
+    low_z = (int)ceil(new_z) - 1;
+  } else if (new_z > (model_z-1) && new_z < (model_z-0.5)) {
+    low_weight_z = 1.;
+    low_z = model_z-1;
+  } else {
+    out_of_range = 1;
+  }
+
+  if (out_of_range == 0) {
+
+    interp_sum = 0.;
+    interp_weight = 0.;
+    for (index_x = low_x; index_x <= low_x+1; index_x += 1) {
+      if (index_x == low_x && low_weight_x == 0.) continue;
+      if (index_x == (low_x+1) && low_weight_x == 1.) continue;
+      if (index_x == low_x) weight_x = low_weight_x;
+      else weight_x = 1. - low_weight_x;
+
+      for (index_y = low_y; index_y <= low_y+1; index_y += 1) {
+	if (index_y == low_y && low_weight_y == 0.) continue;
+	if (index_y == (low_y+1) && low_weight_y == 1.) continue;
+	if (index_y == low_y) weight_y = low_weight_y;
+	else weight_y = 1. - low_weight_y;
+
+	for (index_z = low_z; index_z <= low_z+1; index_z += 1) {
+	  if (index_z == low_z && low_weight_z == 0.) continue;
+	  if (index_z == (low_z+1) && low_weight_z == 1.) continue;
+	  if (index_z == low_z) weight_z = low_weight_z;
+	  else weight_z = 1. - low_weight_z;
+	  
+	  if (model[model_x*model_y*index_z + model_x*index_y + index_x] >= 0.) {
+	    interp_sum += weight_x*weight_y*weight_z*model[model_x*model_y*index_z + model_x*index_y + index_x];
+	    interp_weight += weight_x*weight_y*weight_z;
+	  }
+	}
+      }
+    }
+    if (interp_weight > 0.) {
+      return interp_sum / interp_weight;
+    } else {
+      return -1.0f;
+    }
+  } else {
+    return -1.0f;
+  }
+}
+
+__device__ void cuda_get_slice_interpolate(real *model, real *slice, real *rot,
+					   real *x_coordinates, real *y_coordinates, real *z_coordinates,
+					   int slice_rows, int slice_cols, int model_x, int model_y, int model_z,
+					   int tid, int step) {
+  const int x_max = slice_rows;
+  const int y_max = slice_cols;
+  //tabulate angle later
+  real new_x, new_y, new_z;
+
+  real m00 = rot[0]*rot[0] + rot[1]*rot[1] - rot[2]*rot[2] - rot[3]*rot[3];
+  real m01 = 2.0f*rot[1]*rot[2] - 2.0f*rot[0]*rot[3];
+  real m02 = 2.0f*rot[1]*rot[3] + 2.0f*rot[0]*rot[2];
+  real m10 = 2.0f*rot[1]*rot[2] + 2.0f*rot[0]*rot[3];
+  real m11 = rot[0]*rot[0] - rot[1]*rot[1] + rot[2]*rot[2] - rot[3]*rot[3];
+  real m12 = 2.0f*rot[2]*rot[3] - 2.0f*rot[0]*rot[1];
+  real m20 = 2.0f*rot[1]*rot[3] - 2.0f*rot[0]*rot[2];
+  real m21 = 2.0f*rot[2]*rot[3] + 2.0f*rot[0]*rot[1];
+  real m22 = rot[0]*rot[0] - rot[1]*rot[1] - rot[2]*rot[2] + rot[3]*rot[3];
+  for (int x = 0; x < x_max; x++) {
+    for (int y = tid; y < y_max; y+=step) {
+      /* This is just a matrix multiplication with rot */
+      new_x = m00*x_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*z_coordinates[y*x_max+x] + model_x/2.0 - 0.5;
+      new_y = m10*x_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*z_coordinates[y*x_max+x] + model_y/2.0 - 0.5;
+      new_z = m20*x_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*z_coordinates[y*x_max+x] + model_z/2.0 - 0.5;
+
+      slice[y*x_max+x] = interpolate_model_get(model, model_x, model_y, model_z, new_x, new_y, new_z);
+    }
+  }
+}
+
 /* updated to use rotations with an offset start. */
 __global__ void get_slices_kernel(real * model, real * slices, real *rot, real *x_coordinates,
 				  real *y_coordinates, real *z_coordinates, int slice_rows,
@@ -144,21 +260,68 @@ __global__ void get_slices_kernel(real * model, real * slices, real *rot, real *
   int tid = threadIdx.x;
   int step = blockDim.x;
   int N_2d = slice_rows*slice_cols;
+  /*
   cuda_get_slice(model,&slices[N_2d*i_slice],&rot[4*(start_slice+i_slice)],x_coordinates,
 		 y_coordinates,z_coordinates,slice_rows,slice_cols,model_x,model_y,
 		 model_z,tid,step);
+  */
+  cuda_get_slice_interpolate(model,&slices[N_2d*i_slice],&rot[4*(start_slice+i_slice)],x_coordinates,
+			     y_coordinates,z_coordinates,slice_rows,slice_cols,model_x,model_y,
+			     model_z,tid,step);
+}
+
+__global__ void cuda_test_interpolate_kernel(real *model, int side, real *return_value) {
+  printf("enter kernel %d %d\n", blockIdx.x, threadIdx.x);
+  for (int x = 0; x < side; x++) {
+    for (int y = 0; y < side; y++) {
+      for (int z = 0; z < side; z++) {
+	model[side*side*z + side*y + x] = (real)y + 0.5;
+      }
+    }
+  }
+  model[side*side*4 + side*4 + 4] = -1.;
+  model[side*side*5 + side*4 + 4] = -1.;
+  //model[side*side*4 + side*4 + 5] = -1.;
+  //model[side*side*4 + side*5 + 5] = -1.;
+
+  real interp_x = 4.5;
+  real interp_y = 4.5;
+  real interp_z = 4.5;
+  return_value[0] = interpolate_model_get(model, side, side, side, interp_x, interp_y, interp_z);
+  printf("interpolate at %g %g %g -> %g\n", interp_x, interp_y, interp_z, interpolate_model_get(model, side, side, side, interp_x, interp_y, interp_z));
+}
+
+void cuda_test_interpolate() {
+  printf("test interpolation start\n");
+  int side = 10;
+  real *model;
+  cudaMalloc(&model, side*side*side*sizeof(real));
+  real *d_return_value;
+  cudaMalloc(&d_return_value, 1*sizeof(real));
+  cuda_test_interpolate_kernel<<<1,1>>>(model, side, d_return_value);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (test interpolate): %s\n",cudaGetErrorString(status));
+  }
+  real *return_value = (real *)malloc(1*sizeof(real));
+  cudaMemcpy(return_value, d_return_value, 1*sizeof(real), cudaMemcpyDeviceToHost);
+  printf("interpolation result = %g\n", return_value[0]);
+
+  printf("test interpolation end\n");
 }
 
 /* This responsability does not yet take scaling of patterns into accoutnt. */
-__device__ void cuda_calculate_responsability_absolute(float *slice, float *image, int *mask, real sigma, real scaling, int N_2d, int tid, int step, real * sum_cache, int * count_cache)
+__device__ void cuda_calculate_responsability_absolute(float *slice, float *image, int *mask, real *weight_map,
+						       real sigma, real scaling, int N_2d, int tid, int step,
+						       real * sum_cache, real *count_cache)
 {
   real sum = 0.0;
   const int i_max = N_2d;
-  int count = 0;
+  real count = 0;
   for (int i = tid; i < i_max; i+=step) {
     if (mask[i] != 0 && slice[i] > 0.0f) {
-      sum += pow(slice[i] - image[i]/scaling,2);
-      count++;
+      sum += pow(slice[i] - image[i]/scaling,2)*weight_map[i];
+      count += weight_map[i];
     }
   }
   sum_cache[tid] = sum;
@@ -166,15 +329,17 @@ __device__ void cuda_calculate_responsability_absolute(float *slice, float *imag
   //  return -sum/2.0/(real)count/pow(sigma,2); //return in log scale.
 }
 
-__device__ void cuda_calculate_responsability_relative(float *slice, float *image, int *mask, real sigma, real scaling, int N_2d, int tid, int step, real *sum_cache, int *count_cache)
+__device__ void cuda_calculate_responsability_relative(float *slice, float *image, int *mask, real *weight_map,
+						       real sigma, real scaling, int N_2d, int tid, int step,
+						       real *sum_cache, real *count_cache)
 {
   real sum = 0.0;
   const int i_max = N_2d;
-  int count = 0;
+  real count = 0;
   for (int i = tid; i < i_max; i+=step) {
     if (mask[i] != 0 && slice[i] > 0.f) {
-      sum += pow((slice[i] - image[i]/scaling) / slice[i], 2);
-      count++;
+      sum += pow((slice[i] - image[i]/scaling) / slice[i], 2)*weight_map[i];
+      count += weight_map[i];
     }
   }
   sum_cache[tid] = sum;
@@ -183,19 +348,19 @@ __device__ void cuda_calculate_responsability_relative(float *slice, float *imag
 
 
 /* This responsability does not yet take scaling of patterns into accoutnt. */
-__device__ void cuda_calculate_responsability_poisson(float *slice, float *image, int *mask, real sigma, real scaling, int N_2d, int tid, int step, real * sum_cache, int * count_cache)
+__device__ void cuda_calculate_responsability_poisson(float *slice, float *image, int *mask, real *weight_map,
+						      real sigma, real scaling, int N_2d, int tid, int step,
+						      real * sum_cache, real * count_cache)
 {
   real sum = 0.0;
   const int i_max = N_2d;
-  int count = 0;
+  real count = 0;
   for (int i = tid; i < i_max; i+=step) {
     if (mask[i] != 0 && slice[i] > 0.0f) {
-      //sum += pow((slice[i] - image[i]/scaling) / (sqrt(image[i])+0.4), 2);
-      //sum += pow((slice[i] - image[i]/scaling) / sqrt(image[i]+0.02), 2); // 0.2 worked. this was used latest
-      sum += pow((slice[i] - image[i]/scaling) / sqrt(slice[i]+0.02), 2); // 0.2 worked. this was used latest
-      //sum += pow((slice[i] - image[i]/scaling) / sqrt(image[i]/0.5+10.0), 2); // 0.2 worked
-      //sum += pow((slice[i]*scaling - image[i])/8.0/ (sqrt(image[i]/8.0 + 1.0)), 2); // 0.2 worked
-      count++;
+      //sum += pow((slice[i] - image[i]/scaling) / sqrt(slice[i]+0.02), 2)*weight_map[i]; // 0.2 worked. this was used latest
+      sum += pow((slice[i] - image[i]/scaling) / sqrt(slice[i]), 2)*weight_map[i];
+      //sum += (log(sqrt(slice[i])) + pow((slice[i] - image[i]/scaling) / sqrt(slice[i]), 2))*weight_map[i];
+      count += weight_map[i];
     }
   }
   sum_cache[tid] = sum;
@@ -204,18 +369,19 @@ __device__ void cuda_calculate_responsability_poisson(float *slice, float *image
 }
 
 __device__ void cuda_calculate_responsability_true_poisson(float *slice, float *image,
-							   int *mask, real sigma, real scaling,
+							   int *mask, real sigma, real scaling, real *weight_map,
 							   int N_2d, int tid, int step,
-							   real * sum_cache, int * count_cache)
+							   real * sum_cache, real * count_cache)
 {
   real sum = 0.0;
   const int i_max = N_2d;
-  int count = 0;
+  real count = 0;
   for (int i = tid; i < i_max; i+=step) {
     if (mask[i] != 0 && slice[i] > 0.0f) {
-      sum += pow((slice[i]*scaling - image[i]) / 8.0, 2) / (image[i]/8.0 + 0.1) / 2.0;
+      //sum += (pow((slice[i]*scaling - image[i]) / 8.0, 2) / (image[i]/8.0 + 0.1) / 2.0) * weight_map[i];
+      sum += logf(sqrt(slice[i])) + pow((slice[i] - image[i]/scaling), 2)/slice[i]*weight_map[i];
       //sum += pow((slice[i] - image[i]/scaling) / sqrt(slice[i]+1.0), 2);
-      count++;
+      count += weight_map[i];
     }
   }
   sum_cache[tid] = sum;
@@ -224,11 +390,11 @@ __device__ void cuda_calculate_responsability_true_poisson(float *slice, float *
 }
 
 /* Now takes a starting slice. Otherwise unchanged */
-__global__ void calculate_responsabilities_kernel(float * slices, float * images, int * mask,
+__global__ void calculate_responsabilities_kernel(float * slices, float * images, int * mask, real *weight_map,
 						  real sigma, real * scaling, real * respons, real *weights, 
 						  int N_2d, int slice_start, enum diff_type diff){
   __shared__ real sum_cache[256];
-  __shared__ int count_cache[256];
+  __shared__ real count_cache[256];
   int tid = threadIdx.x;
   int step = blockDim.x;
   int i_image = blockIdx.x;
@@ -236,21 +402,18 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
   int N_images = gridDim.x;
 
   if (diff == relative) {
-    cuda_calculate_responsability_relative(&slices[i_slice*N_2d],
-					   &images[i_image*N_2d],mask,
-					   sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,step,
-					   sum_cache,count_cache);
+    cuda_calculate_responsability_relative(&slices[i_slice*N_2d], &images[i_image*N_2d], mask, weight_map,
+					   sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step,
+					   sum_cache, count_cache);
   } else if (diff == poisson) {
-    cuda_calculate_responsability_poisson(&slices[i_slice*N_2d],
-					  &images[i_image*N_2d],mask,
-					  sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,step,
-					  sum_cache,count_cache);
+    cuda_calculate_responsability_poisson(&slices[i_slice*N_2d], &images[i_image*N_2d], mask, weight_map,
+					  sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step,
+					  sum_cache, count_cache);
   } else if (diff == absolute) {
     /* This one was used for best result so far.*/
-    cuda_calculate_responsability_absolute(&slices[i_slice*N_2d],
-					   &images[i_image*N_2d],mask,
-					   sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,step,
-					   sum_cache,count_cache);
+    cuda_calculate_responsability_absolute(&slices[i_slice*N_2d], &images[i_image*N_2d], mask, weight_map,
+					   sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step,
+					   sum_cache, count_cache);
   }
 
   inblock_reduce(sum_cache);
@@ -258,13 +421,13 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
   __syncthreads(); //probably not needed
   if(tid == 0){
     //respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2);
-    respons[(slice_start+i_slice)*N_images+i_image] = log(weights[slice_start+i_slice]) - sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2);
+    respons[(slice_start+i_slice)*N_images+i_image] = log(weights[slice_start+i_slice]) - sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
   }   
 }
 
 
 /* Now takes start slice and slice chunk. Also removed memcopy, done separetely later. */
-void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask,
+void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask, real *d_weight_map,
 				     real sigma, real * d_scaling, real * d_respons, real *d_weights, 
 				     int N_2d, int N_images, int slice_start, int slice_chunk, enum diff_type diff){
   cudaEvent_t k_begin;
@@ -275,7 +438,7 @@ void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_m
 
   dim3 nblocks(N_images,slice_chunk);
   int nthreads = 256;
-  calculate_responsabilities_kernel<<<nblocks,nthreads>>>(d_slices, d_images, d_mask,
+  calculate_responsabilities_kernel<<<nblocks,nthreads>>>(d_slices, d_images, d_mask, d_weight_map,
 							  sigma, d_scaling, d_respons, d_weights,
 							  N_2d, slice_start, diff);
   cudaError_t status = cudaGetLastError();
@@ -448,9 +611,9 @@ __global__ void calculate_best_rotation_kernel(real *respons, int *best_rotation
   }
 }
 
-__device__ real calculate_scaling_poisson(real *image, real *slice, int *mask, int N_2d, int tid, int step){
+__device__ real calculate_scaling_poisson(real *image, real *slice, int *mask, real *weight_map, int N_2d, int tid, int step){
   __shared__ real sum_cache[256];
-  __shared__ int weight_cache[256];
+  __shared__ real weight_cache[256];
   sum_cache[tid] = 0.;
   weight_cache[tid] = 0; 
   for (int i = tid; i < N_2d; i+=step) {
@@ -460,8 +623,8 @@ __device__ real calculate_scaling_poisson(real *image, real *slice, int *mask, i
       sum_cache[tid] += image[i] / slice[i];
       weight_cache[tid] += 1.;
       */
-      sum_cache[tid] += image[i]*image[i]/slice[i];
-      weight_cache[tid] += image[i];
+      sum_cache[tid] += image[i]*image[i]/slice[i]*weight_map[i];
+      weight_cache[tid] += image[i]*weight_map[i];
     }
   }
   inblock_reduce(sum_cache);
@@ -470,9 +633,9 @@ __device__ real calculate_scaling_poisson(real *image, real *slice, int *mask, i
   return sum_cache[0] / weight_cache[0];
 }
 
-__device__ real calculate_scaling_absolute(real *image, real *slice, int *mask, int N_2d, int tid, int step){
+__device__ real calculate_scaling_absolute(real *image, real *slice, int *mask, real *weight_map, int N_2d, int tid, int step){
   __shared__ real sum_cache[256];
-  __shared__ int weight_cache[256];
+  __shared__ real weight_cache[256];
   sum_cache[tid] = 0.;
   weight_cache[tid] = 0; 
   for (int i = tid; i < N_2d; i+=step) {
@@ -482,8 +645,8 @@ __device__ real calculate_scaling_absolute(real *image, real *slice, int *mask, 
       sum_cache[tid] += image[i] / slice[i];
       weight_cache[tid] += 1.;
       */
-      sum_cache[tid] += image[i]*image[i];
-      weight_cache[tid] += image[i]*slice[i];
+      sum_cache[tid] += image[i]*image[i]*weight_map[i];
+      weight_cache[tid] += image[i]*slice[i]*weight_map[i];
     }
   }
   inblock_reduce(sum_cache);
@@ -492,9 +655,9 @@ __device__ real calculate_scaling_absolute(real *image, real *slice, int *mask, 
   return sum_cache[0] / weight_cache[0];
 }
 
-__device__ real calculate_scaling_relative(real *image, real *slice, int *mask, int N_2d, int tid, int step){
+__device__ real calculate_scaling_relative(real *image, real *slice, int *mask, real *weight_map, int N_2d, int tid, int step){
   __shared__ real sum_cache[256];
-  __shared__ int weight_cache[256];
+  __shared__ real weight_cache[256];
   sum_cache[tid] = 0.;
   weight_cache[tid] = 0; 
   for (int i = tid; i < N_2d; i+=step) {
@@ -504,8 +667,9 @@ __device__ real calculate_scaling_relative(real *image, real *slice, int *mask, 
       sum_cache[tid] += image[i] / slice[i];
       weight_cache[tid] += 1.;
       */
-      sum_cache[tid] += image[i]*image[i]/(slice[i]*slice[i]);
-      weight_cache[tid] += image[i]/slice[i];
+      sum_cache[tid] += image[i]*image[i]/(slice[i]*slice[i]) * weight_map[i];
+      //weight_cache[tid] += image[i]/slice[i];
+      weight_cache[tid] += image[i]/slice[i] * weight_map[i];
     }
   }
   inblock_reduce(sum_cache);
@@ -514,7 +678,7 @@ __device__ real calculate_scaling_relative(real *image, real *slice, int *mask, 
   return sum_cache[0] / weight_cache[0];
 }
 
-__global__ void update_scaling_best_kernel(real *scaling, real *images, real *model, int *mask, real *rotations,
+__global__ void update_scaling_best_kernel(real *scaling, real *images, real *model, int *mask, real *weight_map, real *rotations,
 					   real *x_coordinates, real *y_coordinates, real *z_coordinates,
 					   int side, int *best_rotation){
   int step = blockDim.x;
@@ -537,14 +701,14 @@ __global__ void update_scaling_best_kernel(real *scaling, real *images, real *mo
   }
   */
 
-  real this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], this_slice, mask, N_2d, tid, step);
+  real this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], this_slice, mask, weight_map, N_2d, tid, step);
   if (tid == 0) {
     scaling[i_image] = this_scaling;
   }
 }
 
 void cuda_update_scaling_best(real *d_images, int *d_mask,
-			      real *d_model, real *d_scaling, real *d_respons, real *d_rotations,
+			      real *d_model, real *d_scaling, real *d_weight_map, real *d_respons, real *d_rotations,
 			      real *x_coordinates, real *y_coordinates, real *z_coordinates,
 			      int N_images, int N_slices, int side, real *scaling) {
   int nblocks = N_images;
@@ -555,25 +719,25 @@ void cuda_update_scaling_best(real *d_images, int *d_mask,
   calculate_best_rotation_kernel<<<nblocks, nthreads>>>(d_respons, d_best_rotation, N_slices);
   nthreads = 256;
   nblocks = N_images;
-  update_scaling_best_kernel<<<nblocks,nthreads,N_2d*sizeof(real)>>>(d_scaling, d_images, d_model, d_mask, d_rotations, x_coordinates, y_coordinates, z_coordinates, side, d_best_rotation);
+  update_scaling_best_kernel<<<nblocks,nthreads,N_2d*sizeof(real)>>>(d_scaling, d_images, d_model, d_mask, d_weight_map, d_rotations, x_coordinates, y_coordinates, z_coordinates, side, d_best_rotation);
   cudaMemcpy(scaling,d_scaling,sizeof(real)*N_images,cudaMemcpyDeviceToHost);
 }
 
-__global__ void update_scaling_full_kernel(real *images, real *slices, int *mask, real *scaling, int N_2d, int slice_start, enum diff_type diff) {
+__global__ void update_scaling_full_kernel(real *images, real *slices, int *mask, real *scaling, real *weight_map, int N_2d, int slice_start, enum diff_type diff) {
   const int tid = threadIdx.x;
   const int step = blockDim.x;
   const int i_image = blockIdx.x;
   const int i_slice = blockIdx.y;
   const int N_images = gridDim.x;
   real this_scaling;
-  this_scaling = calculate_scaling_absolute(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
+  this_scaling = calculate_scaling_absolute(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
   /*
   if (diff == poisson) {
-    this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
+    this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
   } else if (diff == absolute) {
-    this_scaling = calculate_scaling_absolute(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
+    this_scaling = calculate_scaling_absolute(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
   } else if (diff == relative) {
-    this_scaling = calculate_scaling_relative(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, N_2d, tid, step);
+    this_scaling = calculate_scaling_relative(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
   }
   */
   //this_scaling *= 0.5;
@@ -583,11 +747,11 @@ __global__ void update_scaling_full_kernel(real *images, real *slices, int *mask
   }
 }
 
-void cuda_update_scaling_full(real *d_images, real *d_slices, int *d_mask, real *d_scaling,
+void cuda_update_scaling_full(real *d_images, real *d_slices, int *d_mask, real *d_scaling, real *d_weight_map,
 			      int N_2d, int N_images, int slice_start, int slice_chunk, enum diff_type diff) {
   dim3 nblocks(N_images,slice_chunk);
   int nthreads = 256;
-  update_scaling_full_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_scaling, N_2d, slice_start, diff);
+  update_scaling_full_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_scaling, d_weight_map, N_2d, slice_start, diff);
 }
 
 /* function now takes a start slice and a number of slices to retrieve */
@@ -740,7 +904,7 @@ __global__ void model_average_kernel(real *model, int model_size, real *average)
   sum_cache[tid] = 0.;
   weight_cache[tid] = 0;
   for (int i = tid; i < model_size; i+=step) {
-    if (model[i] > 0.) {
+    if (model[i] >= 0.) {
       sum_cache[tid] += model[i];
       weight_cache[tid] += 1;
     }
@@ -1146,6 +1310,7 @@ void cuda_normalize_responsabilities(real * d_respons, int N_slices, int N_image
   int nblocks = N_images;
   int nthreads = 256;
   cuda_normalize_responsabilities_kernel<<<nblocks,nthreads>>>(d_respons, N_slices, N_images);
+  //cuda_normalize_responsabilities_uniform_kernel<<<nblocks,nthreads>>>(d_respons, N_slices, N_images);
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess){
     printf("CUDA Error (norm resp): %s\n",cudaGetErrorString(status));
@@ -1400,7 +1565,7 @@ void cuda_allocate_weight_map(real **d_weight_map, int image_side) {
   thrust::fill(p, p+image_side*image_side, real(1));
 }
 
-__global__ void calculate_weight_map_kernel(real *weight_map, real width, real falloff) {
+__global__ void calculate_weight_map_inner_kernel(real *weight_map, real width, real falloff) {
   const int tid = threadIdx.x;
   const int step = blockDim.x;
   const int y = blockIdx.x;
@@ -1418,12 +1583,38 @@ __global__ void calculate_weight_map_kernel(real *weight_map, real width, real f
   }
 }
 
-void cuda_calculate_weight_map(real *d_weight_map, int image_side, real width, real falloff) {
+void cuda_calculate_weight_map_inner(real *d_weight_map, int image_side, real width, real falloff) {
   int nthreads = 256;
   int nblocks = image_side;
-  calculate_weight_map_kernel<<<nblocks,nthreads>>>(d_weight_map, width, falloff);
+  calculate_weight_map_inner_kernel<<<nblocks,nthreads>>>(d_weight_map, width, falloff);
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess){
     printf("CUDA Error (cuda_calculate_weight_map: copy): %s\n",cudaGetErrorString(status));
   }
+}
+
+__global__ void calculate_weight_map_ring_kernel(real *weight_map, real inner_rad, real inner_falloff, real outer_rad, real outer_falloff) {
+  const int tid = threadIdx.x;
+  const int step = blockDim.x;
+  const int y = blockIdx.x;
+  const int image_side = gridDim.x;
+  
+  real radius;
+  real dx, dy;
+  dy = (y - image_side/2) + 0.5;
+  for (int x = tid; x < image_side; x+= step) {
+    dx = (x - image_side/2) + 0.5;
+    radius = sqrt(pow(dx, 2) + pow(dy, 2));
+    weight_map[y*image_side + x] = (1. / (1. + exp(-(radius - inner_rad) * 5. / inner_falloff))) * (1. / (1. + exp((radius - outer_rad) * 5. / outer_falloff)));
+  }
+}
+
+void cuda_calculate_weight_map_ring(real *d_weight_map, int image_side, real inner_rad, real inner_falloff, real outer_rad, real outer_falloff) {
+  int nthreads = 256;
+  int nblocks = image_side;
+  calculate_weight_map_ring_kernel<<<nblocks, nthreads>>>(d_weight_map, inner_rad, inner_falloff, outer_rad, outer_falloff);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_calculate_weight_map: copy): %s\n",cudaGetErrorString(status));
+  }  
 }

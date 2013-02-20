@@ -1,23 +1,38 @@
 #! /usr/local/bin/python-32
+
+# import sip
+# sip.setapi('QString', 2)
+# sip.setapi('QVariant', 2)
 from pylab import *
 #import spimage
 import sphelper
 import sys
 import numpy
 import time
+import h5py
 import rotations
 import icosahedral_sphere
-try:
-    from mayavi import mlab
-except ImportError:
-    from enthought.mayavi import mlab
 from optparse import OptionParser
+# try:
+#     from PySide import QtCore, QtGui
+#     print "pyside"
+# except ImportError:
+#     from PyQt4 import QtCore, QtGui
+#     QtCore.Signal = QtCore.pyqtSignal
+#     QtCore.Slot = QtCore.pyqtSlot
+#     print "pyqt"
+from PyQt4 import QtCore, QtGui
+QtCore.Signal = QtCore.pyqtSignal
+QtCore.Slot = QtCore.pyqtSlot
 try:
-    from PySide import QtCore, QtGui
+    print "import mlab"
+    from mayavi import mlab
+    print "import mlab - done"
 except ImportError:
-    from PyQt4 import QtCore, QtGui
-    QtCore.Signal = QtCore.pyqtSignal
-    QtCore.Slot = QtCore.pyqtSlot
+    print "import mlab - failed"
+    from enthought.mayavi import mlab
+
+#import kernprof
 
 SLIDER_LENGTH = 100
 
@@ -39,8 +54,8 @@ class Model(QtCore.QObject):
         
         self._rotations = loadtxt('output/rotations.data')
         self._euler_angles = array([rotations.quaternion_to_euler_angle(rotation) for rotation in self._rotations])
-        self._coordinates = transpose(array([sin(self._euler_angles[:, 0])*cos(self._euler_angles[:, 1]),
-                                             cos(self._euler_angles[:, 0])*cos(self._euler_angles[:, 1]),
+        self._coordinates = transpose(array([sin(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
+                                             cos(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
                                              sin(self._euler_angles[:, 1])]))
 
         number_of_rotations = len(self._rotations)
@@ -117,8 +132,10 @@ class Model(QtCore.QObject):
             for i, r in enumerate(average_resp):
                 self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
         elif self._rotation_type == 1:
-            resp = loadtxt('output/responsabilities_%.4d.data' % self._current_iteration)
-            for i, r in enumerate(resp[self._rotation_image_number, :]):
+            resp_handle = h5py.File('output/responsabilities_%.4d.h5' % self._current_iteration)
+            resp = resp_handle['data'][self._rotation_image_number,:]
+            resp_handle.close()
+            for i, r in enumerate(resp):
                 self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
         self._rotation_sphere_bins[self._rotation_sphere_good_indices] /= self._rotation_sphere_weights[self._rotation_sphere_good_indices]
         return self._rotation_sphere_bins
@@ -138,7 +155,6 @@ class Model(QtCore.QObject):
         self._rotation_image_number = image_number
         self.image_changed.emit(self._current_iteration)
             
-
     
 class Viewer(QtCore.QObject):
     def __init__(self, model):
@@ -430,11 +446,14 @@ if __name__ == "__main__":
     parser.add_option("-m", action="store_true", dest="mask", help="Plot mask.")
     (options, args) = parser.parse_args()
 
+    app = QtGui.QApplication.instance()
+
     model = Model(0)
     viewer = Viewer(model)
     #viewer.plot_slices()
     
-    app = QtGui.QApplication(['Controll window'])
+    #app = QtGui.QApplication(['Controll window'])
+
     program = StartMain(model, viewer)
     program.show()
     sys.exit(app.exec_())

@@ -39,6 +39,7 @@ typedef struct{
     int normalize_images;
     int known_intensity;
     int model_input;
+    double initial_model_noise;
     const char *model_file;
     int exclude_images;
     double exclude_ratio;
@@ -74,14 +75,14 @@ typedef struct{
 			   real * d_scaling, real * d_weighted_power,
 			   int N_images, int N_slices, int N_2d, real * scaling);
   void cuda_update_scaling_best(real *d_images, int *d_mask,
-				real *d_model, real *d_scaling, real *d_respons, real *d_rotations,
+				real *d_model, real *d_scaling, real *d_weight_map, real *d_respons, real *d_rotations,
 				real *x_coordinates, real *y_coordinates, real *z_coordinates,
 				int N_images, int N_slices, int side, real *scaling);
-  void cuda_update_scaling_full(real *d_images, real *d_slices, int *d_mask, real *d_scaling,
+  void cuda_update_scaling_full(real *d_images, real *d_slices, int *d_mask, real *d_scaling, real *d_weight_map,
 				int N_2d, int N_images, int slice_start, int slice_chunk, enum diff_type diff);
 
 
-  void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask,
+  void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask, real *d_weight_map,
 				       real sigma, real * d_scaling, real * d_respons, real *d_weights, 
 				       int N_2d, int N_images, int slice_start, int slice_chunk,
 				       enum diff_type diff);
@@ -141,7 +142,10 @@ typedef struct{
   void cuda_calculate_best_rotation(real *d_respons, int *d_best_rotation, int N_images, int N_slices);
   void cuda_blur_model(real *d_model, const int model_side, const real sigma);
   void cuda_allocate_weight_map(real **d_weight_map, int image_side);
-  void cuda_calculate_weight_map(real *d_weight_map, int image_side, real width, real falloff);
+  void cuda_calculate_weight_map_inner(real *d_weight_map, int image_side, real width, real falloff);
+  void cuda_calculate_weight_map_ring(real *d_weight_map, int image_side, real inner_rad, real inner_falloff, real outer_rad, real outer_falloff);
+  void cuda_test_interpolate();
+  void cuda_test_interpolate_set();
 
 #ifdef __cplusplus
   }

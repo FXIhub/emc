@@ -12,6 +12,7 @@ IF(CMAKE_COMPILER_IS_GNUCC)
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
 
 FIND_PACKAGE(SpImage REQUIRED)
+FIND_PACKAGE(HDF5 REQUIRED)
 	
 FIND_PACKAGE(CUDA REQUIRED)
 set(CUDA_NVCC_FLAGS "-arch sm_20")
@@ -28,5 +29,5 @@ find_package(GSL REQUIRED)
 
 cuda_add_executable(emc emc.c rotations.c emc_cuda.cu emc_atomic.cu)
 cuda_add_cufft_to_target(emc)
-target_link_libraries(emc spimage config gsl gslcblas)
+target_link_libraries(emc spimage config gsl gslcblas hdf5)
 
