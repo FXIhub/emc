@@ -6,6 +6,8 @@
 //#include "rotations.h"
 #include <libconfig.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <hdf5.h>
 
 static int quit_requested = 0;
 
@@ -17,13 +19,6 @@ void nice_exit(int sig) {
   }
 }
 
-/*
-int compare_real(real *a, real *b){
-  if (*a < *b) {return -1;}
-  else if (*a > *b) {return 1;}
-  else {return 0;}
-}
-*/
 int compare_real(const void *pa, const void *pb) {
   real a = *(const real*)pa;
   real b = *(const real*)pb;
@@ -31,6 +26,76 @@ int compare_real(const void *pa, const void *pb) {
   if (a < b) {return -1;}
   else if (a > b) {return 1;}
   else {return 0;}
+}
+
+
+void write_1d_array_hdf5(char *filename, real *array, int index1_max) {
+  hid_t file_id;
+  file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  hid_t space_id;
+  hid_t dataset_id;
+  hsize_t dim[1]; dim[0] = index1_max;
+  
+  space_id = H5Screate_simple(1, dim, NULL);
+  dataset_id = H5Dcreate1(file_id, "/data", H5T_NATIVE_FLOAT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, array);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+  H5Fclose(file_id);
+}
+
+void write_2d_array_hdf5(char *filename, real *array, int index1_max, int index2_max) {
+  hid_t file_id;
+  file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  hid_t space_id;
+  hid_t dataset_id;
+  hsize_t dim[2]; dim[0] = index1_max; dim[1] = index2_max;
+  
+  space_id = H5Screate_simple(2, dim, NULL);
+  dataset_id = H5Dcreate1(file_id, "/data", H5T_NATIVE_FLOAT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, array);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+  H5Fclose(file_id);
+}
+
+void write_2d_array_trans_hdf5(char *filename, real *array, int index1_max, int index2_max) {
+
+  real *array_trans = malloc(index1_max*index2_max*sizeof(real));
+  for (int i1 = 0; i1 < index1_max; i1++) {
+    for (int i2 = 0; i2 < index2_max; i2++) {
+      array_trans[i2*index1_max+i1] = array[i1*index2_max+i2];
+    }
+  }
+  hid_t file_id;
+  file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  hid_t space_id;
+  hid_t dataset_id;
+  hsize_t dim[2]; dim[0] = index2_max; dim[1] = index1_max;
+  
+  space_id = H5Screate_simple(2, dim, NULL);
+  dataset_id = H5Dcreate1(file_id, "/data", H5T_NATIVE_FLOAT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, array_trans);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+  H5Fclose(file_id);
+  free(array_trans);
+}
+
+void write_3d_array_hdf5(char *filename, real *array, int index1_max, int index2_max, int index3_max) {
+  hid_t file_id;
+  file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  hid_t space_id;
+  hid_t dataset_id;
+  hsize_t dim[3];
+  dim[0] = index1_max; dim[1] = index2_max; dim[2] = index3_max;
+  
+  space_id = H5Screate_simple(3, dim, NULL);
+  dataset_id = H5Dcreate1(file_id, "/data", H5T_NATIVE_FLOAT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, array);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+  H5Fclose(file_id);
 }
 
 void calculate_coordinates(int side, real pixel_size, real detector_distance, real wavelength,
@@ -55,101 +120,6 @@ void calculate_coordinates(int side, real pixel_size, real detector_distance, re
       sp_matrix_set(x_coordinates,x,y,pixel_x);
       sp_matrix_set(y_coordinates,x,y,pixel_y);
       sp_matrix_set(z_coordinates,x,y,pixel_z);
-    }
-  }
-}
-
-
-void get_pixel_from_voxel(real detector_distance, real wavelength,
-			  real pixel_size, int x_max, int y_max,
-			  const real * voxel, real * pixel){
-  const real v_x = voxel[0];
-  const real v_y = voxel[1];
-  const real v_z = voxel[2];
-  real p_x = v_x - 0.5 + x_max/2;
-  real p_y = v_y - 0.5 + y_max/2;
-  real pixel_r = sqrt(v_x*v_x + v_y*v_y);
-  real real_r = pixel_r*pixel_size;
-  real angle_r = atan2(real_r,detector_distance);
-  real fourier_r = sinf(angle_r)/wavelength;
-  real fourier_z = (1.0f - cosf(angle_r))/wavelength;
-  real calc_z = fourier_z/fourier_r*pixel_r;
-  if(fabs(calc_z - v_z) <= 0.5){
-    pixel[0] = p_x;
-    pixel[1] = p_y;    
-  }else{
-    pixel[0] = -1;
-  }
-
-}
-
-void test_get_pixel_from_voxel(int side, real pixel_size, real detector_distance, real wavelength,
-			       sp_matrix *x_coordinates, sp_matrix *y_coordinates, sp_matrix *z_coordinates) {
-  const int x_max = side;
-  const int y_max = side;
-  for (int x = 0; x < x_max; x++) {
-    for (int y = 0; y < y_max; y++) {
-      real voxel[3];
-      voxel[0] = rint(sp_matrix_get(x_coordinates,x,y));
-      voxel[1] = rint(sp_matrix_get(y_coordinates,x,y));
-      voxel[2] = rint(sp_matrix_get(z_coordinates,x,y));
-      real pixel[2];
-      get_pixel_from_voxel(detector_distance, wavelength,
-			   pixel_size, x_max, y_max,
-			   voxel, pixel);
-      if(lrint(pixel[0]) != x){
-	printf("x - %f and %d don't match\n",pixel[0],x);
-      }
-      if(lrint(pixel[1]) != y){
-	printf("y - %f and %d don't match\n",pixel[1],y);
-      }      
-    }
-  }
-}
-
-void get_slice(sp_3matrix *model, sp_matrix *slice, Quaternion *rot,
-	       sp_matrix *x_coordinates, sp_matrix *y_coordinates,
-	       sp_matrix *z_coordinates)
-{
-  const int x_max = sp_matrix_rows(slice);
-  const int y_max = sp_matrix_cols(slice);
-  //tabulate angle later
-  real new_x, new_y, new_z;
-  int round_x, round_y, round_z;
-  for (int x = 0; x < x_max; x++) {
-    for (int y = 0; y < y_max; y++) {
-      /* This is just a matrix multiplication with rot */
-      new_x =
-	(rot->q[0]*rot->q[0] + rot->q[1]*rot->q[1] -
-	 rot->q[2]*rot->q[2] - rot->q[3]*rot->q[3])*sp_matrix_get(x_coordinates,x,y) +
-	(2.0*rot->q[1]*rot->q[2] -
-	 2.0*rot->q[0]*rot->q[3])*sp_matrix_get(y_coordinates,x,y) +
-	(2.0*rot->q[1]*rot->q[3] +
-	 2.0*rot->q[0]*rot->q[2])*sp_matrix_get(z_coordinates,x,y);
-      new_y =
-	(2.0*rot->q[1]*rot->q[2] +
-	 2.0*rot->q[0]*rot->q[3])*sp_matrix_get(x_coordinates,x,y) +
-	(rot->q[0]*rot->q[0] - rot->q[1]*rot->q[1] +
-	 rot->q[2]*rot->q[2] - rot->q[3]*rot->q[3])*sp_matrix_get(y_coordinates,x,y) +
-	(2.0*rot->q[2]*rot->q[3] -
-	 2.0*rot->q[0]*rot->q[1])*sp_matrix_get(z_coordinates,x,y);
-      new_z =
-	(2.0*rot->q[1]*rot->q[3] -
-	 2.0*rot->q[0]*rot->q[2])*sp_matrix_get(x_coordinates,x,y) +
-	(2.0*rot->q[2]*rot->q[3] +
-	 2.0*rot->q[0]*rot->q[1])*sp_matrix_get(y_coordinates,x,y) +
-	(rot->q[0]*rot->q[0] - rot->q[1]*rot->q[1] -
-	 rot->q[2]*rot->q[2] + rot->q[3]*rot->q[3])*sp_matrix_get(z_coordinates,x,y);
-      round_x = round((real)sp_3matrix_x(model)/2.0 + 0.5 + new_x);
-      round_y = round((real)sp_3matrix_y(model)/2.0 + 0.5 + new_y);
-      round_z = round((real)sp_3matrix_z(model)/2.0 + 0.5 + new_z);
-      if (round_x > 0 && round_x < sp_3matrix_x(model) &&
-	  round_y > 0 && round_y < sp_3matrix_y(model) &&
-	  round_z > 0 && round_z < sp_3matrix_z(model)) {
-	sp_matrix_set(slice,x,y,sp_3matrix_get(model,round_x,round_y,round_z));
-      } else {
-	sp_matrix_set(slice,x,y,0.0);
-      }
     }
   }
 }
@@ -203,175 +173,70 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
   }
 }
 
-real update_slice(sp_matrix ** images, sp_matrix ** slices, sp_imatrix * mask,
-		  real * respons, real * scaling,
-		  int N_images, int N_2d, int i_slice){
-  real total_respons = 0.0;
-  for (int i_image = 0; i_image < N_images; i_image++) {
-    for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i] != 0) {
-	slices[i_slice]->data[i] += images[i_image]->data[i]*
-	  respons[i_slice*N_images+i_image]/scaling[i_image];
-      }
-    }
-    total_respons += respons[i_slice*N_images+i_image];
+void test_blur() {
+  int i_device = cuda_get_device();
+  printf("device id = %d\n", i_device);
+  /* test blur */
+  const int image_side = 10;
+  const int N_3d = pow(image_side, 3);
+
+  real *image = malloc(N_3d*sizeof(real));
+  for (int i = 0; i < N_3d; i++) {
+    image[i] = 0.;
   }
-  return total_respons;
+  //image[image_side*image_side*image_side/2 + image_side*image_side/2 + image_side/2] = 1.;
+  image[image_side*image_side*2 + image_side*3 + 3] = 1.;
+  image[image_side*image_side*7 + image_side*8 + 5] = 1.;
+  image[image_side*image_side*5 + image_side*5 + 5] = -1.;
+  FILE *blur_out = fopen("debug/blur_before.data", "wp");
+  for (int i = 0; i < N_3d; i++) {
+    fprintf(blur_out, "%g\n", image[i]);
+  }
+  fclose(blur_out);
+  real *d_image;
+  cuda_allocate_real(&d_image, N_3d);
+  cuda_copy_real_to_device(image, d_image, N_3d);
+
+
+  int *mask = malloc(N_3d*sizeof(int));
+  for (int i = 0; i < N_3d; i++) {
+    mask[i] = 1;
+  }
+  int *d_mask;
+  cuda_allocate_int(&d_mask, N_3d);
+  cuda_copy_int_to_device(mask, d_mask, N_3d);
+
+  cuda_blur_model(d_image, image_side, 1.);
+
+  cuda_copy_real_to_host(image, d_image, N_3d);
+  blur_out = fopen("debug/blur_after.data", "wp");
+  for (int i = 0; i < N_3d; i++) {
+    fprintf(blur_out, "%g\n", image[i]);
+  }
+  fclose(blur_out);
+  exit(0);
+  /* done testing blur */
 }
 
-real slice_weighting(sp_matrix ** images, sp_matrix ** slices,sp_imatrix * mask,
-		     real * respons, real * scaling,
-		     int N_slices, int N_2d, int i_image, int N_images){
-  real weighted_power = 0;
-  for (int i_slice = 0; i_slice < N_slices; i_slice++) { 
-    real correlation = 0.0;
-    for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i] != 0) {
-	correlation += images[i_image]->data[i]*slices[i_slice]->data[i];
-      }
-    }
-    weighted_power += respons[i_slice*N_images+i_image]*correlation;
-  }  
-  return weighted_power;
-}
+void test_weight_map() {
+  int image_side = 100;
+  real width = 20.;
+  real falloff = 10.;
 
-void calculate_normalization(sp_matrix **images, int size, sp_matrix *average, sp_matrix *scale)
-{
-  /* create radius matrix */
-  sp_matrix *radius = sp_matrix_alloc(sp_matrix_rows(images[0]),sp_matrix_cols(images[0]));
-  const int x_max = sp_matrix_rows(radius);
-  const int y_max = sp_matrix_cols(radius);
-  for (int x = 0; x < x_max; x++) {
-    for (int y = 0; y < y_max; y++) {
-      sp_matrix_set(radius,x,y,sqrt(pow((real)x-(real)x_max/2.0+0.5,2) +
-				    pow((real)y-(real)y_max/2.0+0.5,2)));
-    }
-  }
+  real *d_weight_map;
+  cuda_allocate_weight_map(&d_weight_map, image_side);
 
-  /* calculate average */
-  const int length = ceil(sqrt(pow(x_max,2)+pow(y_max,2))/2.0);
-  real histogram[length];
-  int count[length];
-  for (int i = 0; i < length; i++) {
-    histogram[i] = 0.0;
-    count[i] = 0;
-  }
-  for (int i_image = 0; i_image < size; i_image++) {
-    for (int x = 0; x < x_max; x++) {
-      for (int y = 0; y < y_max; y++) {
-	histogram[(int)floor(sp_matrix_get(radius,x,y))] += sp_matrix_get(images[i_image],x,y);
-	count[(int)floor(sp_matrix_get(radius,x,y))] += 1;
-      }
-    }
-  }
-  printf("length = %d\n",length);
-  for (int i = 0; i < length; i++) {
-    if (count[i] > 0) {
-      histogram[i] /= count[i];
-    }
-  }
-  for (int x = 0; x < x_max; x++) {
-    for (int y = 0; y < y_max; y++) {
-      sp_matrix_set(average,x,y,histogram[(int)floor(sp_matrix_get(radius,x,y))]);
-    }
-  }
+  cuda_calculate_weight_map_ring(d_weight_map, image_side, 0., 0., width, falloff);
 
+  real *weight_map = malloc(image_side*image_side*sizeof(real));
+  cuda_copy_real_to_host(weight_map, d_weight_map, image_side*image_side);
 
-  /* calculate scale */
-  for (int i = 0; i < length; i++) {
-    histogram[i] = 0.0;
-    count[i] = 0;
+  FILE *weight_map_out = fopen("debug/weight_map.data", "wp");
+  for (int i = 0; i < image_side*image_side; i++) {
+    fprintf(weight_map_out, "%g\n", weight_map[i]);
   }
-  for (int i_image = 0; i_image < size; i_image++) {
-    for (int x = 0; x < x_max; x++) {
-      for (int y = 0; y < y_max; y++) {
-	histogram[(int)floor(sp_matrix_get(radius,x,y))] += pow(sp_matrix_get(images[i_image],x,y) -
-							   sp_matrix_get(average,x,y),2);
-	count[(int)floor(sp_matrix_get(radius,x,y))] += 1;
-      }
-    }
-  }
-  for (int i = 0; i < length; i++) {
-    histogram[i] /= count[i];
-  }
-  for (int x = 0; x < x_max; x++) {
-    for (int y = 0; y < y_max; y++) {
-      if (sp_matrix_get(radius,x,y) < sp_min(x_max,y_max)/2.0) {
-	sp_matrix_set(scale,x,y,1.0/sqrt(histogram[(int)floor(sp_matrix_get(radius,x,y))]));
-      } else {
-	sp_matrix_set(scale,x,y,0.0);
-      }
-    }
-  }
-  /*
-  Image *out = sp_image_alloc(x_max,y_max,1);
-  for (int i = 0; i < x_max*y_max; i++) {
-    out->image->data[i] = sp_cinit(average->data[i],0.0);
-  }
-  sp_image_write(out,"debug_average.h5",0);
-  for (int i = 0; i < x_max*y_max; i++) {
-    out->image->data[i] = sp_cinit(scale->data[i],0.0);
-  }
-  sp_image_write(out,"debug_scale.h5",0);
-  exit(1);
-  */
-}
-
-real calculate_correlation(sp_matrix *slice, sp_matrix *image,
-			   sp_matrix *average, sp_matrix *scale)
-{
-  real sum = 0.0;
-  const int i_max = sp_matrix_size(slice);
-  for (int i = 0; i < i_max; i++) {
-    sum += (slice->data[i] - average->data[i]) *
-      (image->data[i] - average->data[i]) * pow(scale->data[i],2);
-  }
-  return sum;
-}
-
-/* This responsability does not yet take scaling of patterns into accoutnt. */
-real calculate_responsability_absolute(sp_matrix *slice, sp_matrix *image, sp_imatrix *mask, real sigma, real scaling)
-{
-
-  real sum = 0.0;
-  const int i_max = sp_matrix_size(slice);
-  int count = 0;
-  for (int i = 0; i < i_max; i++) {
-    if (mask->data[i] != 0) {
-      sum += pow(slice->data[i] - image->data[i]/scaling,2);
-      count++;
-    }
-  }
-  //return exp(-sum/2.0/(real)count/pow(sigma,2));
-  return -sum/2.0/(real)count/pow(sigma,2); //return in log scale.
-}
-
-real calculate_responsability_poisson(sp_matrix *slice, sp_matrix *image, sp_imatrix *mask, real sigma, real scaling)
-{
-  real sum = 0.0;
-  const int i_max = sp_matrix_size(slice);
-  int count = 0;
-  for (int i = 0; i < i_max; i++) {
-    if (mask->data[i] != 0) {
-      sum += pow(slice->data[i] - image->data[i]/scaling,2) / (1.0+image->data[i]) * scaling;
-      count++;
-    }
-  }
-  return exp(-sum/2.0/(real)count/pow(sigma,2));
-}
-
-real calculate_responsability_relative(sp_matrix *slice, sp_matrix *image, sp_imatrix *mask, real sigma, real scaling)
-{
-  real sum = 0.0;
-  const int i_max = sp_matrix_size(slice);
-  int count = 0;
-  for (int i = 0; i < i_max; i++) {
-    if (mask->data[i] != 0) {
-      sum += pow((slice->data[i] - image->data[i]/scaling + sqrt(image->data[i]+1.0)/scaling) / (slice->data[i] + (1.0+image->data[i]/scaling)),2);
-      count++;
-    }
-  }
-  return exp(-sum/2.0/(real)count/pow(sigma,2));
+  fclose(weight_map_out);
+  exit(0);
 }
 
 Configuration read_configuration_file(const char *filename)
@@ -393,7 +258,9 @@ Configuration read_configuration_file(const char *filename)
   config_lookup_int(&config,"detector_size",&config_out.detector_size);
   config_lookup_float(&config,"detector_distance",&config_out.detector_distance);
   config_lookup_int(&config,"rotations_n",&config_out.rotations_n);
-  config_lookup_float(&config,"sigma",&config_out.sigma);
+  config_lookup_float(&config,"sigma_start",&config_out.sigma_start);
+  config_lookup_float(&config,"sigma_final",&config_out.sigma_final);
+  config_lookup_int(&config,"sigma_half_life",&config_out.sigma_half_life);
   config_lookup_int(&config,"slice_chunk",&config_out.slice_chunk);
   config_lookup_int(&config,"N_images",&config_out.N_images);
   config_lookup_int(&config,"max_iterations",&config_out.max_iterations);
@@ -404,10 +271,22 @@ Configuration read_configuration_file(const char *filename)
   config_lookup_bool(&config,"normalize_images",&config_out.normalize_images);
   config_lookup_bool(&config,"known_intensity",&config_out.known_intensity);
   config_lookup_int(&config,"model_input",&config_out.model_input);
+  config_lookup_float(&config,"initial_model_noise",&config_out.initial_model_noise);
   config_lookup_string(&config,"model_file",&config_out.model_file);
   config_lookup_bool(&config,"exclude_images",&config_out.exclude_images);
   config_lookup_float(&config,"exclude_ratio",&config_out.exclude_ratio);
+  const char *diff_type_string = malloc(20*sizeof(char));
+  config_lookup_string(&config,"diff_type",&diff_type_string);
+  if (strcmp(diff_type_string, "absolute") == 0) {
+    config_out.diff = absolute;
+  } else if (strcmp(diff_type_string, "poisson") == 0) {
+    config_out.diff = poisson;
+  } else if (strcmp(diff_type_string, "relative") == 0) {
+    config_out.diff = relative;
+  }
+  config_lookup_float(&config,"model_blur",&config_out.model_blur);
 
+  config_out.pixel_size /= config_out.read_stride;
   return config_out;
 }
 
@@ -436,28 +315,12 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 
     images[i] = sp_matrix_alloc(conf.model_side,conf.model_side);
     masks[i] = sp_imatrix_alloc(conf.model_side,conf.model_side);
-    /*
-    for (int x = 0; x < conf.model_side; x++) {
-      for (int y = 0; y < conf.model_side; y++) {
 
-	sp_matrix_set(images[i],x,y,
-		      sp_cabs(sp_image_get(img,
-					   (int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+
-						 sp_image_x(img)/2-0.5),
-					   (int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+
-						 sp_image_y(img)/2-0.5),0)));
-	if (sp_image_mask_get(img,
-			      (int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+
-				    sp_image_x(img)/2-0.5),
-			      (int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+
-				    sp_image_y(img)/2-0.5),0)) {
-	  sp_imatrix_set(masks[i],x,y,1);
-	} else {
-	  sp_imatrix_set(masks[i],x,y,0);
-	}
+    for (int pixel_i = 0; pixel_i < sp_image_size(img); pixel_i++) {
+      if (sp_real(img->image->data[pixel_i]) < 0.) {
+	sp_real(img->image->data[pixel_i]) = 0.;
       }
     }
-    */
 
     real pixel_sum;
     int mask_sum;
@@ -471,10 +334,11 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 	    mask_sum += sp_image_mask_get(img,(int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,(int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0);
 	  }
 	}
-	sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
 	if (mask_sum > 1) {
+	  sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
 	  sp_imatrix_set(masks[i],x,y,1);
 	} else {
+	  sp_matrix_set(images[i],x,y,0.);
 	  sp_imatrix_set(masks[i],x,y,0);
 	}
       }
@@ -592,7 +456,38 @@ void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
 
 int main(int argc, char **argv)
 {
+  /*
+  cuda_choose_best_device();
+  cuda_print_device_info();
+  cuda_test_interpolate_set();
+  exit(0);
+  */
+
   signal(SIGINT, nice_exit);
+  //cuda_set_device(1);
+  //cuda_set_device(cuda_get_best_device());
+  cuda_choose_best_device();
+  cuda_print_device_info();
+
+  struct stat sb;
+  if (stat("output", &sb) != 0) {
+    if (mkdir("output",0777) == 0) {
+      printf("Created directory: output\n");
+    } else {
+      printf("Failed to create directory: output\n");
+    }
+  }
+  if (stat("debug", &sb) != 0) {
+    if (mkdir("debug",0777) == 0) {
+      printf("Created directory: output\n");
+    } else {
+      printf("Failed to create directory: output\n");
+    }
+  }
+
+  //test_blur();
+  //test_weight_map();
+
   //signal(SIGKILL, nice_exit);
   Configuration conf;
   if (argc > 1) {
@@ -606,12 +501,33 @@ int main(int argc, char **argv)
   const int output_period = 10;
   const int n = conf.rotations_n;
   const int N_2d = conf.model_side*conf.model_side;
+  const int N_3d = conf.model_side*conf.model_side*conf.model_side;
   char buffer[1000];
 
   Quaternion **rotations;
   real *weights;
   const int N_slices = generate_rotation_list(n,&rotations,&weights);
+  real *d_weights;
+  
+  cuda_allocate_real(&d_weights, N_slices);
+  cuda_copy_real_to_device(weights, d_weights, N_slices);
   printf("%d rotations sampled\n",N_slices);
+  /* outpus weigths */
+  /* now h5
+  FILE *weights_file = fopen("debug/weights.data", "wp");
+  for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+    fprintf(weights_file, "%g\n", weights[i_slice]);
+  }
+  fclose(weights_file);
+  */
+  write_1d_array_hdf5("debug/weights.h5", weights, N_slices);
+
+  /* output rotations */
+  FILE *rotations_file = fopen("output/rotations.data", "wp");
+  for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+    fprintf(rotations_file, "%g %g %g %g\n", rotations[i_slice]->q[0],rotations[i_slice]->q[1], rotations[i_slice]->q[2], rotations[i_slice]->q[3]);
+  }
+  fclose(rotations_file);
 
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_taus);
   //  gsl_rng_set(rng,time(NULL));
@@ -636,9 +552,6 @@ int main(int argc, char **argv)
   }
   */
   /* Create output directories in case they don't exist */
-  mkdir("debug",0777);
-  mkdir("output",0777);
-
   if (conf.normalize_images) {
     //normalize_images(images, mask, conf);
     //normalize_images_individual_mask(images, masks, conf);
@@ -727,11 +640,19 @@ int main(int argc, char **argv)
     for (int i_image = 0; i_image < N_images; i_image++) {
       for (int x = 0; x < conf.model_side; x++) {
 	for (int y = 0; y < conf.model_side; y++) {
-	  r = (int)sqrt(pow((real)x - conf.model_side/2.0 + 0.5,2) +
-			pow((real)y - conf.model_side/2.0 + 0.5,2));
-	  if (r < conf.model_side/2.0) {
-	    radavg[r] += sp_matrix_get(images[i_image],x,y);
-	    radavg_count[r] += 1;
+	  if (sp_matrix_get(images[i_image],x,y) >= 0.) {
+	    if (isinf(sp_matrix_get(images[i_image],x,y))) {
+	      printf("%d[%d,%d] is inf\n", i_image, x, y);
+	    }
+	    if (isnan(sp_matrix_get(images[i_image],x,y))) {
+	      printf("%d[%d,%d] is nan\n", i_image, x, y);
+	    }
+	    r = (int)sqrt(pow((real)x - conf.model_side/2.0 + 0.5,2) +
+			  pow((real)y - conf.model_side/2.0 + 0.5,2));
+	    if (r < conf.model_side/2.0) {
+	      radavg[r] += sp_matrix_get(images[i_image],x,y);
+	      radavg_count[r] += 1;
+	    }
 	  }
 	}
       }
@@ -742,6 +663,7 @@ int main(int argc, char **argv)
       } else {
 	radavg[i] = 0.0;
       }
+      //printf("%d: %g\n", i, radavg[i]);
     }
     real rad;
     for (int x = 0; x < conf.model_side; x++) {
@@ -753,7 +675,7 @@ int main(int argc, char **argv)
 	  r = (int)rad;
 	  if (r < conf.model_side/2.0) {
 	    sp_3matrix_set(model,x,y,z,(radavg[r]*(1.0 - (rad - (real)r)) +
-					radavg[r+1]*(rad - (real)r)));
+					radavg[r+1]*(rad - (real)r)) * (1. + conf.initial_model_noise*gsl_rng_uniform(rng)));
 	  } else {
 	    sp_3matrix_set(model,x,y,z,-1.0);
 	  }
@@ -791,7 +713,7 @@ int main(int argc, char **argv)
     sp_image_free(model_in);
   }
 
-  real *scaling = malloc(N_images*sizeof(real));
+  real *scaling = malloc(N_images*N_slices*sizeof(real));
   for (int i = 0; i < N_images; i++) {
     scaling[i] = 1.0;
   }
@@ -831,6 +753,7 @@ int main(int argc, char **argv)
   //real * slices_on_host = malloc(N_slices*N_2d*sizeof(real));
   real * d_model;
   cuda_allocate_model(&d_model,model);
+  cuda_normalize_model(model, d_model);
   real * d_model_updated;
   real * d_model_tmp;
   cuda_allocate_model(&d_model_updated,model);
@@ -855,8 +778,10 @@ int main(int argc, char **argv)
   cuda_allocate_masks(&d_masks,masks,N_images);
   real * d_respons;
   cuda_allocate_real(&d_respons,N_slices*N_images);
+  //real * d_scaling;
+  //cuda_allocate_scaling(&d_scaling,N_images);
   real * d_scaling;
-  cuda_allocate_scaling(&d_scaling,N_images);
+  cuda_allocate_scaling_full(&d_scaling, N_images, N_slices);
   real *d_weighted_power;
   cuda_allocate_real(&d_weighted_power,N_images);
   real *fit = malloc(N_images*sizeof(real));
@@ -884,14 +809,14 @@ int main(int argc, char **argv)
   
   real *sorted_resp = malloc(N_slices*sizeof(real));
   real *total_sorted_resp = malloc(N_slices*sizeof(real));
+  real *average_resp = malloc(N_slices*sizeof(real));
 
-  FILE *best_rot_file = fopen("debug/best_rot.data", "wp");
+  FILE *best_rot_file = fopen("output/best_rot.data", "wp");
   FILE *fit_file = fopen("output/fit.data","wp");
   FILE *fit_best_rot_file = fopen("output/fit_best_rot.data","wp");
-  FILE *scaling_file = fopen("output/scaling.data","wp");
   FILE *radial_fit_file = fopen("output/radial_fit.data","wp");
-  FILE *responsabilities_file;// = fopen("output/responsability.data","wp");
   FILE *sorted_resp_file = fopen("output/total_resp.data","wp");
+  FILE *average_resp_file;// = fopen("output/average_resp.data","wp");
 
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
@@ -906,180 +831,52 @@ int main(int argc, char **argv)
 
   int current_chunk;
 
-  real sigma_half_life = 50; // 1000.
-  real sigma_start = 0.2;   // relative: 0.09 -> 0.05
-  real sigma_final = 0.13; // 0.2
+  
+  /*
+  real sigma_half_life = 25; // 1000.
+  real sigma_start = 0.12;   // relative: 0.09 -> 0.05
+  real sigma_final = 0.0; // 0.2
   enum diff_type diff = poisson;
+  */
+  /*
+  real sigma_half_life = 25; // 1000.
+  real sigma_start = 0.12;   // relative: 0.09 -> 0.05
+  real sigma_final = 0.; // 0.2
+  enum diff_type diff = poisson;
+  */
+  real *d_weight_map;
+  cuda_allocate_weight_map(&d_weight_map, conf.model_side);
+  real weight_map_radius, weight_map_falloff;
+  real weight_map_radius_start = 20.;
+  real weight_map_radius_final = 20.;
 
+  real sigma;
   for (int iteration = start_iteration; iteration < conf.max_iterations; iteration++) {
     if (quit_requested == 1) {
       break;
     }
+    printf("\niteration %d\n", iteration);
 
-    conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life*log(2.));
-    printf("sigma = %g\n", conf.sigma);
+    //conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life*log(2.));
+    sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
+    printf("sigma = %g\n", sigma);
 
-    sum = cuda_model_max(d_model,N_model);
-    printf("model max = %g\n",sum);
+    //weight_map_radius = 20.;
+    weight_map_radius = weight_map_radius_start + ((weight_map_radius_final-weight_map_radius_start) *
+						   ((real)iteration / ((real)conf.sigma_half_life)));
+    weight_map_falloff = 0.;
+    //cuda_calculate_weight_map_ring(d_weight_map, conf.model_side, 0., 0., weight_map_radius, weight_map_falloff);
+    cuda_calculate_weight_map_ring(d_weight_map, conf.model_side, 20, 0., 40, 0.);
+    printf("weight_map: radius = %g, falloff = %g\n", weight_map_radius, weight_map_falloff);
 
-    printf("iteration %d\n", iteration);
-    /* get slices */
-    clock_t t_i = clock();
-    for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
-      if (slice_start + slice_chunk >= N_slices) {
-	current_chunk = N_slices - slice_start;
-      } else {
-	current_chunk = slice_chunk;
-      }
-      if ((slice_start/slice_chunk)%output_period == 0) {
-	printf("calculate responsabilities chunk %d\n", slice_start/slice_chunk);
-      }
-
-      cuda_get_slices(model,d_model,slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,slice_start,current_chunk);
-      //cuda_copy_slice_chunk_to_host(slices_on_host, slices, slice_start, current_chunk, N_2d);
-
-
-      /* calculate responsabilities */
+    sum = cuda_model_max(d_model, N_model);
+    //printf("model max = %g\n",sum);
     
-      cuda_calculate_responsabilities(slices, d_images, d_mask,
-				      conf.sigma, d_scaling,d_respons, 
-				      N_2d, N_images, slice_start,
-				      current_chunk, diff);
+    //sum = cuda_model_sum(d_model, N_model);
+    sum = cuda_model_average(d_model, N_3d);
+    //printf("model_average = %f\n", sum);
 
-    }
-    printf("calculated responsabilities\n");
-    clock_t t_e = clock();
-    printf("Expansion time = %fs\n",(real)(t_e - t_i)/(real)CLOCKS_PER_SEC);
-
-    cuda_calculate_responsabilities_sum(respons, d_respons, N_slices,
-					N_images);
-    
-    printf("normalize resp\n");
-
-    cuda_normalize_responsabilities(d_respons, N_slices, N_images);
-
-    /*
-    if (iteration < 100) {
-      cuda_normalize_responsabilities(d_respons, N_slices, N_images);
-    } else {
-      cuda_normalize_responsabilities_single(d_respons, N_slices, N_images);
-    }
-    */
-    cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
-    printf("normalize resp done\n");
-
-    /* plot occupancy plot */
-    int N_r = 30;
-    int N_a = 2*N_r;
-    /*
-    int N_r = 80;
-    int N_a = 60;
-    */
-    /*
-    real a,b,c;
-    int a_int, r_int;
-    Image *rotation_map = sp_image_alloc(N_r,N_a,1);
-    for (int i_image = 0; i_image < 10; i_image++) {
-      for (int i = 0; i < sp_image_size(rotation_map); i++) {
-	sp_real(rotation_map->image->data[i]) = 0.0;
-	sp_imag(rotation_map->image->data[i]) = 0.0;
-	rotation_map->mask->data[i] = 0;
-      }
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	quaternion_to_euler(rotations[i_slice],&a,&b,&c);
-	//r_int = ((int)((b+2*N_r)/M_PI*(real)N_r))%N_r;
-	r_int = ((int)((b+M_PI/2.0)/M_PI*(real)(N_r-1)))%N_r;
-	a_int = ((int)((a+M_PI)/2.0/M_PI*(real)N_a))%N_a;
-	if (r_int < 0 || r_int >= N_r || a_int < 0 || a_int >= N_a) {
-	  printf("r_int = %d, a_int = %d\n",r_int,a_int);
-	}
-	sp_image_set(rotation_map,r_int,a_int,0,sp_cinit(sp_real(sp_image_get(rotation_map,r_int,a_int,0))+respons[i_slice*N_images+i_image],0.0));
-	sp_image_mask_set(rotation_map,r_int,a_int,0,sp_image_mask_get(rotation_map,r_int,a_int,0)+1);
-      }
-      for (int i = 0; i < sp_image_size(rotation_map); i++) {
-	if (rotation_map->mask->data[i] > 0) {
-	  sp_real(rotation_map->image->data[i]) /= (real) rotation_map->mask->data[i];
-	} else {
-	  sp_real(rotation_map->image->data[i]) = 0.0;
-	}
-	sp_imag(rotation_map->image->data[i]) = 0.0;
-      }
-
-      sprintf(buffer,"debug/rotation_map_%.4d_%.4d.h5",i_image,iteration);
-      sp_image_write(rotation_map,buffer,0);
-      sprintf(buffer,"debug/rotation_map_%.4d_%.4d.png",i_image,iteration);
-      sp_image_write(rotation_map,buffer,SpColormapJet);
-    }
-    for (int i = 0; i < sp_image_size(rotation_map); i++) {
-      sp_real(rotation_map->image->data[i]) = 0.0;
-      sp_imag(rotation_map->image->data[i]) = 0.0;
-      rotation_map->mask->data[i] = 0;
-    }
-    for (int i_image = 0; i_image < N_images; i_image++) {
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	quaternion_to_euler(rotations[i_slice],&a,&b,&c);
-	//r_int = ((int)((b+2*N_r)/M_PI*(real)N_r))%N_r;
-	r_int = ((int)((b+M_PI/2.0)/M_PI*(real)(N_r-1)))%N_r;
-	a_int = ((int)((a+M_PI)/2.0/M_PI*(real)N_a))%N_a;
-	if (r_int < 0 || r_int >= N_r || a_int < 0 || a_int >= N_a) {
-	  printf("r_int = %d, a_int = %d\n",r_int,a_int);
-	}
-	sp_image_set(rotation_map,r_int,a_int,0,sp_cinit(sp_real(sp_image_get(rotation_map,r_int,a_int,0))+respons[i_slice*N_images+i_image],0.0));
-	sp_image_mask_set(rotation_map,r_int,a_int,0,sp_image_mask_get(rotation_map,r_int,a_int,0)+1);
-      }
-    }
-    for (int i = 0; i < sp_image_size(rotation_map); i++) {
-      if (rotation_map->mask->data[i] > 0) {
-	sp_real(rotation_map->image->data[i]) /= (real) rotation_map->mask->data[i];
-      } else {
-	sp_real(rotation_map->image->data[i]) = 0.0;
-      }
-      sp_imag(rotation_map->image->data[i]) = 0.0;
-    }
-    sprintf(buffer,"debug/rotation_map_total_%.4d.h5",iteration);
-    sp_image_write(rotation_map,buffer,0);
-    sprintf(buffer,"debug/rotation_map_total_%.4d.png",iteration);
-    sp_image_write(rotation_map,buffer,SpColormapJet);
-      
-    sp_image_free(rotation_map);
-    */
-
-    /* output responsabilities */
-    sprintf(buffer,"output/responsabilities_%.4d.data",iteration);
-    responsabilities_file = fopen(buffer, "wp");
-    int resp_out_len = 5;
-    if (iteration%50 == 0) {
-      resp_out_len = 261;
-    }
-    for (int i_image = 0; i_image < resp_out_len; i_image++) {
-      for(int i_slice = 0; i_slice < N_slices; i_slice++) {
-	fprintf(responsabilities_file, "%g ", respons[i_slice*N_images+i_image]);
-      }
-      fprintf(responsabilities_file, "\n");
-    }
-    fclose(responsabilities_file);
-
-    /* output sorted responsabilities */
-    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-      total_sorted_resp[i_slice] = 0.0;
-    }
-    for (int i_image = 0; i_image< N_images; i_image++) {
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	sorted_resp[i_slice] = respons[i_slice*N_images+i_image];
-      }
-      qsort(sorted_resp, N_slices, sizeof(real), compare_real);
-      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	total_sorted_resp[i_slice] += sorted_resp[i_slice];
-      }
-    }
-    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-      fprintf(sorted_resp_file, "%g ", total_sorted_resp[i_slice]);
-    }
-    fprintf(sorted_resp_file,"\n");
-    fflush(sorted_resp_file);
-	
-
-    /* check how well every image fit */
+    /* start calculate many fits */
     int radial_fit_n = 1;
     cuda_set_to_zero(d_fit,N_images);
     cuda_set_to_zero(d_radial_fit,conf.model_side/2);
@@ -1099,9 +896,35 @@ int main(int argc, char **argv)
 	current_chunk = slice_chunk;
       }
       cuda_get_slices(model,d_model,slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,slice_start,current_chunk);
+
+      /* start output best fitting slices */
+
+      Image *slice_out_img = sp_image_alloc(conf.model_side, conf.model_side, 1);
+      real *slice_out = malloc(N_2d*sizeof(real));
+
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	if (best_rotation[i_image] >= slice_start && best_rotation[i_image] < slice_start + current_chunk) {
+	  //printf("best_rotation[%d] = %d (%d) -> %d\n", i_image, best_rotation[i_image], N_slices, best_rotation[i_image] - slice_start);
+
+	  cuda_copy_real_to_host(slice_out, &slices[(best_rotation[i_image] - slice_start)*N_2d], N_2d);
+
+	  for (int i = 0; i < N_2d; i++) {
+	    slice_out_img->image->data[i] = sp_cinit(slice_out[i], 0.);
+	  }
+	  sprintf(buffer, "output/best_slice_%.4d_%.4d.h5", iteration, i_image);
+	  sp_image_write(slice_out_img, buffer, 0);
+
+	}
+      }
+
+      sp_image_free(slice_out_img);
+      free(slice_out);
+
+      /* end output best fitting slices */
+
       
       cuda_calculate_fit(slices, d_images, d_mask, d_scaling,
-			 d_respons, d_fit, conf.sigma, N_2d, N_images,
+			 d_respons, d_fit, sigma, N_2d, N_images,
 			 slice_start, current_chunk);
 
       cuda_calculate_fit_best_rot(slices, d_images, d_mask, d_scaling,
@@ -1117,6 +940,30 @@ int main(int argc, char **argv)
 				  current_chunk);
       }
     }
+
+    /* test scaling by outputting two */
+    real *out = malloc(N_2d*sizeof(real));
+    cuda_copy_real_to_host(out, d_images, N_2d);
+    sprintf(buffer, "debug/image_0_%.4d.data", iteration);
+    FILE *fi = fopen(buffer, "wp");
+    for (int i1 = 0; i1 < conf.model_side; i1++) {
+      for (int i2 = 0; i2 < conf.model_side; i2++) {
+	fprintf(fi, "%g ", out[i1*conf.model_side + i2]);
+      }
+      fprintf(fi, "\n");
+    }
+    fclose(fi);
+    cuda_copy_real_to_host(out, slices, N_2d);
+    sprintf(buffer, "debug/slice_0_%.4d.data", iteration);
+    fi = fopen(buffer, "wp");
+    for (int i1 = 0; i1 < conf.model_side; i1++) {
+      for (int i2 = 0; i2 < conf.model_side; i2++) {
+	fprintf(fi, "%g ", out[i1*conf.model_side + i2]);
+      }
+      fprintf(fi, "\n");
+    }
+    fclose(fi);
+    free(out);
 
     cuda_copy_real_to_host(fit, d_fit, N_images);
     cuda_copy_real_to_host(fit_best_rot, d_fit_best_rot, N_images);
@@ -1148,98 +995,103 @@ int main(int argc, char **argv)
       fprintf(radial_fit_file, "\n");
       fflush(radial_fit_file);
     }
-    /* calculate likelihood */
-    
-    t_i = clock();
+    /* end calculate many fits */
 
-    total_respons = cuda_total_respons(d_respons,respons,N_images*N_slices);
-    printf("calculated total resp\n");
-
-    fprintf(likelihood,"%g\n",total_respons);
-    printf("likelihood = %g\n",total_respons);
-    fflush(likelihood);
-  
+    /* start update scaling */
+    //if (conf.known_intensity == 0 && 1 == 2) {
     if (conf.known_intensity == 0) {
-      /* update scaling */
-
-      clock_t local_t_i = clock();
-      /*
-      cuda_set_to_zero(d_weighted_power,N_images);
       for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
 	if (slice_start + slice_chunk >= N_slices) {
 	  current_chunk = N_slices - slice_start;
 	} else {
 	  current_chunk = slice_chunk;
 	}
-	if ((slice_start/slice_chunk)%output_period == 0) {
-	  printf("calculate weighted_power chunk %d\n", slice_start/slice_chunk);
-	}
-
-	cuda_get_slices(model, d_model, slices, d_rotations,
-			d_x_coord, d_y_coord, d_z_coord,
+	cuda_get_slices(model, d_model, slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
 			slice_start, current_chunk);
-	//cuda_copy_slice_chunk_to_device(slices_on_host, slices, slice_start, slice_chunk, N_2d);
-
-
-	cuda_update_weighted_power(d_images, slices, d_mask,
-				   d_respons, d_weighted_power, N_images,
-				   slice_start, current_chunk, N_2d);
-
+	
+	cuda_update_scaling_full(d_images, slices, d_mask, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
       }
 
+      /* output scaling */
+      cuda_copy_real_to_host(scaling, d_scaling, N_images*N_slices);
 
-      cuda_update_scaling(d_images, d_mask, d_scaling, d_weighted_power,
-			  N_images, N_slices, N_2d, scaling);
-      */
-      if (iteration%30 == 0 && iteration != 0) {
-	cuda_update_scaling_best(d_images, d_mask,
-				 d_model, d_scaling, d_respons, d_rotations,
-				 d_x_coord, d_y_coord, d_z_coord,
-				 N_images, N_slices, conf.model_side, scaling);
+      sprintf(buffer, "output/scaling_%.4d.h5", iteration);
+      write_2d_array_hdf5(buffer, scaling, N_slices, N_images);
+    }
+    //fprintf(scaling_file, "\n");
+    //fclose(scaling_file);
+    /* end update scaling */
+
+    /* start calculate responsabilities */
+    for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
+      if (slice_start + slice_chunk >= N_slices) {
+	current_chunk = N_slices - slice_start;
+      } else {
+	current_chunk = slice_chunk;
       }
+      
+      cuda_get_slices(model,d_model,slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,slice_start,current_chunk);
 
-      clock_t local_t_e = clock();
-      printf("Update scaling time = %fs\n",(real)(local_t_e - local_t_i)/(real)CLOCKS_PER_SEC);
+      cuda_calculate_responsabilities(slices, d_images, d_mask, d_weight_map,
+				      sigma, d_scaling, d_respons, d_weights, 
+				      N_2d, N_images, slice_start,
+				      current_chunk, conf.diff);
 
-      /* normalize scaling */
-      /*
-      real scaling_sum = 0.0;
+    }
+    cuda_calculate_responsabilities_sum(respons, d_respons, N_slices, N_images);
+    cuda_normalize_responsabilities(d_respons, N_slices, N_images);
+    cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
+
+    /* output responsabilities */
+    sprintf(buffer, "output/responsabilities_%.4d.h5", iteration);
+    write_2d_array_trans_hdf5(buffer, respons, N_slices, N_images);
+
+    /* output average responsabilities */
+    sprintf(buffer, "output/average_resp_%.4d.data", iteration);
+    average_resp_file = fopen(buffer, "wp");
+    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+      average_resp[i_slice] = 0.;
+    }
+    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
       for (int i_image = 0; i_image < N_images; i_image++) {
-	//scaling_sum += scaling[i_image];
-	scaling_sum += 1.0/scaling[i_image];
-      }
-      //scaling_sum = (real)N_images / scaling_sum;
-      scaling_sum /= (real)N_images;
-      for (int i_image = 0; i_image < N_images; i_image++) {
-	scaling[i_image] *= scaling_sum;
-      }
-      cuda_copy_real_to_device(scaling, d_scaling, N_images);
-      */
-
-      if (iteration%1 == 0) {
-	real average_scaling = 0.0;
-	for (int i_image = 0; i_image < N_images; i_image++) {
-	  average_scaling += scaling[i_image];
-	}
-	average_scaling /= (real)N_images;
-	//printf("scaling:\n");
-	real variance = 0.0;
-	for (int i_image = 0; i_image < N_images; i_image++) {
-	  //printf("%g, ", scaling[i_image] / average_scaling);
-	  variance += pow(scaling[i_image] /average_scaling - 1.0, 2);
-	}
-	//printf("\n");
-
-	variance /= (real)N_images;
-	printf("scaling std = %g\n", sqrt(variance));
-      }
-
-      for (int i_image = 0; i_image < N_images; i_image++) {
-	fprintf(scaling_file, "%g ", scaling[i_image]);
+	average_resp[i_slice] += respons[i_slice*N_images+i_image];
       }
     }
-    fprintf(scaling_file, "\n");
-    fflush(scaling_file);
+    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+      fprintf(average_resp_file, "%g\n", average_resp[i_slice]);
+    }
+    fclose(average_resp_file);
+    
+
+    /* output sorted responsabilities */
+    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+      total_sorted_resp[i_slice] = 0.0;
+    }
+    for (int i_image = 0; i_image< N_images; i_image++) {
+      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+	sorted_resp[i_slice] = respons[i_slice*N_images+i_image];
+      }
+      qsort(sorted_resp, N_slices, sizeof(real), compare_real);
+      for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+	total_sorted_resp[i_slice] += sorted_resp[i_slice];
+      }
+    }
+    for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+      fprintf(sorted_resp_file, "%g ", total_sorted_resp[i_slice] / (float) N_images);
+    }
+    fprintf(sorted_resp_file,"\n");
+    fflush(sorted_resp_file);
+    /* end calculate responsabilities */
+
+
+    /* start calculate likelihood */
+    total_respons = cuda_total_respons(d_respons,respons,N_images*N_slices);
+
+    fprintf(likelihood,"%g\n",total_respons);
+    //printf("likelihood = %g\n",total_respons);
+    fflush(likelihood);
+    /* end calculate likelihood */
+  
 
     /* reset model */    
     cuda_reset_model(model,d_model_updated);
@@ -1247,52 +1099,10 @@ int main(int argc, char **argv)
     printf("models reset\n");
 
 
-
-    int my_array[261] = {0, 1, 0, 1, 1, 0, 1, 1, 1, 1, //   0
-			 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, //  10
-			 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, //  20
-			 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, //  30
-			 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, //  40
-			 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, //  50
-			 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, //  60
-			 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, //  70
-			 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, //  80
-			 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, //  90
-			 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, // 100
-			 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, // 110
-			 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, // 120
-			 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, // 130
-			 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, // 140
-			 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, // 150
-			 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, // 160
-			 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, // 170
-			 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, // 180
-			 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, // 190
-			 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, // 200
-			 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 210 
-			 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 220
-			 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 230
-			 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 240
-			 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, // 250
-			 1};                           // 260
+    /* start exclude images */
     if (iteration == 0) {
-      /*
-      for (int i_image = 0; i_image < N_images; i_image++) {
-	active_images[i_image] = my_array[i_image];
-      }
-      */
-
       for (int i_image = 0; i_image < N_images; i_image++) {
 	active_images[i_image] = 1;
-      }
-
-    } else if (iteration == 100000) {
-      for (int i_image = 0; i_image < N_images; i_image++) {
-	if (log(fit[i_image]) < -10) {
-	  active_images[i_image] = 1;
-	} else {
-	  active_images[i_image] = 0;
-	}
       }
     }
     if (conf.exclude_images == 1 && iteration > -1) {
@@ -1302,7 +1112,7 @@ int main(int argc, char **argv)
       real threshold = fit_copy[(int)((real)N_images*conf.exclude_ratio)];
       for (int i_image = 0; i_image < N_images; i_image++) {
 	if (i_image != 0 && i_image % 10 == 0) printf(" ");
-	if (fit[i_image] > threshold && my_array[i_image] > 0) {
+	if (fit[i_image] > threshold) {
 	  active_images[i_image] = 1;
 	  printf("1");
 	} else {
@@ -1312,11 +1122,26 @@ int main(int argc, char **argv)
       }
       printf("\n");
     }
-
-
     cuda_copy_int_to_device(active_images, d_active_images, N_images);
+    /* end exclude images */
 
-    /* update slices */
+    /* start update scaling second time (test) */
+    if (conf.known_intensity == 0) {
+      for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
+	if (slice_start + slice_chunk >= N_slices) {
+	  current_chunk = N_slices - slice_start;
+	} else {
+	  current_chunk = slice_chunk;
+	}
+	cuda_get_slices(model, d_model, slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
+			slice_start, current_chunk);
+	
+	cuda_update_scaling_full(d_images, slices, d_mask, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
+      }
+    }
+    /* end update scaling second time (test) */
+
+    /* start update model */
     for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
       if (slice_start + slice_chunk >= N_slices) {
 	current_chunk = N_slices - slice_start;
@@ -1327,68 +1152,63 @@ int main(int argc, char **argv)
 	printf("update slices chunk %d\n", slice_start/slice_chunk);
       }
 
-      cuda_get_slices(model, d_model, slices, d_rotations,
-		      d_x_coord, d_y_coord, d_z_coord,
+      cuda_get_slices(model, d_model, slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
 		      slice_start, current_chunk);
-      //cuda_copy_slice_chunk_to_device(slices_on_host, slices, slice_start, slice_chunk, N_2d);
 
-      /*      
-      if (iteration == conf.max_iterations-1) {
-	cuda_update_slices_final(d_masked_images, slices, d_mask, //should be d_masked_images
-				 d_respons, d_scaling, d_active_images,
-				 N_images, slice_start, current_chunk, N_2d,
-				 model,d_model_updated, d_x_coord, d_y_coord,
-				 d_z_coord, &d_rotations[slice_start*4],
-				 &weights[slice_start], d_weight,images);
-      } else {
-      */
       cuda_update_slices(d_images, slices, d_mask,
 			 d_respons, d_scaling, d_active_images,
 			 N_images, slice_start, current_chunk, N_2d,
 			 model,d_model_updated, d_x_coord, d_y_coord,
 			 d_z_coord, &d_rotations[slice_start*4],
-			 &weights[slice_start], d_weight,images);
-      /*
-      }
-      */
+			 d_weight,images);
     }
     d_model_tmp = d_model_updated;
     d_model_updated = d_model;
     d_model = d_model_tmp;
 
+    cuda_divide_model_by_weight(model, d_model, d_weight);
+    cuda_normalize_model(model, d_model);
+
+    //sprintf(buffer, "debug/model_before_blur_%.4d.h5", iteration);
+    //cuda_output_device_model(d_model, buffer, conf.model_side);
+    //cuda_blur_model(d_model, conf.model_side, conf.model_blur);
+    //sprintf(buffer, "debug/model_after_blur_%.4d.h5", iteration);
+    //cuda_output_device_model(d_model, buffer, conf.model_side);
+
     cuda_copy_model(model, d_model);
+    cuda_copy_model(weight, d_weight);
 
-    printf("updated slices\n");
-    t_e = clock();
-    printf("Maximize time = %fs\n",(real)(t_e - t_i)/(real)CLOCKS_PER_SEC);
-
-    t_i = clock();
-    cuda_normalize_model(model, d_model,d_weight);
-    printf("compressed\n");
-    t_e = clock();
-    printf("Compression time = %fms\n",1000.0*(t_e - t_i)/CLOCKS_PER_SEC);
-
-    /* write output */
+    /* write model */
     for (int i = 0; i < N_model; i++) {
-      model_out->image->data[i] = sp_cinit(model->data[i],0.0);
-      if (weight->data[i] > 0.0) {
+      //model_out->image->data[i] = sp_cinit(model->data[i],0.0);
+      if (weight->data[i] > 0.0 && model->data[i] > 0.) {
 	model_out->mask->data[i] = 1;
+	model_out->image->data[i] = sp_cinit(model->data[i],0.0);
       } else {
 	model_out->mask->data[i] = 0;
+	model_out->image->data[i] = sp_cinit(0., 0.);
       }
     }
-
-    sprintf(buffer,"output/model_%.4d.h5",iteration);
+    sprintf(buffer,"output/model_%.4d.h5", iteration);
     sp_image_write(model_out,buffer,0);
-    printf("wrote model\n");
+    /* write weight */
+    for (int i = 0; i < N_model; i++) {
+      model_out->image->data[i] = sp_cinit(weight->data[i], 0.);
+      model_out->mask->data[i] = 1;
+    }
+    sprintf(buffer, "output/weight_%.4d.h5", iteration);
+    sp_image_write(model_out, buffer, 0);
+
+    /* end update model */
   }
   fclose(likelihood);
   fclose(best_rot_file);
   fclose(fit_file);
   fclose(fit_best_rot_file);
-  fclose(scaling_file);
+  //fclose(scaling_file);
   fclose(radial_fit_file);
   fclose(sorted_resp_file);
+  //fclose(average_resp_file);
 
   cuda_reset_model(model,d_model_updated);
   cuda_reset_model(weight,d_weight);
@@ -1408,6 +1228,9 @@ int main(int argc, char **argv)
 
   /* put together the model one last time for output.
      This time more of the middle data is used */
+
+  //cuda_collapse_responsabilities(d_respons, N_slices, N_images);
+
   for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
     if (slice_start + slice_chunk >= N_slices) {
       current_chunk = N_slices - slice_start;
@@ -1424,14 +1247,12 @@ int main(int argc, char **argv)
     */
     //cuda_copy_slice_chunk_to_device(slices_on_host, slices, slice_start, slice_chunk, N_2d);
 
-    //try this. Should actually be cuda_update_slices_final
-
     cuda_update_slices_final(d_masked_images, slices, d_mask,
 			     d_respons, d_scaling, d_active_images,
 			     N_images, slice_start, current_chunk, N_2d,
 			     model,d_model_updated, d_x_coord, d_y_coord,
 			     d_z_coord, &d_rotations[slice_start*4],
-			     &weights[slice_start], d_weight,images);
+			     d_weight,images);
 
   }
   real *debug_model = malloc(conf.model_side*conf.model_side*conf.model_side*sizeof(real));
@@ -1447,7 +1268,8 @@ int main(int argc, char **argv)
   }
   sp_image_write(model_out,"debug/debug_weight.h5",0);
 
-  cuda_normalize_model(model, d_model_updated,d_weight);  
+  cuda_divide_model_by_weight(model, d_model_updated, d_weight);
+  cuda_normalize_model(model, d_model_updated);  
   cuda_copy_model(model, d_model_updated);
   /* write output */
   for (int i = 0; i < N_model; i++) {
@@ -1458,7 +1280,18 @@ int main(int argc, char **argv)
       model_out->mask->data[i] = 0;
     }
   }
-
+  model_out->scaled = 0;
+  model_out->shifted = 0;
+  model_out->phased = 0;
+  model_out->detector->detector_distance = conf.detector_distance;
+  model_out->detector->image_center[0] = conf.model_side/2. + 0.5;
+  model_out->detector->image_center[1] = conf.model_side/2. + 0.5;
+  model_out->detector->image_center[2] = conf.model_side/2. + 0.5;
+  model_out->detector->pixel_size[0] = conf.pixel_size;
+  model_out->detector->pixel_size[1] = conf.pixel_size;
+  model_out->detector->pixel_size[2] = conf.pixel_size;
+  model_out->detector->wavelength = conf.wavelength;
+  
   sp_image_write(model_out,"output/model_final.h5",0);
 
   
