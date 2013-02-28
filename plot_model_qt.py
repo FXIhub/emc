@@ -1,10 +1,4 @@
-#! /usr/local/bin/python-32
-
-# import sip
-# sip.setapi('QString', 2)
-# sip.setapi('QVariant', 2)
 from pylab import *
-#import spimage
 import sphelper
 import sys
 import numpy
@@ -13,24 +7,19 @@ import h5py
 import rotations
 import icosahedral_sphere
 from optparse import OptionParser
-# try:
-#     from PySide import QtCore, QtGui
-#     print "pyside"
-# except ImportError:
-#     from PyQt4 import QtCore, QtGui
-#     QtCore.Signal = QtCore.pyqtSignal
-#     QtCore.Slot = QtCore.pyqtSlot
-#     print "pyqt"
+
 from PyQt4 import QtCore, QtGui
 QtCore.Signal = QtCore.pyqtSignal
 QtCore.Slot = QtCore.pyqtSlot
+
 try:
-    print "import mlab"
     from mayavi import mlab
-    print "import mlab - done"
 except ImportError:
-    print "import mlab - failed"
     from enthought.mayavi import mlab
+
+from traits.api import HasTraits, Instance, on_trait_change, Int, Dict
+from traitsui.api import View, Item
+from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
 
 #import kernprof
 
@@ -155,11 +144,42 @@ class Model(QtCore.QObject):
         self._rotation_image_number = image_number
         self.image_changed.emit(self._current_iteration)
             
+
+class MlabVisualization(HasTraits):
+    scene = Instance(MlabSceneModel, ())
+
+    view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
+                resizable=True)
+
+
+class MlabWidget(QtGui.QWidget):
+    def __init__(self, parent=None):
+        QtGui.QWidget.__init__(self, parent)
+        layout = QtGui.QVBoxLayout(self)
+        layout.setMargin(0)
+        layout.setSpacing(0)
+
+        self._vis = MlabVisualization()
+        self._ui = self._vis.edit_traits(parent=self, kind='subpanel').control
+        layout.addWidget(self._ui)
+        self._ui.setParent(self)
+
+        # self._scene = MlabSceneModel()
+        # view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
+        #             resizable=True)
+        # self.ui = self._scene.control
+        # layout.addWidget(self.ui)
+        # self.ui.setParent(self)
+        
+
+    def get_mlab(self):
+        return self._vis.scene.mlab
     
 class Viewer(QtCore.QObject):
-    def __init__(self, model):
+    def __init__(self, model, mlab_widget, parent=None):
         super(Viewer, self).__init__()
         self._model = model
+        self._mlab_widget = mlab_widget
         #QtCore.QObject.connect(self._model, QtCore.SIGNAL('image_changed(int)'), self._update_scalar_field)
         self._model.image_changed.connect(self._data_changed)
         self._initialize_scalar_field()
@@ -172,7 +192,7 @@ class Viewer(QtCore.QObject):
         self._surface_level = 0.5
         
     def _initialize_scalar_field(self):
-        self._scalar_field = mlab.pipeline.scalar_field(self._model.get_image())
+        self._scalar_field = self._mlab_widget.get_mlab().pipeline.scalar_field(self._model.get_image())
         self._scalar_field_max = self._scalar_field.scalar_data.max()
 
     def _data_changed(self, dummy=0):
@@ -197,16 +217,16 @@ class Viewer(QtCore.QObject):
             self._points.glyph.glyph.modified()
             self._points.update_pipeline()
             self._points.actor.render()
-            mlab.draw()
+            self._mlab_widget.get_mlab().draw()
             
 
     def _plot_surface(self):
-        self._surface = mlab.pipeline.iso_surface(self._scalar_field, contours=[0.5*self._scalar_field_max])
+        self._surface = self._mlab_widget.get_mlab().pipeline.iso_surface(self._scalar_field, contours=[0.5*self._scalar_field_max])
         #mlab.show()
 
     def _plot_slices(self):
         self._slices = []
-        self._slices.append(mlab.pipeline.image_plane_widget(self._scalar_field, plane_orientation='x_axes',
+        self._slices.append(self._mlab_widget.get_mlab().pipeline.image_plane_widget(self._scalar_field, plane_orientation='x_axes',
                                                              slice_index=shape(self._model.get_image())[0]/2))
         self._slices.append(mlab.pipeline.image_plane_widget(self._scalar_field, plane_orientation='y_axes',
                                                              slice_index=shape(self._model.get_image())[1]/2))
@@ -277,10 +297,11 @@ class Viewer(QtCore.QObject):
         self._data_changed()
 
 class StartMain(QtGui.QMainWindow):
-    def __init__(self, model, viewer, parent=None):
+    def __init__(self, model, viewer, mlab_widget, parent=None):
         QtGui.QMainWindow.__init__(self, parent)
         self._model = model
         self._viewer = viewer
+        self._mlab_widget = mlab_widget
         self._setup_controller_window()
 
         # //Set actors and mappers, then instead of creating a renderwindowinteractor,
@@ -382,6 +403,7 @@ class StartMain(QtGui.QMainWindow):
 
         #setup main layout and widget
         self._main_layout = QtGui.QVBoxLayout()
+        self._main_layout.addWidget(self._mlab_widget)
         self._main_layout.addWidget(self._mode_button)
         self._main_layout.addLayout(self._iteration_layout)
         self._main_layout.addLayout(self._image_type_layout)
@@ -446,14 +468,13 @@ if __name__ == "__main__":
     parser.add_option("-m", action="store_true", dest="mask", help="Plot mask.")
     (options, args) = parser.parse_args()
 
-    app = QtGui.QApplication.instance()
-
     model = Model(0)
-    viewer = Viewer(model)
+    mlab_widget = MlabWidget()
+    viewer = Viewer(model, mlab_widget)
     #viewer.plot_slices()
     
     #app = QtGui.QApplication(['Controll window'])
-
-    program = StartMain(model, viewer)
+    app = QtGui.QApplication.instance()
+    program = StartMain(model, viewer, mlab_widget)
     program.show()
     sys.exit(app.exec_())
