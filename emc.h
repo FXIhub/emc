@@ -26,7 +26,8 @@ typedef struct{
     double pixel_size;
     int detector_size;
     double detector_distance;
-    int rotations_n;
+    //int rotations_n;
+    const char *rotations_file;
     double sigma_start;
     double sigma_final;
     int sigma_half_life;

@@ -257,7 +257,8 @@ Configuration read_configuration_file(const char *filename)
   config_lookup_float(&config,"pixel_size",&config_out.pixel_size);
   config_lookup_int(&config,"detector_size",&config_out.detector_size);
   config_lookup_float(&config,"detector_distance",&config_out.detector_distance);
-  config_lookup_int(&config,"rotations_n",&config_out.rotations_n);
+  //config_lookup_int(&config,"rotations_n",&config_out.rotations_n);
+  config_lookup_string(&config,"rotations_file",&config_out.rotations_file);
   config_lookup_float(&config,"sigma_start",&config_out.sigma_start);
   config_lookup_float(&config,"sigma_final",&config_out.sigma_final);
   config_lookup_int(&config,"sigma_half_life",&config_out.sigma_half_life);
@@ -545,6 +546,30 @@ void close_state_file(hid_t file_id) {
   H5Fclose(file_id);
 }
 
+int read_rotations_file(const char *filename, Quaternion ***rotations, real **weights) {
+  hid_t file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+  hid_t dataset_id = H5Dopen1(file_id, "/rotations");
+  hid_t space_id = H5Dget_space(dataset_id);
+  hsize_t dims[2];
+  hsize_t maxdims[2];
+  H5Sget_simple_extent_dims(space_id, dims, maxdims);
+  
+  int N_slices = dims[0];
+  
+  real *input_array = malloc(N_slices*5*sizeof(real));
+  H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, input_array);
+  
+  *rotations = malloc(N_slices*sizeof(Quaternion *));
+  *weights = malloc(N_slices*sizeof(real));
+  for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+    Quaternion *this_quaternion = quaternion_alloc();
+    memcpy(this_quaternion->q, &input_array[i_slice*5], 4*sizeof(real));
+    (*rotations)[i_slice] = this_quaternion;
+    (*weights)[i_slice] = input_array[i_slice*5+4];
+  }
+  return N_slices;
+}
+
 int main(int argc, char **argv)
 {
   /*
@@ -594,19 +619,20 @@ int main(int argc, char **argv)
   const int N_images = conf.N_images;
   const int slice_chunk = conf.slice_chunk;
   const int output_period = 10;
-  const int n = conf.rotations_n;
+  //const int n = conf.rotations_n;
   const int N_2d = conf.model_side*conf.model_side;
   const int N_3d = conf.model_side*conf.model_side*conf.model_side;
   char buffer[1000];
 
   Quaternion **rotations;
   real *weights;
-  const int N_slices = generate_rotation_list(n,&rotations,&weights);
+  //const int N_slices = generate_rotation_list(n,&rotations,&weights);
+  const int N_slices = read_rotations_file(conf.rotations_file,&rotations,&weights);
   real *d_weights;
   
   cuda_allocate_real(&d_weights, N_slices);
   cuda_copy_real_to_device(weights, d_weights, N_slices);
-  printf("%d rotations sampled\n",N_slices);
+  //printf("%d rotations sampled\n",N_slices);
   /* outpus weigths */
   /* now h5
   FILE *weights_file = fopen("debug/weights.data", "wp");

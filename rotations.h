@@ -16,6 +16,11 @@ Quaternion *quaternion_alloc();
 Quaternion *quaternion_copy(Quaternion *a);
 
 /*
+  Free quaternion
+*/
+void quaternion_free(Quaternion *a);
+
+/*
   Make the quaternion a rotation by putting total sum of squares to 1.
  */
 void quaternion_normalize(Quaternion *a);

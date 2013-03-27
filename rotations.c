@@ -18,6 +18,11 @@ Quaternion *quaternion_copy(Quaternion *a) {
   return res;
 }
 
+void quaternion_free(Quaternion *a) {
+  free(a->q);
+}
+
+
 void quaternion_normalize(Quaternion *a)
 {
   real abs = sqrt(pow(a->q[0],2) + pow(a->q[1],2) + pow(a->q[2],2) + pow(a->q[3],2));
@@ -154,7 +159,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
       }
     }
   }
-  printf("%d edges\n",count);
+  //printf("%d edges\n",count);
   //fclose(f);
 
   /* get faces */
@@ -194,7 +199,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
       }
     }
   }
-  printf("%d faces\n",count);
+  //printf("%d faces\n",count);
 
   /* get cells */
   /* all pairs of face and vertice with a sum larger than 13.5 is a cell */
@@ -251,7 +256,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
       }
     }
   }
-  printf("%d cells\n",count);
+  //printf("%d cells\n",count);
 
   /*variables used to calculate the weights */
   real alpha = acos(1.0/3.0);
@@ -261,7 +266,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   real f3 = 1.0;
 
   int number_of_samples = n_to_samples(n);
-  printf("%d samples\n",number_of_samples);
+  //printf("%d samples\n",number_of_samples);
   Quaternion **new_list = malloc(number_of_samples*sizeof(Quaternion *));
   for (int i = 0; i < number_of_samples; i++) {
     new_list[i] = quaternion_alloc();
@@ -289,7 +294,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   int edges_base = 120;
   int edge_verts = (n-1);
   int index;
-  printf("edge_verts = %d\n",edge_verts);
+  //printf("edge_verts = %d\n",edge_verts);
   for (int i = 0; i < 720; i++) {
     for (int j = 0; j < edge_verts; j++) {
       index = edges_base+edge_verts*i+j;
@@ -310,7 +315,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   int face_verts = ((n-1)*(n-2))/2;
   real a,b,c;
   int kc;
-  printf("face_verts = %d\n",face_verts);
+  //printf("face_verts = %d\n",face_verts);
   if (face_verts > 0) {
     for (int i = 0; i < 1200; i++) {
       count = 0;
@@ -346,7 +351,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   int cell_verts = ((n-1)*(n-2)*(n-3))/6;
   real d;
   int kd;
-  printf("cell_verts = %d\n",cell_verts);
+  //printf("cell_verts = %d\n",cell_verts);
   int debug_count = 0;
   if (cell_verts > 0) {
     for (int i = 0; i < 600; i++) { //600
@@ -381,7 +386,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
       }
     }
   }
-  printf("debug_count = %d\n",debug_count);
+  //printf("debug_count = %d\n",debug_count);
   
   for (int i = 0; i < 120; i++) {
     free(rotation_list[i]);
@@ -422,7 +427,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
       counter++;
     }
   }
-  printf("%d quaternions of %d copied\n", counter, number_of_rotations);
+  //printf("%d quaternions of %d copied\n", counter, number_of_rotations);
   /* end prune */
 
   real weight_sum = 0.0;
@@ -431,7 +436,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
     //weight_sum += weights[i];
     weight_sum += pruned_weights[i];
   }
-  printf("weights sum = %g\n",weight_sum);
+  //printf("weights sum = %g\n",weight_sum);
   for (int i = 0; i < number_of_samples/2; i++) {
     //weights[i] /= weight_sum;
     pruned_weights[i] /= weight_sum;
@@ -442,6 +447,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   //return_weights[0] = weights;
   return_weights[0] = pruned_weights;
 
+  /*
   f =  fopen("debug_samples.data","wp");
   for (int i = 0; i < number_of_samples/2; i++) {
     //quaternion_normalize(new_list[i]);
@@ -450,7 +456,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
     fprintf(f,"%g %g %g %g\n",pruned_list[i]->q[0],pruned_list[i]->q[1],pruned_list[i]->q[2],pruned_list[i]->q[3]);
   }
   fclose(f);
-
+  */
   
 
   return number_of_samples/2;
