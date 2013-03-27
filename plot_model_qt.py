@@ -8,18 +8,26 @@ import rotations
 import icosahedral_sphere
 from optparse import OptionParser
 
-from PyQt4 import QtCore, QtGui
-QtCore.Signal = QtCore.pyqtSignal
-QtCore.Slot = QtCore.pyqtSlot
+print "import qt"
+# from PyQt4 import QtCore, QtGui
+# QtCore.Signal = QtCore.pyqtSignal
+# QtCore.Slot = QtCore.pyqtSlot
+from pyface.qt import QtCore, QtGui
+print "import qt - done"
 
+print "import mayavi"
 try:
     from mayavi import mlab
 except ImportError:
+    print "fallback on enthought"
     from enthought.mayavi import mlab
+print "import mayavi - done"
 
+print "import embed struff"
 from traits.api import HasTraits, Instance, on_trait_change, Int, Dict
 from traitsui.api import View, Item
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
+print "import embed struff - done"
 
 #import kernprof
 
@@ -154,15 +162,25 @@ class MlabVisualization(HasTraits):
 
 class MlabWidget(QtGui.QWidget):
     def __init__(self, parent=None):
+        i = 0
+        print "%d" % i; i+=1
         QtGui.QWidget.__init__(self, parent)
+        print "%d" % i; i+=1
         layout = QtGui.QVBoxLayout(self)
-        layout.setMargin(0)
-        layout.setSpacing(0)
+        print "%d" % i; i+=1
+        # layout.setMargin(0)
+        # print "%d" % i; i+=1
+        # layout.setSpacing(0)
+        # print "%d" % i; i+=1
 
         self._vis = MlabVisualization()
+        print "%d" % i; i+=1
         self._ui = self._vis.edit_traits(parent=self, kind='subpanel').control
+        print "%d" % i; i+=1
         layout.addWidget(self._ui)
+        print "%d" % i; i+=1
         self._ui.setParent(self)
+        print "%d" % i; i+=1
 
         # self._scene = MlabSceneModel()
         # view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
@@ -468,13 +486,24 @@ if __name__ == "__main__":
     parser.add_option("-m", action="store_true", dest="mask", help="Plot mask.")
     (options, args) = parser.parse_args()
 
+    #app = QtGui.QApplication(['Controll window'])
+    print "create QApplication"
+    app = QtGui.QApplication.instance()
+    print "create QApplication - done"
+
+    print "create model"
     model = Model(0)
+    print "create model - done"
+    print "create mlabwidget"
     mlab_widget = MlabWidget()
+    print "create mlabwidget - done"
+    print "create viewer"
     viewer = Viewer(model, mlab_widget)
+    print "create viewer - done"
     #viewer.plot_slices()
     
-    #app = QtGui.QApplication(['Controll window'])
-    app = QtGui.QApplication.instance()
+    print "create program"
     program = StartMain(model, viewer, mlab_widget)
+    print "create program - done"
     program.show()
     sys.exit(app.exec_())

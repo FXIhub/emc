@@ -9,6 +9,8 @@ extern "C"{
 
   enum diff_type {absolute=0, poisson, relative};
 
+  const real min_resp = -7.;
+
 typedef struct{
   int side;
   real wavelength;
@@ -41,6 +43,7 @@ typedef struct{
     int model_input;
     double initial_model_noise;
     const char *model_file;
+    const char *init_rotations_file;
     int exclude_images;
     double exclude_ratio;
     double model_blur;

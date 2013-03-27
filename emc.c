@@ -158,9 +158,9 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 	   2.0*rot->q[0]*rot->q[1])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
 	  (rot->q[0]*rot->q[0] - rot->q[1]*rot->q[1] -
 	   rot->q[2]*rot->q[2] + rot->q[3]*rot->q[3])*sp_matrix_get(z_coordinates,x,y);
-	round_x = round((real)sp_3matrix_x(model)/2.0 + 0.5 + new_x);
-	round_y = round((real)sp_3matrix_y(model)/2.0 + 0.5 + new_y);
-	round_z = round((real)sp_3matrix_z(model)/2.0 + 0.5 + new_z);
+	round_x = round((real)sp_3matrix_x(model)/2.0 - 0.5 + new_x);
+	round_y = round((real)sp_3matrix_y(model)/2.0 - 0.5 + new_y);
+	round_z = round((real)sp_3matrix_z(model)/2.0 - 0.5 + new_z);
 	if (round_x >= 0 && round_x < sp_3matrix_x(model) &&
 	    round_y >= 0 && round_y < sp_3matrix_y(model) &&
 	    round_z >= 0 && round_z < sp_3matrix_z(model)) {
@@ -273,6 +273,7 @@ Configuration read_configuration_file(const char *filename)
   config_lookup_int(&config,"model_input",&config_out.model_input);
   config_lookup_float(&config,"initial_model_noise",&config_out.initial_model_noise);
   config_lookup_string(&config,"model_file",&config_out.model_file);
+  config_lookup_string(&config, "init_rotations", &config_out.init_rotations_file);
   config_lookup_bool(&config,"exclude_images",&config_out.exclude_images);
   config_lookup_float(&config,"exclude_ratio",&config_out.exclude_ratio);
   const char *diff_type_string = malloc(20*sizeof(char));
@@ -322,6 +323,12 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
       }
     }
 
+    /*
+    pixel_sum += sp_cabs(sp_image_get(img,
+				      (int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,
+				      (int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0));
+    */
+
     real pixel_sum;
     int mask_sum;
     for (int x = 0; x < conf.model_side; x++) {
@@ -330,8 +337,14 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 	mask_sum = 0;
 	for (int xb = 0; xb < conf.read_stride; xb++) {
 	  for (int yb = 0; yb < conf.read_stride; yb++) {
+	    pixel_sum += sp_cabs(sp_image_get(img, sp_image_x(img)/2 - conf.model_side*conf.read_stride/2 + x*conf.read_stride + xb,
+					     sp_image_y(img)/2 - conf.model_side*conf.read_stride/2 + y*conf.read_stride + yb, 0));
+	    mask_sum += sp_image_mask_get(img, sp_image_x(img)/2 - conf.model_side*conf.read_stride/2 + x*conf.read_stride + xb,
+					 sp_image_y(img)/2 - conf.model_side*conf.read_stride/2 + y*conf.read_stride + yb, 0);
+	    /*
 	    pixel_sum += sp_cabs(sp_image_get(img,(int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,(int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0));
 	    mask_sum += sp_image_mask_get(img,(int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,(int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0);
+	    */
 	  }
 	}
 	if (mask_sum > 1) {
@@ -343,7 +356,6 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 	}
       }
     }
-
     sp_image_free(img);
   }
   return images;
@@ -355,6 +367,26 @@ sp_imatrix *read_mask(Configuration conf)
   sp_imatrix *mask = sp_imatrix_alloc(conf.model_side,conf.model_side);;
   Image *mask_in = sp_image_read(conf.mask_file,0);
   /* read and rescale mask */
+  int mask_sum;
+  for (int x = 0; x < conf.model_side; x++) {
+    for (int y = 0; y < conf.model_side; y++) {
+      mask_sum = 0;
+      for (int xb = 0; xb < conf.read_stride; xb++) {
+	for (int yb = 0; yb < conf.read_stride; yb++) {
+	  if (sp_cabs(sp_image_get(mask_in, sp_image_x(mask_in)/2 - conf.model_side*conf.read_stride/2 + x*conf.read_stride + xb,
+				   sp_image_y(mask_in)/2 - conf.model_side*conf.read_stride/2 + y*conf.read_stride + yb, 0))) {
+	    mask_sum += 1;
+	  }
+	}
+      }
+      if (mask_sum > 1) {
+	sp_imatrix_set(mask,x,y,1);
+      } else {
+	sp_imatrix_set(mask,x,y,0);
+      }
+    }
+  }
+  /*
   for (int x = 0; x < conf.model_side; x++) {
     for (int y = 0; y < conf.model_side; y++) {
       if (sp_cabs(sp_image_get(mask_in,
@@ -368,6 +400,7 @@ sp_imatrix *read_mask(Configuration conf)
       }
     }
   }
+  */
   sp_image_free(mask_in);
   
   /* mask out everything outside the central sphere */
@@ -386,16 +419,18 @@ sp_imatrix *read_mask(Configuration conf)
 /* normalize images so average pixel value is 1.0 */
 void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
 {
-  real sum;
+  real sum, count;
   int N_2d = conf.model_side*conf.model_side;
   for (int i_image = 0; i_image < conf.N_images; i_image++) {
     sum = 0.;
+    count = 0.;
     for (int i = 0; i < N_2d; i++) {
       if (mask->data[i] == 1) {
 	sum += images[i_image]->data[i];
+	count += 1.;
       }
     }
-    sum = (real)N_2d / sum;
+    sum = count / sum;
     for (int i = 0; i < N_2d; i++) {
       images[i_image]->data[i] *= sum;
     }
@@ -417,16 +452,18 @@ void normalize_images_central_part(sp_matrix **images, sp_imatrix *mask, real ra
       }
     }
   }
-  real sum;
+  real sum, count;
   int N_2d = conf.model_side*conf.model_side;
   for (int i_image = 0; i_image < conf.N_images; i_image++) {
     sum = 0.;
+    count = 0.;
     for (int i = 0; i < N_2d; i++) {
       if (mask->data[i] == 1 && central_mask->data[i] == 1) {
 	sum += images[i_image]->data[i];
+	count += 1.;
       }
     }
-    sum = (real) N_2d / sum;
+    sum = (real) count / sum;
     for (int i = 0; i < N_2d; i++) {
       images[i_image]->data[i] *= sum;
     }
@@ -437,22 +474,76 @@ void normalize_images_central_part(sp_matrix **images, sp_imatrix *mask, real ra
 void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
 				      Configuration conf)
 {
-  real sum;
+  real sum, count;
   int N_2d = conf.model_side*conf.model_side;
   for (int i_image = 0; i_image < conf.N_images; i_image++) {
     sum = 0.;
+    count = 0.;
     for (int i = 0; i < N_2d; i++) {
       if (masks[i_image]->data[i] == 1) {
 	sum += images[i_image]->data[i];
+	count += 1.;
       }
     }
-    sum = (real)N_2d / sum;
+    sum = (real)count / sum;
     for (int i = 0; i < N_2d; i++) {
       images[i_image]->data[i] *= sum;
     }
   }
 }
 
+/* this normalization is intended for use when known_intensities is set */
+void normalize_images_preserve_scaling(sp_matrix ** images, sp_imatrix *mask, Configuration conf) {
+  int N_2d = conf.model_side*conf.model_side;
+  real sum = 0.;
+  real count = 0.;
+  for (int i_image = 0; i_image < conf.N_images; i_image++) {
+    for (int i = 0; i < N_2d; i++) {
+      if (mask->data[i] == 1) {
+	sum += images[i_image]->data[i];
+	count += 1.;
+      }
+    }
+  }
+  sum = (count*(real)conf.N_images) / sum;
+  for (int i_image = 0; i_image < conf.N_images; i_image++) {
+    for (int i = 0; i < N_2d; i++) {
+      images[i_image]->data[i] *= sum;
+    }
+  }
+}
+
+hid_t open_state_file(char *filename) {
+  hid_t file_id, space_id, dataset_id;
+  file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+
+  //init iteration
+  space_id = H5Screate(H5S_SCALAR);
+  dataset_id = H5Dcreate1(file_id, "/iteration", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
+  int iteration_start_value = -1;
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &iteration_start_value);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+  H5Fflush(file_id, H5F_SCOPE_GLOBAL);
+
+  return file_id;
+}
+
+void write_state_file_iteration(hid_t file_id, int value) {
+  hid_t dataset_id;
+
+  hsize_t file_size;
+  H5Fget_filesize(file_id, &file_size);
+  
+  dataset_id = H5Dopen(file_id, "/iteration", H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &value);
+  H5Dclose(dataset_id);
+  H5Fflush(file_id, H5F_SCOPE_GLOBAL);
+}
+
+void close_state_file(hid_t file_id) {
+  H5Fclose(file_id);
+}
 
 int main(int argc, char **argv)
 {
@@ -487,6 +578,10 @@ int main(int argc, char **argv)
 
   //test_blur();
   //test_weight_map();
+
+  hid_t state_file = open_state_file("output/state.h5");
+  write_state_file_iteration(state_file, 2);
+  write_state_file_iteration(state_file, 4);
 
   //signal(SIGKILL, nice_exit);
   Configuration conf;
@@ -553,9 +648,13 @@ int main(int argc, char **argv)
   */
   /* Create output directories in case they don't exist */
   if (conf.normalize_images) {
-    //normalize_images(images, mask, conf);
-    //normalize_images_individual_mask(images, masks, conf);
-    normalize_images_central_part(images, mask, 20., conf);
+    if (conf.known_intensity) {
+      normalize_images_preserve_scaling(images, mask, conf);
+    } else {
+      //normalize_images(images, mask, conf);
+      //normalize_images_individual_mask(images, masks, conf);
+      normalize_images_central_part(images, mask, 20., conf);
+    }
   }
   /* output images after preprocessing */
 
@@ -593,7 +692,7 @@ int main(int argc, char **argv)
   sp_matrix *x_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
   sp_matrix *y_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
   sp_matrix *z_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
-  calculate_coordinates(conf.model_side, conf.pixel_size, conf.detector_distance, conf.wavelength,
+  calculate_coordinates(conf.model_side, conf.pixel_size*conf.read_stride, conf.detector_distance, conf.wavelength,
 			x_coordinates, y_coordinates, z_coordinates);
 
 
@@ -711,6 +810,26 @@ int main(int argc, char **argv)
       model->data[i] = sp_cabs(model_in->image->data[i]);
     }
     sp_image_free(model_in);
+  } else if (conf.model_input == 4) {
+    printf("given orientations model\n");
+    FILE *given_rotations_file = fopen(conf.init_rotations_file, "r");
+    Quaternion *this_rotation = quaternion_alloc();
+    for (int i_image = 0; i_image < N_images; i_image++) {
+      fscanf(given_rotations_file, "%g %g %g %g\n", &(this_rotation->q[0]), &(this_rotation->q[1]), &(this_rotation->q[2]), &(this_rotation->q[3]));
+      //printf("(%d) : %g, %g, %g, %g\n", i_image, this_rotation->q[0], this_rotation->q[1], this_rotation->q[2], this_rotation->q[3]);
+      insert_slice(model, weight, images[i_image], mask, 1., this_rotation,
+		   x_coordinates, y_coordinates, z_coordinates);
+    }
+    free(this_rotation);
+    fclose(given_rotations_file);
+    
+    for (int i = 0; i < N_model; i++) {
+      if (weight->data[i] > 0.) {
+	model->data[i] /= weight->data[i];
+      }else {
+	model->data[i] = -1.;
+      }
+    }
   }
 
   real *scaling = malloc(N_images*N_slices*sizeof(real));
@@ -856,6 +975,7 @@ int main(int argc, char **argv)
       break;
     }
     printf("\niteration %d\n", iteration);
+    write_state_file_iteration(state_file, iteration);
 
     //conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life*log(2.));
     sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
@@ -866,14 +986,14 @@ int main(int argc, char **argv)
 						   ((real)iteration / ((real)conf.sigma_half_life)));
     weight_map_falloff = 0.;
     //cuda_calculate_weight_map_ring(d_weight_map, conf.model_side, 0., 0., weight_map_radius, weight_map_falloff);
-    cuda_calculate_weight_map_ring(d_weight_map, conf.model_side, 20, 0., 40, 0.);
+    cuda_calculate_weight_map_ring(d_weight_map, conf.model_side, 8., 0., 40., 0.);
     printf("weight_map: radius = %g, falloff = %g\n", weight_map_radius, weight_map_falloff);
 
-    sum = cuda_model_max(d_model, N_model);
+    //sum = cuda_model_max(d_model, N_model);
     //printf("model max = %g\n",sum);
     
     //sum = cuda_model_sum(d_model, N_model);
-    sum = cuda_model_average(d_model, N_3d);
+    //sum = cuda_model_average(d_model, N_3d);
     //printf("model_average = %f\n", sum);
 
     /* start calculate many fits */
@@ -942,6 +1062,7 @@ int main(int argc, char **argv)
     }
 
     /* test scaling by outputting two */
+    /*
     real *out = malloc(N_2d*sizeof(real));
     cuda_copy_real_to_host(out, d_images, N_2d);
     sprintf(buffer, "debug/image_0_%.4d.data", iteration);
@@ -964,6 +1085,38 @@ int main(int argc, char **argv)
     }
     fclose(fi);
     free(out);
+    */
+
+    /* output all slices at choosen iteration */
+    if (iteration == 1000) {
+      real *h_slices = malloc(slice_chunk*N_2d*sizeof(real));
+      Image *out = sp_image_alloc(conf.model_side, conf.model_side, 1);	
+      for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
+	if (slice_start + slice_chunk >= N_slices) {
+	  current_chunk = N_slices - slice_start;
+	} else {
+	  current_chunk = slice_chunk;
+	}
+	cuda_get_slices(model, d_model, slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
+			slice_start, current_chunk);
+	
+	cuda_copy_real_to_host(h_slices, slices, current_chunk*N_2d);
+
+	for (int i_slice = 0; i_slice < current_chunk; i_slice++) {
+	  if (i_slice % 1000 == 0) {
+	    printf("output %d %d\n", slice_start/slice_chunk, i_slice);
+	  }
+	  for (int i = 0; i < N_2d; i++) {
+	    out->image->data[i] = sp_cinit(h_slices[i_slice*N_2d + i], 0.);
+	  }
+	  sprintf(buffer, "debug/slice_%.7d.h5", slice_start + i_slice);
+	  sp_image_write(out, buffer, 0);
+	}
+      }
+      exit(0);
+    }
+    
+      
 
     cuda_copy_real_to_host(fit, d_fit, N_images);
     cuda_copy_real_to_host(fit_best_rot, d_fit_best_rot, N_images);
@@ -1313,4 +1466,5 @@ int main(int argc, char **argv)
 	    rotations[final_best_rotation]->q[2], rotations[final_best_rotation]->q[3]);
   }
   fclose(final_best_rotations_file);
+  close_state_file(state_file);
 }

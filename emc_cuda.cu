@@ -265,9 +265,11 @@ __global__ void get_slices_kernel(real * model, real * slices, real *rot, real *
 		 y_coordinates,z_coordinates,slice_rows,slice_cols,model_x,model_y,
 		 model_z,tid,step);
   */
+
   cuda_get_slice_interpolate(model,&slices[N_2d*i_slice],&rot[4*(start_slice+i_slice)],x_coordinates,
 			     y_coordinates,z_coordinates,slice_rows,slice_cols,model_x,model_y,
 			     model_z,tid,step);
+
 }
 
 __global__ void cuda_test_interpolate_kernel(real *model, int side, real *return_value) {
@@ -1226,7 +1228,7 @@ __global__ void cuda_normalize_responsabilities_uniform_kernel(real * respons, i
 
   cache[tid] = 0;
   for (int i_image = tid; i_image < N_images; i_image+=step) {
-    if (respons[i_slice*N_images+i_image] > -1.0e10f) {
+    if (respons[i_slice*N_images+i_image] > min_resp) {
       respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
       cache[tid] += respons[i_slice*N_images+i_image];
     } else {
@@ -1244,7 +1246,7 @@ __global__ void cuda_normalize_responsabilities_uniform_kernel(real * respons, i
   int i_image = blockIdx.x;
   cache[tid] = 0;
   for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
-    if (respons[i_slice*N_images+i_image] > -1.0e10f) {
+    if (respons[i_slice*N_images+i_image] > min_resp) {
       //respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
       cache[tid] += respons[i_slice*N_images+i_image];
     } else {
@@ -1280,7 +1282,7 @@ __global__ void cuda_normalize_responsabilities_kernel(real * respons, int N_sli
 
   cache[tid] = 0;
   for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
-    if (respons[i_slice*N_images+i_image] > -1.0e10f) {
+    if (respons[i_slice*N_images+i_image] > min_resp) {
       respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
       cache[tid] += respons[i_slice*N_images+i_image];
     } else {
