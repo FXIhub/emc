@@ -4,30 +4,21 @@ import sys
 import numpy
 import time
 import h5py
+import os
 import rotations
 import icosahedral_sphere
 from optparse import OptionParser
 
-print "import qt"
-# from PyQt4 import QtCore, QtGui
-# QtCore.Signal = QtCore.pyqtSignal
-# QtCore.Slot = QtCore.pyqtSlot
 from pyface.qt import QtCore, QtGui
-print "import qt - done"
-
-print "import mayavi"
 try:
     from mayavi import mlab
 except ImportError:
     print "fallback on enthought"
     from enthought.mayavi import mlab
-print "import mayavi - done"
 
-print "import embed struff"
 from traits.api import HasTraits, Instance, on_trait_change, Int, Dict
 from traitsui.api import View, Item
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
-print "import embed struff - done"
 
 #import kernprof
 
@@ -35,6 +26,7 @@ SLIDER_LENGTH = 100
 
 class Model(QtCore.QObject):
     image_changed = QtCore.Signal(int)
+    read_error = QtCore.Signal()
     def __init__(self, iteration_number):
         super(Model, self).__init__()
         self._current_iteration = iteration_number
@@ -76,19 +68,24 @@ class Model(QtCore.QObject):
         self.image_changed.emit(self._current_iteration)
 
     def _read_image(self):
-        if self._current_iteration >= 0:
-            self._image, self._mask = sphelper.import_spimage('output/model_%.4d.h5' % self._current_iteration, ['image', 'mask'])
-        elif self._current_iteration == -1:
-            self._image, self._mask = sphelper.import_spimage('output/model_init.h5', ['image', 'mask'])
-        elif self._current_iteration == -2:
-            self._image, self._mask = sphelper.import_spimage('output/model_final.h5', ['image', 'mask'])
+        try:
+            if self._current_iteration >= 0:
+                self._image, self._mask = sphelper.import_spimage('output/model_%.4d.h5' % self._current_iteration, ['image', 'mask'])
+            elif self._current_iteration == -1:
+                self._image, self._mask = sphelper.import_spimage('output/model_init.h5', ['image', 'mask'])
+            elif self._current_iteration == -2:
+                self._image, self._mask = sphelper.import_spimage('output/model_final.h5', ['image', 'mask'])
+        except IOError:
+            self.read_error.emit()
 
     def _read_weight(self):
-        if self._current_iteration >= 0:
-            self._image, self._mask = sphelper.import_spimage('output/weight_%.4d.h5' % self._current_iteration, ['image', 'mask'])
-        elif self._current_iteration == -1:
-            self._image, self._mask = sphelper.import_spimage('output/model_init.h5', ['image', 'mask'])
-
+        try:
+            if self._current_iteration >= 0:
+                self._image, self._mask = sphelper.import_spimage('output/weight_%.4d.h5' % self._current_iteration, ['image', 'mask'])
+            elif self._current_iteration == -1:
+                self._image, self._mask = sphelper.import_spimage('output/model_init.h5', ['image', 'mask'])
+        except IOError:
+            self.read_error.emit()
 
     def next_image(self):
         self._current_iteration += 1
@@ -124,17 +121,20 @@ class Model(QtCore.QObject):
         return self._rotation_sphere_coordinates
 
     def get_rotation_values(self):
-        if self._rotation_type == 0:
-            average_resp = loadtxt('output/average_resp_%.4d.data' % self._current_iteration)
-            for i, r in enumerate(average_resp):
-                self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
-        elif self._rotation_type == 1:
-            resp_handle = h5py.File('output/responsabilities_%.4d.h5' % self._current_iteration)
-            resp = resp_handle['data'][self._rotation_image_number,:]
-            resp_handle.close()
-            for i, r in enumerate(resp):
-                self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
-        self._rotation_sphere_bins[self._rotation_sphere_good_indices] /= self._rotation_sphere_weights[self._rotation_sphere_good_indices]
+        try:
+            if self._rotation_type == 0:
+                average_resp = loadtxt('output/average_resp_%.4d.data' % self._current_iteration)
+                for i, r in enumerate(average_resp):
+                    self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
+            elif self._rotation_type == 1:
+                resp_handle = h5py.File('output/responsabilities_%.4d.h5' % self._current_iteration)
+                resp = resp_handle['data'][self._rotation_image_number,:]
+                resp_handle.close()
+                for i, r in enumerate(resp):
+                    self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
+            self._rotation_sphere_bins[self._rotation_sphere_good_indices] /= self._rotation_sphere_weights[self._rotation_sphere_good_indices]
+        except IOError:
+            self.read_error.emit()
         return self._rotation_sphere_bins
 
     def get_image_side(self):
@@ -152,6 +152,8 @@ class Model(QtCore.QObject):
         self._rotation_image_number = image_number
         self.image_changed.emit(self._current_iteration)
             
+    def reload_image(self):
+        self._image_changed()
 
 class MlabVisualization(HasTraits):
     scene = Instance(MlabSceneModel, ())
@@ -163,24 +165,17 @@ class MlabVisualization(HasTraits):
 class MlabWidget(QtGui.QWidget):
     def __init__(self, parent=None):
         i = 0
-        print "%d" % i; i+=1
         QtGui.QWidget.__init__(self, parent)
-        print "%d" % i; i+=1
         layout = QtGui.QVBoxLayout(self)
-        print "%d" % i; i+=1
         # layout.setMargin(0)
         # print "%d" % i; i+=1
         # layout.setSpacing(0)
         # print "%d" % i; i+=1
 
         self._vis = MlabVisualization()
-        print "%d" % i; i+=1
         self._ui = self._vis.edit_traits(parent=self, kind='subpanel').control
-        print "%d" % i; i+=1
         layout.addWidget(self._ui)
-        print "%d" % i; i+=1
         self._ui.setParent(self)
-        print "%d" % i; i+=1
 
         # self._scene = MlabSceneModel()
         # view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
@@ -328,6 +323,8 @@ class StartMain(QtGui.QMainWindow):
         #                     // an unstructured grid.
 
     def _setup_controller_window(self):
+        self._model.read_error.connect(self._on_read_error)
+        
         self._controller_widget = QtGui.QWidget()
 
         self._mode_button = QtGui.QPushButton("Mode")
@@ -342,6 +339,20 @@ class StartMain(QtGui.QMainWindow):
         self._mode_menu.addAction(self._slice_action)
         self._mode_menu.addAction(self._rotations_action)
         self._mode_button.setMenu(self._mode_menu)
+
+        #file_system_model = QtGui.QFileSystemModel()
+        work_dir_label = QtGui.QLabel("Dir:")
+        file_system_completer = QtGui.QCompleter()
+        self._file_system_model = QtGui.QFileSystemModel(file_system_completer)
+        #file_system_model.setRootPath('/')
+        self._file_system_model.setFilter(QtCore.QDir.Dirs | QtCore.QDir.Hidden)
+        file_system_completer.setModel(self._file_system_model)
+        self._work_dir_edit = QtGui.QLineEdit(os.getcwd())
+        self._work_dir_edit.setCompleter(file_system_completer)
+        self._work_dir_edit.editingFinished.connect(self._on_work_dir_changed)
+        self._work_dir_layout = QtGui.QHBoxLayout()
+        self._work_dir_layout.addWidget(work_dir_label)
+        self._work_dir_layout.addWidget(self._work_dir_edit)
         
         self._previous_button = QtGui.QPushButton("Previous")
         self._previous_button.pressed.connect(self._model.previous_image)
@@ -422,6 +433,7 @@ class StartMain(QtGui.QMainWindow):
         #setup main layout and widget
         self._main_layout = QtGui.QVBoxLayout()
         self._main_layout.addWidget(self._mlab_widget)
+        self._main_layout.addLayout(self._work_dir_layout)
         self._main_layout.addWidget(self._mode_button)
         self._main_layout.addLayout(self._iteration_layout)
         self._main_layout.addLayout(self._image_type_layout)
@@ -452,7 +464,30 @@ class StartMain(QtGui.QMainWindow):
         self._slice_controll_widget.hide()
         self._rotations_controll_widget.show()
         self._viewer.set_rotations_mode()
-        
+
+    def _on_work_dir_changed(self):
+        new_dir = self._work_dir_edit.text()
+        self._file_system_model.setRootPath(new_dir)
+        if not os.path.isdir(new_dir):
+            #self._work_dir_edit.setTextBackgroundColor(QtGui.QColor(255, 0, 0, 127))
+            #self._work_dir_edit.setStyleSheet("QLineEdit(background: red;")
+            palette = self._work_dir_edit.palette()
+            #palette = QtGui.QPalette()
+            palette.setColor(QtGui.QPalette.Base, QtGui.QColor(255, 50, 50))
+            self._work_dir_edit.setPalette(palette)
+            return
+        os.chdir(self._work_dir_edit.text())
+        palette = self._work_dir_edit.palette()
+        palette.setColor(QtGui.QPalette.Base, QtGui.QColor(255, 255, 255))
+        self._work_dir_edit.setPalette(palette)
+        #self._work_dir_edit.setTextBackgroundColor(QtGui.QColor(255, 255, 255, 127))
+        #self._work_dir_edit.setStyleSheet("QLineEdit(background: white;")
+        self._model.reload_image()
+
+    def _on_read_error(self):
+        palette = self._work_dir_edit.palette()
+        palette.setColor(QtGui.QPalette.Base, QtGui.QColor(255, 250, 50))
+        self._work_dir_edit.setPalette(palette)
 
     def _on_model_image_changed(self, iteration):
         self._iteration_box.setValue(iteration)
@@ -487,23 +522,13 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
 
     #app = QtGui.QApplication(['Controll window'])
-    print "create QApplication"
     app = QtGui.QApplication.instance()
-    print "create QApplication - done"
 
-    print "create model"
     model = Model(0)
-    print "create model - done"
-    print "create mlabwidget"
     mlab_widget = MlabWidget()
-    print "create mlabwidget - done"
-    print "create viewer"
     viewer = Viewer(model, mlab_widget)
-    print "create viewer - done"
     #viewer.plot_slices()
     
-    print "create program"
     program = StartMain(model, viewer, mlab_widget)
-    print "create program - done"
     program.show()
     sys.exit(app.exec_())
