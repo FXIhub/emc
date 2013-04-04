@@ -190,7 +190,8 @@ class SliceGenerator(object):
 
         for i in range(self._side):
             for j in range(self._side):
-                self._points.InsertNextPoint(self._x_array[i,j], self._y_array[i,j], self._z_array[i,j])
+                #self._points.InsertNextPoint(self._x_array[i,j], self._y_array[i,j], self._z_array[i,j])
+                self._points.InsertNextPoint(self._z_array[i,j], self._y_array[i,j], self._x_array[i,j])
                 self._image_values.InsertNextTuple1(0.)
 
         self._circular_slice()
@@ -232,13 +233,13 @@ class SliceGenerator(object):
         return (self._side - 1 - point[0], point[1])
 
     def _get_rotated_coordinates(self, rot):
-        x_array, y_array, z_array = rotations.rotate_array(rot, self._x_array.flatten(),
+        z_array, y_array, x_array = rotations.rotate_array(rot, self._z_array.flatten(),
                                                            self._y_array.flatten(),
-                                                           self._z_array.flatten())
+                                                           self._x_array.flatten())
         x_array = x_array.reshape((self._side, self._side))
         y_array = y_array.reshape((self._side, self._side))
         z_array = z_array.reshape((self._side, self._side))
-        return x_array, y_array, z_array
+        return z_array, y_array, x_array
 
     def insert_slice(self, image, rotation):
         # this_poly_data = vtkPolyData()
@@ -248,7 +249,8 @@ class SliceGenerator(object):
         rotation_degrees[0] = 2.*arccos(rotation[0])*180./pi
         transformation = vtkTransform()
         #transformation.RotateWXYZ(*rotation_degrees)
-        transformation.RotateWXYZ(-rotation_degrees[0], rotation_degrees[1], rotation_degrees[2], rotation_degrees[3])
+        transformation.RotateWXYZ(rotation_degrees[0], rotation_degrees[1], rotation_degrees[2], rotation_degrees[3])
+        #transformation.RotateWXYZ(-rotation_degrees[0], rotation_degrees[1], rotation_degrees[2], rotation_degrees[3]) #this one worked together with propagator with inverted quaternions and transpose on.
         #transformation.RotateWXYZ(rotation_degrees[0], rotation_degrees[3], rotation_degrees[2], rotation_degrees[1])
         transform_filter = vtkTransformFilter()
         transform_filter.SetInput(self._template_poly_data)
@@ -266,8 +268,8 @@ class SliceGenerator(object):
             for j in range(self._side):
                 point_coord = this_poly_data.GetPoint(self._side*i + j)
                 #if point_coord[0] > 0.:
-                #scalars.SetTuple1(i*self._side+j, image[i, j])
-                scalars.SetTuple1(i*self._side+j, image[j, i])
+                scalars.SetTuple1(i*self._side+j, image[i, j])
+                #scalars.SetTuple1(i*self._side+j, image[j, i])
                 # else:
                 #     #polys.GetData().SetTuple4(i*self._side+j, 0., 0., 0., 0.)
                 #     scalars.SetTuple1(i*self._side+j, nan)
@@ -428,7 +430,7 @@ if __name__ == "__main__":
     parser.add_option("-D", type='float', action='store', dest='detector_distance', default=None)
     options, args = parser.parse_args()
 
-    data = ImageData(args[0], args[1], options.number_of_images, get_curvature(options.pixel_size, options.detector_distance), transpose=True)
+    data = ImageData(args[0], args[1], options.number_of_images, get_curvature(options.pixel_size, options.detector_distance), transpose=False)
     #data = SimulatedData()
     
     app = QtGui.QApplication(['QVTKRenderWindowInteractor'])
