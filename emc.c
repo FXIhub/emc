@@ -124,6 +124,7 @@ void calculate_coordinates(int side, real pixel_size, real detector_distance, re
   }
 }
 
+
 void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 		  sp_imatrix * mask, real w, Quaternion *rot, sp_matrix *x_coordinates,
 		  sp_matrix *y_coordinates, sp_matrix *z_coordinates)
@@ -139,25 +140,26 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 	/* This is just a matrix multiplication with rot */
 	new_x =
 	  (rot->q[0]*rot->q[0] + rot->q[1]*rot->q[1] -
-	   rot->q[2]*rot->q[2] - rot->q[3]*rot->q[3])*sp_matrix_get(x_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
+	   rot->q[2]*rot->q[2] - rot->q[3]*rot->q[3])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
 	  (2.0*rot->q[1]*rot->q[2] -
 	   2.0*rot->q[0]*rot->q[3])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
 	  (2.0*rot->q[1]*rot->q[3] +
-	   2.0*rot->q[0]*rot->q[2])*sp_matrix_get(z_coordinates,x,y);
+	   2.0*rot->q[0]*rot->q[2])*sp_matrix_get(x_coordinates,x,y);
 	new_y =
 	  (2.0*rot->q[1]*rot->q[2] +
-	   2.0*rot->q[0]*rot->q[3])*sp_matrix_get(x_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
+	   2.0*rot->q[0]*rot->q[3])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
 	  (rot->q[0]*rot->q[0] - rot->q[1]*rot->q[1] +
 	   rot->q[2]*rot->q[2] - rot->q[3]*rot->q[3])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
 	  (2.0*rot->q[2]*rot->q[3] -
-	   2.0*rot->q[0]*rot->q[1])*sp_matrix_get(z_coordinates,x,y);
+	   2.0*rot->q[0]*rot->q[1])*sp_matrix_get(x_coordinates,x,y);
 	new_z =
 	  (2.0*rot->q[1]*rot->q[3] -
-	   2.0*rot->q[0]*rot->q[2])*sp_matrix_get(x_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
+	   2.0*rot->q[0]*rot->q[2])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
 	  (2.0*rot->q[2]*rot->q[3] +
 	   2.0*rot->q[0]*rot->q[1])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
 	  (rot->q[0]*rot->q[0] - rot->q[1]*rot->q[1] -
-	   rot->q[2]*rot->q[2] + rot->q[3]*rot->q[3])*sp_matrix_get(z_coordinates,x,y);
+	   rot->q[2]*rot->q[2] + rot->q[3]*rot->q[3])*sp_matrix_get(x_coordinates,x,y);
+
 	round_x = round((real)sp_3matrix_x(model)/2.0 - 0.5 + new_x);
 	round_y = round((real)sp_3matrix_y(model)/2.0 - 0.5 + new_y);
 	round_z = round((real)sp_3matrix_z(model)/2.0 - 0.5 + new_z);
@@ -898,7 +900,9 @@ int main(int argc, char **argv)
   //real * slices_on_host = malloc(N_slices*N_2d*sizeof(real));
   real * d_model;
   cuda_allocate_model(&d_model,model);
-  cuda_normalize_model(model, d_model);
+  if (!conf.known_intensity) {
+    cuda_normalize_model(model, d_model);
+  }
   real * d_model_updated;
   real * d_model_tmp;
   cuda_allocate_model(&d_model_updated,model);
@@ -1346,7 +1350,9 @@ int main(int argc, char **argv)
     d_model = d_model_tmp;
 
     cuda_divide_model_by_weight(model, d_model, d_weight);
-    cuda_normalize_model(model, d_model);
+    if (!conf.known_intensity) {
+      cuda_normalize_model(model, d_model);
+    }
 
     //sprintf(buffer, "debug/model_before_blur_%.4d.h5", iteration);
     //cuda_output_device_model(d_model, buffer, conf.model_side);
@@ -1448,7 +1454,9 @@ int main(int argc, char **argv)
   sp_image_write(model_out,"debug/debug_weight.h5",0);
 
   cuda_divide_model_by_weight(model, d_model_updated, d_weight);
-  cuda_normalize_model(model, d_model_updated);  
+  if (!conf.known_intensity){
+    cuda_normalize_model(model, d_model_updated);  
+  }
   cuda_copy_model(model, d_model_updated);
   /* write output */
   for (int i = 0; i < N_model; i++) {
