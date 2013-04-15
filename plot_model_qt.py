@@ -124,12 +124,14 @@ class Model(QtCore.QObject):
         try:
             if self._rotation_type == 0:
                 average_resp = loadtxt('output/average_resp_%.4d.data' % self._current_iteration)
+                self._rotation_sphere_bins[:] = 0.
                 for i, r in enumerate(average_resp):
                     self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
             elif self._rotation_type == 1:
                 resp_handle = h5py.File('output/responsabilities_%.4d.h5' % self._current_iteration)
                 resp = resp_handle['data'][self._rotation_image_number,:]
                 resp_handle.close()
+                self._rotation_sphere_bins[:] = 0.
                 for i, r in enumerate(resp):
                     self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
             self._rotation_sphere_bins[self._rotation_sphere_good_indices] /= self._rotation_sphere_weights[self._rotation_sphere_good_indices]
