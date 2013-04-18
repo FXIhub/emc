@@ -2,12 +2,11 @@
 
 #include <spimage.h>
 #include "rotations.h"
+#include "configuration.h"
 
 #ifdef __cplusplus
 extern "C"{
 #endif
-
-  enum diff_type {absolute=0, poisson, relative};
 
   const real min_resp = -7.;
 
@@ -19,42 +18,9 @@ typedef struct{
   real detector_distance;
 }Setup;
 
-  typedef struct{
-    int model_side;
-    int read_stride;
-    double wavelength;
-    double pixel_size;
-    int detector_size;
-    double detector_distance;
-    //int rotations_n;
-    const char *rotations_file;
-    double sigma_start;
-    double sigma_final;
-    int sigma_half_life;
-    enum diff_type diff;
-    int slice_chunk;
-    int N_images;
-    int max_iterations;
-    int blur_image;
-    double blur_sigma;
-    const char *mask_file;
-    const char *image_prefix;
-    int normalize_images;
-    int known_intensity;
-    int model_input;
-    double initial_model_noise;
-    const char *model_file;
-    const char *init_rotations_file;
-    int exclude_images;
-    double exclude_ratio;
-    double model_blur;
-  }Configuration;
-
   void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 		    sp_imatrix * mask, real w, Quaternion *rot, sp_matrix *x_coordinates,
 		    sp_matrix *y_coordinates, sp_matrix *z_coordinates);
-
-  Configuration read_configuration_file(const char *filename);
 
   void cuda_update_slices(real * d_images, real * slices, int * d_mask,
 			  real * d_respons, real * d_scaling, int * d_active_images, int N_images,

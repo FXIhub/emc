@@ -3,8 +3,8 @@
 #include <gsl/gsl_rng.h>
 #include <time.h>
 #include "emc.h"
+#include "configuration.h"
 //#include "rotations.h"
-#include <libconfig.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <hdf5.h>
@@ -239,59 +239,6 @@ void test_weight_map() {
   }
   fclose(weight_map_out);
   exit(0);
-}
-
-Configuration read_configuration_file(const char *filename)
-{
-  Configuration config_out;
-  config_t config;
-  config_init(&config);
-  if (!config_read_file(&config,filename)) {
-    fprintf(stderr,"%d - %s\n",
-	   config_error_line(&config),
-	   config_error_text(&config));
-    config_destroy(&config);
-    exit(1);
-  }
-  config_lookup_int(&config,"model_side",&config_out.model_side);
-  config_lookup_int(&config,"read_stride",&config_out.read_stride);
-  config_lookup_float(&config,"wavelength",&config_out.wavelength);
-  config_lookup_float(&config,"pixel_size",&config_out.pixel_size);
-  config_lookup_int(&config,"detector_size",&config_out.detector_size);
-  config_lookup_float(&config,"detector_distance",&config_out.detector_distance);
-  //config_lookup_int(&config,"rotations_n",&config_out.rotations_n);
-  config_lookup_string(&config,"rotations_file",&config_out.rotations_file);
-  config_lookup_float(&config,"sigma_start",&config_out.sigma_start);
-  config_lookup_float(&config,"sigma_final",&config_out.sigma_final);
-  config_lookup_int(&config,"sigma_half_life",&config_out.sigma_half_life);
-  config_lookup_int(&config,"slice_chunk",&config_out.slice_chunk);
-  config_lookup_int(&config,"N_images",&config_out.N_images);
-  config_lookup_int(&config,"max_iterations",&config_out.max_iterations);
-  config_lookup_bool(&config,"blur_image",&config_out.blur_image);
-  config_lookup_float(&config,"blur_sigma",&config_out.blur_sigma);
-  config_lookup_string(&config,"mask_file",&config_out.mask_file);
-  config_lookup_string(&config,"image_prefix",&config_out.image_prefix);
-  config_lookup_bool(&config,"normalize_images",&config_out.normalize_images);
-  config_lookup_bool(&config,"known_intensity",&config_out.known_intensity);
-  config_lookup_int(&config,"model_input",&config_out.model_input);
-  config_lookup_float(&config,"initial_model_noise",&config_out.initial_model_noise);
-  config_lookup_string(&config,"model_file",&config_out.model_file);
-  config_lookup_string(&config, "init_rotations", &config_out.init_rotations_file);
-  config_lookup_bool(&config,"exclude_images",&config_out.exclude_images);
-  config_lookup_float(&config,"exclude_ratio",&config_out.exclude_ratio);
-  const char *diff_type_string = malloc(20*sizeof(char));
-  config_lookup_string(&config,"diff_type",&diff_type_string);
-  if (strcmp(diff_type_string, "absolute") == 0) {
-    config_out.diff = absolute;
-  } else if (strcmp(diff_type_string, "poisson") == 0) {
-    config_out.diff = poisson;
-  } else if (strcmp(diff_type_string, "relative") == 0) {
-    config_out.diff = relative;
-  }
-  config_lookup_float(&config,"model_blur",&config_out.model_blur);
-
-  config_out.pixel_size /= config_out.read_stride;
-  return config_out;
 }
 
 sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
@@ -720,7 +667,7 @@ int main(int argc, char **argv)
   sp_matrix *x_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
   sp_matrix *y_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
   sp_matrix *z_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
-  calculate_coordinates(conf.model_side, conf.pixel_size*conf.read_stride, conf.detector_distance, conf.wavelength,
+  calculate_coordinates(conf.model_side, conf.pixel_size, conf.detector_distance, conf.wavelength,
 			x_coordinates, y_coordinates, z_coordinates);
 
 
@@ -1118,7 +1065,7 @@ int main(int argc, char **argv)
     */
 
     /* output all slices at choosen iteration */
-    if (iteration == 1000) {
+    if (iteration == 1000000000) {
       real *h_slices = malloc(slice_chunk*N_2d*sizeof(real));
       Image *out = sp_image_alloc(conf.model_side, conf.model_side, 1);	
       for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
