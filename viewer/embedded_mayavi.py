@@ -2,7 +2,13 @@ from pyface.qt import QtCore, QtGui
 
 from traits.api import HasTraits, Instance, on_trait_change, Int, Dict
 from traitsui.api import View, Item
+try:
+    from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
+except RuntimeError:
+    pass
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
+
+DEFAULT_IMAGE_OUTPUT_SIDE = 1024
 
 class MlabVisualization(HasTraits):
     """I don't really understand this class, it was stolen from an example for qt-embedded mayavi"""
@@ -34,6 +40,10 @@ class MlabWidget(QtGui.QWidget):
         # #self.get_widget().setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
 
 
-
     def get_mlab(self):
         return self._vis.scene.mlab
+
+    def save_image(self, file_name, size=(DEFAULT_IMAGE_OUTPUT_SIDE, )*2):
+        #self.get_mlab().savefig(file_name, figure=self.get_mlab().figure(1), magnification=1)
+        #self._vis.scene.save_png(file_name)
+        self._vis.scene.save(file_name)

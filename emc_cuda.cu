@@ -423,7 +423,10 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
   __syncthreads(); //probably not needed
   if(tid == 0){
     //respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2);
-    respons[(slice_start+i_slice)*N_images+i_image] = log(weights[slice_start+i_slice]) - sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
+    /* This weight buiseniss is fishy. It seems wee are getting responsabilities that are lower close to vertices. */
+    //respons[(slice_start+i_slice)*N_images+i_image] = log(weights[slice_start+i_slice]) - sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
+    /* I therefore try to remove it altogether */
+    respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
   }   
 }
 

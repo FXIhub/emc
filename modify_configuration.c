@@ -61,11 +61,11 @@ int main(int argc, char **argv) {
       config_setting_set_float(config_setting, v_float);
       continue;
     }
-    if (strcmp(value, "true")) {
+    if (0 == strcmp(value, "true")) {
       config_setting_set_bool(config_setting, 1);
       continue;
     }
-    if (strcmp(value, "false")) {
+    if (0 == strcmp(value, "false")) {
       config_setting_set_bool(config_setting, 0);
       continue;
     }

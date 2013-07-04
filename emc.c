@@ -534,36 +534,38 @@ int main(int argc, char **argv)
   cuda_choose_best_device();
   cuda_print_device_info();
 
-  struct stat sb;
-  if (stat("output", &sb) != 0) {
-    if (mkdir("output",0777) == 0) {
-      printf("Created directory: output\n");
-    } else {
-      printf("Failed to create directory: output\n");
-    }
-  }
-  if (stat("debug", &sb) != 0) {
-    if (mkdir("debug",0777) == 0) {
-      printf("Created directory: output\n");
-    } else {
-      printf("Failed to create directory: output\n");
-    }
-  }
-
-  //test_blur();
-  //test_weight_map();
-
-  hid_t state_file = open_state_file("output/state.h5");
-  write_state_file_iteration(state_file, 2);
-  write_state_file_iteration(state_file, 4);
-
-  //signal(SIGKILL, nice_exit);
   Configuration conf;
   if (argc > 1) {
     conf = read_configuration_file(argv[1]);
   } else {
     conf = read_configuration_file("emc.conf");
   }
+
+  char buffer[1000];
+
+  struct stat sb;
+  if (stat(conf.output_dir, &sb) != 0) {
+    if (mkdir(conf.output_dir,0777) == 0) {
+      printf("Created output directory: %s\n", conf.output_dir);
+    } else {
+      printf("Failed to create output directory: %s\n", conf.output_dir);
+    }
+  }
+  if (stat(conf.debug_dir, &sb) != 0) {
+    if (mkdir(conf.debug_dir,0777) == 0) {
+      printf("Created debug directory: %s\n", conf.debug_dir);
+    } else {
+      printf("Failed to create debug directory: %s\n", conf.debug_dir);
+    }
+  }
+
+  //test_blur();
+  //test_weight_map();
+
+  sprintf(buffer, "%s/state.h5", conf.output_dir);
+  hid_t state_file = open_state_file(buffer);
+
+  //signal(SIGKILL, nice_exit);
   const int start_iteration = 0;
   const int N_images = conf.N_images;
   const int slice_chunk = conf.slice_chunk;
@@ -571,7 +573,6 @@ int main(int argc, char **argv)
   //const int n = conf.rotations_n;
   const int N_2d = conf.model_side*conf.model_side;
   const int N_3d = conf.model_side*conf.model_side*conf.model_side;
-  char buffer[1000];
 
   Quaternion **rotations;
   real *weights;
@@ -590,10 +591,12 @@ int main(int argc, char **argv)
   }
   fclose(weights_file);
   */
-  write_1d_array_hdf5("debug/weights.h5", weights, N_slices);
+  sprintf(buffer, "%s/weights.h5", conf.debug_dir);
+  write_1d_array_hdf5(buffer, weights, N_slices);
 
   /* output rotations */
-  FILE *rotations_file = fopen("output/rotations.data", "wp");
+  sprintf(buffer, "%s/rotations.data", conf.output_dir);
+  FILE *rotations_file = fopen(buffer, "wp");
   for (int i_slice = 0; i_slice < N_slices; i_slice++) {
     fprintf(rotations_file, "%g %g %g %g\n", rotations[i_slice]->q[0],rotations[i_slice]->q[1], rotations[i_slice]->q[2], rotations[i_slice]->q[3]);
   }
@@ -656,9 +659,9 @@ int main(int argc, char **argv)
       write_image->mask->data[i] = mask->data[i];
     }
     write_image->image->data[0] = sp_cinit(image_max, 0.);
-    sprintf(buffer, "debug/image_%.4d.png", i_image);
+    sprintf(buffer, "%s/image_%.4d.png", conf.debug_dir, i_image);
     sp_image_write(write_image, buffer, SpColormapJet|SpColormapLogScale);
-    sprintf(buffer, "debug/image_%.4d.h5", i_image);
+    sprintf(buffer, "%s/image_%.4d.h5", conf.debug_dir, i_image);
     sp_image_write(write_image, buffer, 0);
   }
   sp_image_free(write_image);
@@ -820,12 +823,12 @@ int main(int argc, char **argv)
       model_out->mask->data[i] = 0;
     }
   }
-  sprintf(buffer,"output/model_init.h5");
+  sprintf(buffer,"%s/model_init.h5", conf.output_dir);
   sp_image_write(model_out,buffer,0);
   for (int i = 0; i < N_model; i++) {
     model_out->image->data[i] = sp_cinit(weight->data[i],0.0);
   }
-  sprintf(buffer,"output/model_init_weight.h5");
+  sprintf(buffer,"%s/model_init_weight.h5", conf.output_dir);
   sp_image_write(model_out,buffer,0);
   printf("wrote initial model\n");
 
@@ -840,7 +843,8 @@ int main(int argc, char **argv)
   /*real respons[N_slices][N_images];*/
   real *respons = malloc(N_slices*N_images*sizeof(real));
   real sum, total_respons;
-  FILE *likelihood = fopen("likelihood.data","wp");
+  sprintf(buffer, "%s/likelihood.data", conf.output_dir);
+  FILE *likelihood = fopen(buffer, "wp");
 
   real * slices;
   cuda_allocate_slices(&slices,conf.model_side,slice_chunk); //was N_slices before
@@ -907,11 +911,17 @@ int main(int argc, char **argv)
   real *total_sorted_resp = malloc(N_slices*sizeof(real));
   real *average_resp = malloc(N_slices*sizeof(real));
 
-  FILE *best_rot_file = fopen("output/best_rot.data", "wp");
-  FILE *fit_file = fopen("output/fit.data","wp");
-  FILE *fit_best_rot_file = fopen("output/fit_best_rot.data","wp");
-  FILE *radial_fit_file = fopen("output/radial_fit.data","wp");
-  FILE *sorted_resp_file = fopen("output/total_resp.data","wp");
+  sprintf(buffer, "%s/best_rot.data", conf.output_dir);
+  FILE *best_rot_file = fopen(buffer, "wp");
+  FILE *best_quat_file;
+  sprintf(buffer, "%s/fit.data", conf.output_dir);
+  FILE *fit_file = fopen(buffer,"wp");
+  sprintf(buffer, "%s/fit_best_rot.data", conf.output_dir);
+  FILE *fit_best_rot_file = fopen(buffer,"wp");
+  sprintf(buffer, "%s/radial_fit.data", conf.output_dir);
+  FILE *radial_fit_file = fopen(buffer,"wp");
+  sprintf(buffer, "%s/total_resp.data", conf.output_dir);
+  FILE *sorted_resp_file = fopen(buffer,"wp");
   FILE *average_resp_file;// = fopen("output/average_resp.data","wp");
 
   for (int i_image = 0; i_image < N_images; i_image++) {
@@ -952,7 +962,6 @@ int main(int argc, char **argv)
       break;
     }
     printf("\niteration %d\n", iteration);
-    write_state_file_iteration(state_file, iteration);
 
     //conf.sigma = sigma_final + (sigma_start-sigma_final)*exp(-iteration/sigma_half_life*log(2.));
     sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
@@ -963,7 +972,8 @@ int main(int argc, char **argv)
 						   ((real)iteration / ((real)conf.sigma_half_life)));
     weight_map_falloff = 0.;
     //cuda_calculate_weight_map_ring(d_weight_map, conf.model_side, 0., 0., weight_map_radius, weight_map_falloff);
-    cuda_calculate_weight_map_ring(d_weight_map, conf.model_side, 8., 0., 40., 0.);
+    //cuda_calculate_weight_map_ring(d_weight_map, conf.model_side, 8., 0., 40., 0.);
+    cuda_calculate_weight_map_ring(d_weight_map, conf.model_side, ((float)conf.model_side)*8./64, 0., ((float)conf.model_side)*40./64, 0.);
     printf("weight_map: radius = %g, falloff = %g\n", weight_map_radius, weight_map_falloff);
 
     //sum = cuda_model_max(d_model, N_model);
@@ -986,6 +996,15 @@ int main(int argc, char **argv)
     fprintf(best_rot_file, "\n");
     fflush(best_rot_file);
 
+    sprintf(buffer, "%s/best_quaternion_%.4d.data", conf.output_dir, iteration);
+    best_quat_file = fopen(buffer, "wp");
+    for (int i_image = 0; i_image < N_images; i_image++) {
+      fprintf(best_quat_file, "%g %g %g %g\n", rotations[best_rotation[i_image]]->q[0], rotations[best_rotation[i_image]]->q[1],
+	      rotations[best_rotation[i_image]]->q[2], rotations[best_rotation[i_image]]->q[3]);
+    }
+    fclose(best_quat_file);
+	
+
     for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
       if (slice_start + slice_chunk >= N_slices) {
 	current_chunk = N_slices - slice_start;
@@ -995,7 +1014,7 @@ int main(int argc, char **argv)
       cuda_get_slices(model,d_model,slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,slice_start,current_chunk);
 
       /* start output best fitting slices */
-
+      /*
       Image *slice_out_img = sp_image_alloc(conf.model_side, conf.model_side, 1);
       real *slice_out = malloc(N_2d*sizeof(real));
 
@@ -1008,7 +1027,7 @@ int main(int argc, char **argv)
 	  for (int i = 0; i < N_2d; i++) {
 	    slice_out_img->image->data[i] = sp_cinit(slice_out[i], 0.);
 	  }
-	  sprintf(buffer, "output/best_slice_%.4d_%.4d.h5", iteration, i_image);
+	  sprintf(buffer, "%s/best_slice_%.4d_%.4d.h5", conf.output_dir, iteration, i_image);
 	  sp_image_write(slice_out_img, buffer, 0);
 
 	}
@@ -1016,7 +1035,7 @@ int main(int argc, char **argv)
 
       sp_image_free(slice_out_img);
       free(slice_out);
-
+      */
       /* end output best fitting slices */
 
       
@@ -1086,7 +1105,7 @@ int main(int argc, char **argv)
 	  for (int i = 0; i < N_2d; i++) {
 	    out->image->data[i] = sp_cinit(h_slices[i_slice*N_2d + i], 0.);
 	  }
-	  sprintf(buffer, "debug/slice_%.7d.h5", slice_start + i_slice);
+	  sprintf(buffer, "%s/slice_%.7d.h5", conf.debug_dir, slice_start + i_slice);
 	  sp_image_write(out, buffer, 0);
 	}
       }
@@ -1145,7 +1164,7 @@ int main(int argc, char **argv)
       /* output scaling */
       cuda_copy_real_to_host(scaling, d_scaling, N_images*N_slices);
 
-      sprintf(buffer, "output/scaling_%.4d.h5", iteration);
+      sprintf(buffer, "%s/scaling_%.4d.h5", conf.output_dir, iteration);
       write_2d_array_hdf5(buffer, scaling, N_slices, N_images);
     }
     //fprintf(scaling_file, "\n");
@@ -1173,11 +1192,11 @@ int main(int argc, char **argv)
     cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
 
     /* output responsabilities */
-    sprintf(buffer, "output/responsabilities_%.4d.h5", iteration);
+    sprintf(buffer, "%s/responsabilities_%.4d.h5", conf.output_dir, iteration);
     write_2d_array_trans_hdf5(buffer, respons, N_slices, N_images);
 
     /* output average responsabilities */
-    sprintf(buffer, "output/average_resp_%.4d.data", iteration);
+    sprintf(buffer, "%s/average_resp_%.4d.data", conf.output_dir, iteration);
     average_resp_file = fopen(buffer, "wp");
     for (int i_slice = 0; i_slice < N_slices; i_slice++) {
       average_resp[i_slice] = 0.;
@@ -1321,17 +1340,19 @@ int main(int argc, char **argv)
 	model_out->image->data[i] = sp_cinit(0., 0.);
       }
     }
-    sprintf(buffer,"output/model_%.4d.h5", iteration);
+    sprintf(buffer,"%s/model_%.4d.h5", conf.output_dir, iteration);
     sp_image_write(model_out,buffer,0);
     /* write weight */
     for (int i = 0; i < N_model; i++) {
       model_out->image->data[i] = sp_cinit(weight->data[i], 0.);
       model_out->mask->data[i] = 1;
     }
-    sprintf(buffer, "output/weight_%.4d.h5", iteration);
+    sprintf(buffer, "%s/weight_%.4d.h5", conf.output_dir, iteration);
     sp_image_write(model_out, buffer, 0);
 
     /* end update model */
+
+    write_state_file_iteration(state_file, iteration);
   }
   fclose(likelihood);
   fclose(best_rot_file);
@@ -1394,11 +1415,13 @@ int main(int argc, char **argv)
   for (int i = 0; i < N_model; i++) {
     model_out->image->data[i] = sp_cinit(debug_model[i],0.0);
   }
-  sp_image_write(model_out,"debug/debug_model.h5",0);
+  sprintf(buffer, "%s/debug_model.h5", conf.debug_dir);
+  sp_image_write(model_out, buffer, 0);
   for (int i = 0; i < N_model; i++) {
     model_out->image->data[i] = sp_cinit(debug_weight[i],0.0);
   }
-  sp_image_write(model_out,"debug/debug_weight.h5",0);
+  sprintf(buffer, "%s/debug_weight.h5", conf.debug_dir);
+  sp_image_write(model_out, buffer, 0);
 
   cuda_divide_model_by_weight(model, d_model_updated, d_weight);
   if (!conf.known_intensity){
@@ -1426,10 +1449,12 @@ int main(int argc, char **argv)
   model_out->detector->pixel_size[2] = conf.pixel_size;
   model_out->detector->wavelength = conf.wavelength;
   
-  sp_image_write(model_out,"output/model_final.h5",0);
+  sprintf(buffer, "%s/model_final.h5", conf.output_dir);
+  sp_image_write(model_out, buffer, 0);
 
-  
-  FILE *final_best_rotations_file = fopen("debug/final_best_rotations.data","wp");
+
+  sprintf(buffer, "%s/final_best_rotations.data", conf.debug_dir);
+  FILE *final_best_rotations_file = fopen(buffer,"wp");
   real highest_resp, this_resp;
   int final_best_rotation;
   for (int i_image = 0; i_image < N_images; i_image++) {

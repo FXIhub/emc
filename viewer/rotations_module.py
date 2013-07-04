@@ -6,6 +6,7 @@ import icosahedral_sphere
 import module_template
 from pyface.qt import QtCore, QtGui
 import embedded_mayavi
+import convenient_widgets
 
 def enum(*enums):
     return type('Enum', (), dict(zip(enums, range(len(enums)))))
@@ -25,13 +26,12 @@ class RotationData(module_template.Data):
             return (((points_list - coordinate)**2).sum(axis=1)).argmax()
         
         self._rotations = loadtxt('output/rotations.data')
-        self._euler_angles = array([rotations.quaternion_to_euler_angle(rotation) for rotation in self._rotations])
-        self._coordinates = transpose(array([sin(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
-                                             cos(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
-                                             sin(self._euler_angles[:, 1])]))
+        # self._euler_angles = array([rotations.quaternion_to_euler_angle(rotation) for rotation in self._rotations])
+        # self._coordinates = transpose(array([sin(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
+        #                                      cos(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
+        #                                      sin(self._euler_angles[:, 1])]))
+        self._coordinates = array([rotations.rotate(rotation, [1., 0., 0.]) for rotation in self._rotations])
         self._number_of_rotations = len(self._rotations)
-        print "setup rotaitons"
-        print "new number is %d" % self._number_of_rotations
         self._rotation_sphere_coordinates = array(icosahedral_sphere.sphere_sampling(rotations.rots_to_n(self._number_of_rotations)))
         number_of_bins = len(self._rotation_sphere_coordinates)
         self._rotation_sphere_weights = zeros(number_of_bins)
@@ -57,10 +57,11 @@ class RotationData(module_template.Data):
             return self._rotation_sphere_bins
         if len(average_resp) != self._number_of_rotations:
             self.properties_changed.emit()
-        #self._rotation_sphere_bins[:] = 0.
+        self._rotation_sphere_bins[:] = 0.
         for i, r in enumerate(average_resp):
             self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
         self._rotation_sphere_bins[self._rotation_sphere_good_indices] /= self._rotation_sphere_weights[self._rotation_sphere_good_indices]
+        #return float32(self._rotation_sphere_weights) # debug line
         return self._rotation_sphere_bins
 
     def get_single_rotation_values(self, iteration, image_number):
@@ -71,6 +72,8 @@ class RotationData(module_template.Data):
             resp_handle.close()
         except IOError:
             self.read_error.emit()
+        if len(resp) != self._number_of_rotations:
+            self.properties_changed.emit()
         self._rotation_sphere_bins[:] = 0.
         for i, r in enumerate(resp):
             self._rotation_sphere_bins[self._rotation_mapping_table[i]] += r
@@ -99,16 +102,23 @@ class RotationViewer(module_template.Viewer):
         self.get_mlab().draw()
 
     def plot_rotations_init(self, coordinates):
-        # if self._points != None:
-        #     self._points.remove()
-        self._points = self.get_mlab().points3d(coordinates[:, 0], coordinates[:, 1], coordinates[:, 2], ones(len(coordinates)), scale_mode='none')
-        self._points.glyph.glyph.modified()
-        self._points.actor.mapper.lookup_table.range = (0., 1.)
-        self._points.module_manager.scalar_lut_manager.data_name = "Resp"
-        self._points.module_manager.scalar_lut_manager.show_scalar_bar = True
-        self._points.update_pipeline()
-        self._points.actor.render()
+        if self._points != None:
+            #self._points.remove()
+            # self._points.mlab_source.m_data.remove()
+            # self._points.update_pipeline()
+            self._points.mlab_source.reset(x=coordinates[:,0], y=coordinates[:,1], z=coordinates[:,2], scalars=ones(len(coordinates)))
+            self._points.update_pipeline()
+        else:
+            self._points = self.get_mlab().points3d(coordinates[:, 0], coordinates[:, 1], coordinates[:, 2], ones(len(coordinates)), scale_mode='none')
+            self._points.glyph.glyph.modified()
+            self._points.actor.mapper.lookup_table.range = (0., 1.)
+            self._points.module_manager.scalar_lut_manager.data_name = "Resp"
+            self._points.module_manager.scalar_lut_manager.show_scalar_bar = True
+            self._points.update_pipeline()
+            self._points.actor.render()
 
+    def save_image(self, filename):
+        self._mlab_widget.save_image(filename)
 
 class RotationControll(module_template.Controll):
     class State(object):
@@ -141,26 +151,49 @@ class RotationControll(module_template.Controll):
 
         self._rotation_image_number_box = QtGui.QSpinBox()
         self._rotation_image_number_box.setRange(-1, 10000)
-        def on_editing_finished(cls):
-            cls.set_image_number(cls._rotation_image_number_box.value())
-        self._rotation_image_number_box.editingFinished.connect(partial(on_editing_finished, self))
-        layout.addWidget(self._rotation_image_number_box)
 
-        #layout.addStretch()
+        self._single_slice_widget = convenient_widgets.IntegerControll(0)
+        self._single_slice_widget.valueChanged.connect(self.set_image_number)
+        
+        single_slice_layout = QtGui.QHBoxLayout()
+        # def on_editing_finished(cls):
+        #     cls.set_image_number(cls._rotation_image_number_box.value())
+        # self._rotation_image_number_box.editingFinished.connect(partial(on_editing_finished, self))
+        # single_slice_layout.addWidget(self._rotation_image_number_box)
+        
+        # def change_spinbox_value(cls, diff):
+        #     cls._rotation_image_number_box.setValue(cls._rotation_image_number_box.value()+diff)
 
-        # self._rotations_controll_widget = QtGui.QWidget()
-        # self._rotations_controll_widget.setLayout(layout)
+        # prev_image_button = QtGui.QPushButton("Previous")
+        # prev_image_button.clicked.connect(partial(change_spinbox_value, self, -1))
+        # single_slice_layout.addWidget(prev_image_button)
+        # next_image_button = QtGui.QPushButton("Next")
+        # next_image_button.clicked.connect(partial(change_spinbox_value, self, 1))
+        # single_slice_layout.addWidget(next_image_button)
+
+        # #layout.addStretch()
+
+        # # self._rotations_controll_widget = QtGui.QWidget()
+        # # self._rotations_controll_widget.setLayout(layout)
+
+        # self._single_slice_widget = QtGui.QWidget()
+        # self._single_slice_widget.setLayout(single_slice_layout)
+
+        layout.addWidget(self._single_slice_widget)
 
         self._widget.setLayout(layout)        
-        self._rotation_image_number_box.hide()
+        #self._rotation_image_number_box.hide()
+        self._single_slice_widget.hide()
 
     def draw_hard(self):
         if self._state.rotation_type == ROTATION_TYPE.average:
             self._viewer.plot_rotations(self._data.get_average_rotation_values(self._common_controll.get_iteration()))
-            self._rotation_image_number_box.hide()
+            #self._rotation_image_number_box.hide()
+            self._single_slice_widget.hide()
         elif self._state.rotation_type == ROTATION_TYPE.single:
             self._viewer.plot_rotations(self._data.get_single_rotation_values(self._common_controll.get_iteration(), self._state.image_number))
-            self._rotation_image_number_box.show()
+            #self._rotation_image_number_box.show()
+            self._single_slice_widget.show()
 
     def set_rotation_type(self, rotation_type, image_number=None):
         self._state.rotation_type = rotation_type

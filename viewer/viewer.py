@@ -6,11 +6,15 @@ import sys
 import numpy
 import time
 import h5py
+import tools
 from functools import partial
 from optparse import OptionParser
 from pyface.qt import QtCore, QtGui
+import convenient_widgets
 
 SLIDER_LENGTH = 100
+#state_variables = tools.enum(iteration=1)
+state_variables = ["iteration"]
 
 class ModelData(QtCore.QObject):
     data_changed = QtCore.Signal(int)
@@ -163,8 +167,99 @@ class ModelPlugin(QtCore.QObject):
         self.data = ModelData()
         self.controll = ModelControll(common_controll, self.viewer, self.data)
 
+# class State(QtCore.QObject):
+#     def __init__(self, file_handle, parent=None):
+#         super(QtCore.QObject, self).__init__()
+#         variable_names = {state_variables.iteration : "iteration"}
+#         self._values = {}
+#         for v in dir(state_variables):
+#             if not v.startswith("__"):
+#                 self._values[v] = file_handle[variable_names[v]][...]
+
+#     def get_value(self, variable):
+#         return self._values[variable]
+
+#     def diff(self, other_state):
+#         variables_that_changed = []
+#         for v in dir(state_variables):
+#             if not v.startswith("__"):
+#                 if self.get_value(v) != other_state.get_value(v):
+#                     variables_that_changed.append(v)
+#         return variabels_that_changed
+
+class State(QtCore.QObject):
+    def __init__(self, file_handle, parent=None):
+        super(State, self).__init__()
+        self._values = {}
+        for v in state_variables:
+            self._values[v] = file_handle[v][...]
+
+    def get_value(self, variable):
+        return self._values[variable]
+
+    def diff(self, other_state):
+        variables_that_changed = []
+        for v in state_variables:
+            if self.get_value(v) != other_state.get_value(v):
+                variables_that_changed.append(v)
+        return variables_that_changed
+
+class FileWatcher(QtCore.QThread):
+    fileChanged = QtCore.Signal()
+    def __init__(self, file_name):
+        super(FileWatcher, self).__init__()
+        self._file_name = file_name
+        self._check_interval = 1. #seconds
+        self._last_mtime = os.stat(self._file_name).st_mtime
+    
+    def __del__(self):
+        self.wait()
+
+    def run(self):
+        while True:
+            time.sleep(self._check_interval)
+            mtime = os.stat(self._file_name).st_mtime
+            if mtime != self._last_mtime:
+                self.fileChanged.emit()
+                
+                
+    def set_file(self, new_file_name):
+        if os.path.isfile(new_file_name):
+            self._file_name = new_file_name
+            self.fileChanged.emit()
+
+class StateWatcher(QtCore.QObject):
+    iterationChanged = QtCore.Signal(int)
+    def __init__(self, file_name, parent=None):
+        super(StateWatcher, self).__init__()
+        print file_name
+        # self._watcher = QtCore.QFileSystemWatcher(self)
+        # self._watcher.addPath(file_name)
+        self._watcher = FileWatcher(file_name)
+        self._file_handle = h5py.File(file_name)
+        self._state = State(self._file_handle)
+        self._watcher.fileChanged.connect(self._on_file_change)
+        self._watcher.start()
+
+    def __del__(self):
+        self._file_handle.close()
+
+    def get_value(self, variable):
+        return self._state.get_value(variable)
+
+    def set_file(self, new_file_name):
+        self._watcher.set_file(new_file_name)
+
+    def _on_file_change(self):
+        old_state = self._state
+        self._state = State(self._file_handle)
+        diff = old_state.diff(self._state)
+        for v in diff:
+            if v == "iteration": self.iterationChanged.emit(self.get_value('iteration'))
+
 class CommonControll(QtGui.QWidget):
     changed = QtCore.Signal()
+    dirChanged = QtCore.Signal(str)
     class State(object):
         def __init__(self):
             self.iteration = 0
@@ -176,7 +271,7 @@ class CommonControll(QtGui.QWidget):
     def _setup_gui(self):
         layout = QtGui.QVBoxLayout()
         layout.addLayout(self._setup_dir_chooser())
-        layout.addLayout(self._setup_iteration_chooser())
+        layout.addWidget(self._setup_iteration_chooser())
         self.setLayout(layout)
 
     def _setup_dir_chooser(self):
@@ -195,21 +290,25 @@ class CommonControll(QtGui.QWidget):
         return work_dir_layout
 
     def _setup_iteration_chooser(self):
-        button_layout = QtGui.QHBoxLayout()
-        previous_button = QtGui.QPushButton("Previous")
-        previous_button.pressed.connect(partial(self.shift_iteration, -1))
-        button_layout.addWidget(previous_button)
-        next_button = QtGui.QPushButton("Next")
-        next_button.pressed.connect(partial(self.shift_iteration, 1))
-        button_layout.addWidget(next_button)
+        self._iteration_chooser = convenient_widgets.IntegerControll(-2)
+        self._iteration_chooser.valueChanged.connect(self.set_iteration)
+        return self._iteration_chooser
 
-        layout = QtGui.QVBoxLayout()
-        layout.addLayout(button_layout)
-        self._iteration_box = QtGui.QSpinBox()
-        self._iteration_box.setRange(-2, 10000)
-        self._iteration_box.editingFinished.connect(self.set_iteration)
-        layout.addWidget(self._iteration_box)
-        return layout
+        # button_layout = QtGui.QHBoxLayout()
+        # previous_button = QtGui.QPushButton("Previous")
+        # previous_button.pressed.connect(partial(self.shift_iteration, -1))
+        # button_layout.addWidget(previous_button)
+        # next_button = QtGui.QPushButton("Next")
+        # next_button.pressed.connect(partial(self.shift_iteration, 1))
+        # button_layout.addWidget(next_button)
+
+        # layout = QtGui.QVBoxLayout()
+        # layout.addLayout(button_layout)
+        # self._iteration_box = QtGui.QSpinBox()
+        # self._iteration_box.setRange(-2, 10000)
+        # self._iteration_box.editingFinished.connect(self.set_iteration)
+        # layout.addWidget(self._iteration_box)
+        # return layout
 
     def _on_work_dir_changed(self):
         new_dir = self._work_dir_edit.text()
@@ -219,11 +318,12 @@ class CommonControll(QtGui.QWidget):
             palette.setColor(QtGui.QPalette.Base, QtGui.QColor(255, 50, 50))
             self._work_dir_edit.setPalette(palette)
             return
-        os.chdir(self._work_dir_edit.text())
+        new_dir = self._work_dir_edit.text()
+        os.chdir(new_dir)
         palette = self._work_dir_edit.palette()
         palette.setColor(QtGui.QPalette.Base, QtGui.QColor(255, 255, 255))
         self._work_dir_edit.setPalette(palette)
-        self.changed.emit()
+        self.dirChanged.emit(new_dir)
 
     def _on_read_error(self):
         palette = self._work_dir_edit.palette()
@@ -232,40 +332,84 @@ class CommonControll(QtGui.QWidget):
 
     def set_iteration(self, iteration=None):
         if iteration == None:
-            iteration = self._iteration_box.value()
+            iteration = self._iteration_chooser.get_value()
         if iteration >= -2:
             self._state.iteration = iteration
-            self._iteration_box.setValue(self._state.iteration)
+            #self._iteration_box.setValue(self._state.iteration)
             self.changed.emit()
+
+    def set_max_iterations(self, max_iterations):
+        self._iteration_chooser.set_max(max_iterations)
 
     def shift_iteration(self, iteration_delta):
         if (self._state.iteration + iteration_delta) >= -2:
-            self._state.iteration += iteration_delta
-            self._iteration_box.setValue(self._state.iteration)
-            self.changed.emit()
+            self.set_iteration(self._state.iteration + iteration_delta)
+        else:
+            self.set_iteration(-2)
+            # self._state.iteration += iteration_delta
+            # self._iteration_box.setValue(self._state.iteration)
+        self.changed.emit()
 
     def get_iteration(self):
         return self._state.iteration
-        
-
+                    
 class StartMain(QtGui.QMainWindow):
     def __init__(self, parent=None):
         QtGui.QMainWindow.__init__(self, parent)
         self._common_controll = CommonControll()
         self._plugins = []
         self._setup_gui()
-        self._load_module('rotations_module')
+        self._setup_actions()
+        self._setup_menus()
+
         self._load_module('modelmap_module')
+        self._load_module('rotations_module')
         self._load_module('weightmap_module')
-        self._load_module('likelihood_module')
+        #self._load_module('likelihood_module')
         self._load_module('fit_module')
+
+        self._active_module_index = 0
+
+        #setup watcher of the description of the current rec.
+        self._state_watcher = StateWatcher("output/state.h5")
+        self._common_controll.set_max_iterations(self._state_watcher.get_value('iteration'))
+        self._state_watcher.iterationChanged.connect(self._common_controll.set_max_iterations)
+        self._common_controll.dirChanged.connect(self._state_watcher.set_file)
+
+    def _setup_actions(self):
+        self._actions = {}
+
+        #exit
+        self._actions["exit"] = QtGui.QAction("Exit", self)
+        self._actions["exit"].setShortcut("Ctrl+Q")
+        self._actions["exit"].triggered.connect(exit)
         
+        #save image
+        self._actions["save image"] = QtGui.QAction("Save image", self)
+        self._actions["save image"].triggered.connect(self._on_save_image)
+
+    def _setup_menus(self):
+        self._menus = {}
+        self._menus["file"] = self.menuBar().addMenu("&File")
+        self._menus["file"].addAction(self._actions["save image"])
+        self._menus["file"].addAction(self._actions["exit"])
+    
+    def _on_save_image(self):
+        file_name = QtGui.QFileDialog.getSaveFileName(self, "Save file")
+        if file_name:
+            self._active_plugin().get_viewer().save_image(file_name)
+
+    def _active_plugin(self):
+        return self._plugins[self._active_module_index][1]
+                                                      
     def _load_module(self, module_name):
+        print "Loading module: %s" % module_name
         module = __import__(module_name)
         plugin = module.Plugin(self._common_controll)
         self._plugins.append([module_name, plugin])
         plugin.get_data().read_error.connect(self._common_controll._on_read_error)
         self._common_controll.changed.connect(plugin.get_controll().draw)
+        self._common_controll.dirChanged.connect(plugin.get_controll().draw)
         self._view_stack.addWidget(plugin.get_viewer().get_widget())
         self._controll_stack.addWidget(plugin.get_controll().get_widget())
         self._module_box.addItem(module_name)
@@ -291,15 +435,8 @@ class StartMain(QtGui.QMainWindow):
         module_controll_group.setLayout(module_controll_dummy_layout)
         layout.addWidget(module_controll_group)
 
-        # size_policy_small = QtGui.QSizePolicy()
-        # size_policy_small.setVerticalStretch(0)
-        # size_policy_small.setHorizontalPolicy(QtGui.QSizePolicy.Expanding)
-        # common_controll_group.setSizePolicy(size_policy_small)
-        # module_controll_group.setSizePolicy(size_policy_small)
-        size_policy_large = QtGui.QSizePolicy()
+        size_policy_large = self._view_stack.sizePolicy()
         size_policy_large.setVerticalStretch(1)
-        size_policy_large.setHorizontalPolicy(QtGui.QSizePolicy.Expanding)
-        size_policy_large.setVerticalPolicy(QtGui.QSizePolicy.Expanding)
         self._view_stack.setSizePolicy(size_policy_large)
 
 
@@ -325,6 +462,7 @@ class StartMain(QtGui.QMainWindow):
         return layout
 
     def _select_module(self, index):
+        self._active_module_index = index
         self._view_stack.setCurrentIndex(index)
         self._controll_stack.setCurrentIndex(index)
         for name,plugin in self._plugins:
@@ -345,3 +483,4 @@ if __name__ == "__main__":
     program.show()
     sys.exit(app.exec_())
 
+    

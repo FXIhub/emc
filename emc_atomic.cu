@@ -453,6 +453,27 @@ __device__ void cuda_calculate_fit_error(float* slice, float *image,
   count_cache[tid] = count;
 }
 
+/* i should try using a correlation coefficient at some point. The following will do a (almost) Fourier correlation where the phase is offcourse missing. Needs a function to collrect the result still. */
+/*
+__device__ void cuda_calculate_fit2_correlation(float *slice, float *image, int *mask, real scaling,
+						int N_2d, int tid, int step, real *nom_cache, real *den_cache) {
+  real nom = 0.;
+  real den1 = 0.;
+  real den2 = 0.;
+  const int i_max = N_2d;
+  for (int i = tid; i < i_max; i+=step) {
+    if (mask[i] != 0 && slice[i] > 0.f && image[i] > 0.f) {
+      nom += slice[i]*image[i];
+      den1 += slice[i]**2;
+      den2 += slice[i]**2;
+    }
+  }
+  nom_cache[tid] = nom;
+  den1_cache[tid] = den1;
+  den2_cache[tid] = den2;
+}
+*/
+
 __device__ void cuda_calculate_fit2_error(float* slice, float *image,
 					  int *mask, real scaling,
 					  int N_2d, int tid, int step,

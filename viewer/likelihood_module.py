@@ -15,7 +15,7 @@ class LikelihoodData(module_template.Data):
         
     def read_likelihood(self):
         try:
-            self._likelihood_data = pylab.loadtxt('likelihood.data')
+            self._likelihood_data = pylab.loadtxt('output/likelihood.data')
         except IOError:
             self.read_error.emit()
         self.data_changed.emit()
@@ -58,7 +58,8 @@ class LikelihoodControll(module_template.Controll):
     #     self._viewer.plot_likelihood(self._data.get_likelihood(), self._common_controll.get_iteration())
 
     def draw_hard(self):
-        self._viewer.plot_likelihood(self._data.get_likelihood(), self._common_controll.get_iteration())
+        self._viewer.plot_likelihood(self._data.get_likelihood(reload=True), self._common_controll.get_iteration())
+        #self._viewer.plot_likelihood(self._data.get_likelihood(), self._common_controll.get_iteration())
         #self._viewer.set_iteration(self._common_controll.get_iteration())
         
 

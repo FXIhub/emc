@@ -37,6 +37,8 @@ extern "C"{
     int exclude_images;
     double exclude_ratio;
     double model_blur;
+    const char *output_dir;
+    const char *debug_dir;
   }Configuration;
 
   Configuration read_configuration_file(const char *filename);

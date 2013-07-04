@@ -5,16 +5,12 @@ import numpy
 import time
 import h5py
 import os
+os.environ['ETS_TOOLKIT'] = 'qt4'
 import rotations
 import icosahedral_sphere
 from optparse import OptionParser
 
 from pyface.qt import QtCore, QtGui
-try:
-    from mayavi import mlab
-except ImportError:
-    print "fallback on enthought"
-    from enthought.mayavi import mlab
 
 from traits.api import HasTraits, Instance, on_trait_change, Int, Dict
 from traitsui.api import View, Item
@@ -243,7 +239,7 @@ class Viewer(QtCore.QObject):
         self._slices = []
         self._slices.append(self._mlab_widget.get_mlab().pipeline.image_plane_widget(self._scalar_field, plane_orientation='x_axes',
                                                              slice_index=shape(self._model.get_image())[0]/2))
-        self._slices.append(mlab.pipeline.image_plane_widget(self._scalar_field, plane_orientation='y_axes',
+        self._slices.append(self._mlab_widget.get_mlab().pipeline.image_plane_widget(self._scalar_field, plane_orientation='y_axes',
                                                              slice_index=shape(self._model.get_image())[1]/2))
         #mlab.show()
 
@@ -251,7 +247,7 @@ class Viewer(QtCore.QObject):
         coordinates = (self._model.get_rotation_coordinates()*self._model.get_image_side()/4.)+self._model.get_image_side()/2.
         values = self._model.get_rotation_values()
         values /= values.max()
-        self._points = mlab.points3d(coordinates[:, 0], coordinates[:, 1], coordinates[:, 2], values, scale_mode='none')
+        self._points = self._mlab_widget.get_mlab().points3d(coordinates[:, 0], coordinates[:, 1], coordinates[:, 2], values, scale_mode='none')
         self._points.glyph.glyph.modified()
         self._points.actor.mapper.lookup_table.range = (0., values.max())
         self._points.module_manager.scalar_lut_manager.data_name = "Resp"

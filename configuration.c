@@ -38,6 +38,8 @@ Configuration read_configuration_file(const char *filename)
   config_lookup_string(&config, "init_rotations", &config_out.init_rotations_file);
   config_lookup_bool(&config,"exclude_images",&config_out.exclude_images);
   config_lookup_float(&config,"exclude_ratio",&config_out.exclude_ratio);
+  config_lookup_string(&config, "output_dir", &config_out.output_dir);
+  config_lookup_string(&config, "debug_dir", &config_out.debug_dir);
   const char *diff_type_string = malloc(20*sizeof(char));
   config_lookup_string(&config,"diff_type",&diff_type_string);
   if (strcmp(diff_type_string, "absolute") == 0) {
@@ -49,7 +51,6 @@ Configuration read_configuration_file(const char *filename)
   }
   config_lookup_float(&config,"model_blur",&config_out.model_blur);
 
-  config_destroy(&config);
   config_out.pixel_size *= config_out.read_stride;
   return config_out;
 }

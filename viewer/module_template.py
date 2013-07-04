@@ -20,6 +20,12 @@ class Viewer(QtCore.QObject):
     def get_widget(self):
         return self._widget
 
+    def save_image(self, file_name):
+        # message_box = QtGui.QMessageBox()
+        # message_box.setText("Saving image is not implemented for this module.")
+        # message_box.exec()
+        QtGui.QMessageBox.information(self._widget, "Save image", "Saving image is not implemented for this module.")
+
 class Controll(QtCore.QObject):
     def __init__(self, common_controll, viewer, data):
         super(Controll, self).__init__()

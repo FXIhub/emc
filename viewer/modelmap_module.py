@@ -29,10 +29,13 @@ class ModelmapData(module_template.Data):
                 modelmap = sphelper.import_spimage('%s_final.h5' % (self._file_prefix), ['image'])
         except IOError:
             self.read_error.emit()
-            return zeros((self._side, )*3)
+            if self._side:
+                return zeros((self._side, )*3)
+            else:
+                return zeros((10, )*3)
         if self._side != modelmap.shape[0]:
+            self._side = modelmap.shape[0]
             self.properties_changed.emit()
-        self._side = modelmap.shape[0]
         return modelmap
 
     def get_mask(self, iteraiton):
@@ -47,8 +50,8 @@ class ModelmapData(module_template.Data):
             self.read_error.emit()
             return
         if self._side != mask.shape[0]:
+            self._side = modelmap.shape[0]
             properties_changed.emit()
-        self._side = modelmap.shape[0]
         return mask
 
     def get_side(self):
@@ -58,6 +61,7 @@ class ModelmapViewer(module_template.Viewer):
     def __init__(self, parent=None):
         super(ModelmapViewer, self).__init__()
         self._mlab_widget = embedded_mayavi.MlabWidget()
+        self._scalar_field = None
         self._surface_level = INIT_SURFACE_LEVEL
 
     def get_mlab(self):
@@ -72,13 +76,17 @@ class ModelmapViewer(module_template.Viewer):
         self._surface_plot.contour.contours[0] = self._surface_level*self._scalar_field_max
 
     def plot_map_init(self, modelmap):
-        self._scalar_field = self.get_mlab().pipeline.scalar_field(modelmap)
-        self._scalar_field_max = self._scalar_field.scalar_data.max()
-        self._surface_plot = self.get_mlab().pipeline.iso_surface(self._scalar_field, contours=[self._surface_level*self._scalar_field_max])
-        self._slice_plot = [
-            self.get_mlab().pipeline.image_plane_widget(self._scalar_field, plane_orientation='x_axes', slice_index=modelmap.shape[0]/2),
-            self.get_mlab().pipeline.image_plane_widget(self._scalar_field, plane_orientation='y_axes', slice_index=modelmap.shape[1]/2)]
-        self._set_slice_visibility(False)
+        if self._scalar_field == None:
+            self._scalar_field = self.get_mlab().pipeline.scalar_field(modelmap)
+            self._scalar_field_max = self._scalar_field.scalar_data.max()
+            self._surface_plot = self.get_mlab().pipeline.iso_surface(self._scalar_field, contours=[self._surface_level*self._scalar_field_max])
+            self._slice_plot = [
+                self.get_mlab().pipeline.image_plane_widget(self._scalar_field, plane_orientation='x_axes', slice_index=modelmap.shape[0]/2),
+                self.get_mlab().pipeline.image_plane_widget(self._scalar_field, plane_orientation='y_axes', slice_index=modelmap.shape[1]/2)]
+            self._set_slice_visibility(False)
+        else:
+            self._scalar_field.mlab_source.reset(s=modelmap)
+            self._scalar_field.update_pipeline()
 
     def set_view_type(self, view_type):
         if view_type == VIEW_TYPE.surface:
@@ -106,6 +114,10 @@ class ModelmapViewer(module_template.Viewer):
         for s in self._slice_plot:
             s.visible = state
 
+    def save_image(self, filename):
+        self._mlab_widget.save_image(filename)
+
+
 class ModelmapControll(module_template.Controll):
     class State(object):
         """This class contains the current state of the plot to separate them from the rest of the class"""
@@ -119,6 +131,10 @@ class ModelmapControll(module_template.Controll):
         self._state = self.State()
         self._viewer.plot_map_init(self._data.get_map(self._common_controll.get_iteration()))
         self._setup_gui()
+        self._data.properties_changed.connect(self._setup_viewer)
+
+    def _setup_viewer(self):
+        self._viewer.plot_map_init(zeros((self._data.get_side(), )*3))
 
     def _setup_gui(self):
         view_type_radio_surface = QtGui.QRadioButton("Isosurface plot")
@@ -135,8 +151,8 @@ class ModelmapControll(module_template.Controll):
         self._surface_level_slider.setTracking(True)
         self._surface_level_slider.setRange(1, self._SLIDER_LENGTH)
         def on_slider_changed(cls, slider_level):
-            #cls._viewer.set_surface_level(slider_level/float(cls._SLIDER_LENGTH))
-            cls._viewer.set_surface_level(1./(10.*float(slider_level)))
+            cls._viewer.set_surface_level(slider_level/float(cls._SLIDER_LENGTH))
+            # cls._viewer.set_surface_level(self._SLIDER_LENGTH/(float(slider_level)))
         self._surface_level_slider.valueChanged.connect(partial(on_slider_changed, self))
         self._surface_level_slider.setSliderPosition(self._SLIDER_LENGTH*INIT_SURFACE_LEVEL)
 

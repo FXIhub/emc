@@ -21,7 +21,10 @@ class FitData(module_template.Data):
     def read_fit(self):
         sucess = False
         try:
-            self._fit_data = pylab.loadtxt('output/fit.data').mean(axis=1)
+            raw_data = pylab.loadtxt('output/fit.data')
+            if len(raw_data.shape) == 1:
+                raw_data = raw_data.reshape(1, len(raw_data))
+            self._fit_data = raw_data.mean(axis=1)
             sucess = True
         except IOError:
             print "ioerror"
@@ -62,7 +65,7 @@ class FitControll(module_template.Controll):
         super(FitControll, self).__init__(common_controll, viewer, data)
 
     def draw_hard(self):
-        self._viewer.plot_fit(self._data.get_fit(), self._data.get_fit_best_rot(), self._common_controll.get_iteration())
+        self._viewer.plot_fit(self._data.get_fit(reload=True), self._data.get_fit_best_rot(reload=True), self._common_controll.get_iteration())
         
 
 class Plugin(module_template.Plugin):
