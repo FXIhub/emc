@@ -39,6 +39,7 @@ extern "C"{
     double model_blur;
     const char *output_dir;
     const char *debug_dir;
+    int random_seed;
   }Configuration;
 
   Configuration read_configuration_file(const char *filename);

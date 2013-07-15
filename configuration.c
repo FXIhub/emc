@@ -50,6 +50,7 @@ Configuration read_configuration_file(const char *filename)
     config_out.diff = relative;
   }
   config_lookup_float(&config,"model_blur",&config_out.model_blur);
+  config_lookup_int(&config,"random_seed",&config_out.random_seed);
 
   config_out.pixel_size *= config_out.read_stride;
   return config_out;
@@ -61,4 +62,5 @@ int write_configuration_file(const char *filename, const Configuration config_in
   //config
   config_t config;
   config_init(&config);
+  return 0;
 }

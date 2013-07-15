@@ -628,7 +628,20 @@ int main(int argc, char **argv)
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_taus);
   //  gsl_rng_set(rng,time(NULL));
   // Reproducible "random" numbers
-  int seed = time(NULL);
+  unsigned long int seed = 0;
+  if(conf.random_seed == 0){
+    // generate a random seed from /dev/random
+    FILE *devrandom;
+    if ((devrandom = fopen("/dev/random","r")) == NULL) {
+      fprintf(stderr,"Cannot open /dev/random, setting seed to 0\n");
+      seed = 0;
+    } else {
+      fread(&seed,sizeof(seed),1,devrandom);
+      fclose(devrandom);
+    }
+  }else{
+    seed = conf.random_seed;
+  }
   srand(seed);
   gsl_rng_set(rng, rand());
 
