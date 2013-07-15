@@ -50,6 +50,9 @@ Configuration read_configuration_file(const char *filename)
     config_out.diff = relative;
   }
   config_lookup_float(&config,"model_blur",&config_out.model_blur);
+
+  // If set to zero then read the seed from /dev/random, otherwise
+  // set it to the value specified
   config_lookup_int(&config,"random_seed",&config_out.random_seed);
 
   config_out.pixel_size *= config_out.read_stride;
