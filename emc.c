@@ -463,7 +463,7 @@ void normalize_images_preserve_scaling(sp_matrix ** images, sp_imatrix *mask, Co
   }
 }
 
-hid_t open_state_file(char *filename) {
+hid_t open_state_file(char *filename, Configuration conf) {
   hid_t file_id, space_id, dataset_id;
   file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 
@@ -474,6 +474,13 @@ hid_t open_state_file(char *filename) {
   H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &iteration_start_value);
   H5Dclose(dataset_id);
   H5Sclose(space_id);
+
+  space_id = H5Screate(H5S_SCALAR);
+  dataset_id = H5Dcreate1(file_id, "/number_of_images", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.N_images);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+
   H5Fflush(file_id, H5F_SCOPE_GLOBAL);
 
   return file_id;
@@ -487,6 +494,7 @@ void write_state_file_iteration(hid_t file_id, int value) {
   
   dataset_id = H5Dopen(file_id, "/iteration", H5P_DEFAULT);
   H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &value);
+  H5Fflush(dataset_id, H5F_SCOPE_LOCAL);
   H5Dclose(dataset_id);
   H5Fflush(file_id, H5F_SCOPE_GLOBAL);
 }
@@ -543,6 +551,18 @@ int main(int argc, char **argv)
 
   char buffer[1000];
 
+
+  if (mkdir(conf.output_dir,0777) == 0) {
+    printf("Created output directory: %s\n", conf.output_dir);
+  } else {
+    printf("Failed to create output directory: %s\n", conf.output_dir);
+  }
+  if (mkdir(conf.debug_dir,0777) == 0) {
+    printf("Created debug directory: %s\n", conf.debug_dir);
+  } else {
+    printf("Failed to create debug directory: %s\n", conf.debug_dir);
+  }
+  /*
   struct stat sb;
   if (stat(conf.output_dir, &sb) != 0) {
     if (mkdir(conf.output_dir,0777) == 0) {
@@ -558,12 +578,12 @@ int main(int argc, char **argv)
       printf("Failed to create debug directory: %s\n", conf.debug_dir);
     }
   }
-
+  */
   //test_blur();
   //test_weight_map();
 
   sprintf(buffer, "%s/state.h5", conf.output_dir);
-  hid_t state_file = open_state_file(buffer);
+  hid_t state_file = open_state_file(buffer, conf);
 
   //signal(SIGKILL, nice_exit);
   const int start_iteration = 0;
@@ -591,21 +611,26 @@ int main(int argc, char **argv)
   }
   fclose(weights_file);
   */
-  sprintf(buffer, "%s/weights.h5", conf.debug_dir);
+  /*
+  spintf(buffer, "%s/weights.h5", conf.debug_dir);
   write_1d_array_hdf5(buffer, weights, N_slices);
-
+  */
   /* output rotations */
+  /* This shouldn't really be needed, we just read the input file instead.
   sprintf(buffer, "%s/rotations.data", conf.output_dir);
   FILE *rotations_file = fopen(buffer, "wp");
   for (int i_slice = 0; i_slice < N_slices; i_slice++) {
     fprintf(rotations_file, "%g %g %g %g\n", rotations[i_slice]->q[0],rotations[i_slice]->q[1], rotations[i_slice]->q[2], rotations[i_slice]->q[3]);
   }
   fclose(rotations_file);
+  */
 
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_taus);
   //  gsl_rng_set(rng,time(NULL));
   // Reproducible "random" numbers
-  gsl_rng_set(rng,0);
+  int seed = time(NULL);
+  srand(seed);
+  gsl_rng_set(rng, rand());
 
   /* read images */
   sp_imatrix **masks = malloc(conf.N_images*sizeof(sp_imatrix *));
@@ -659,9 +684,9 @@ int main(int argc, char **argv)
       write_image->mask->data[i] = mask->data[i];
     }
     write_image->image->data[0] = sp_cinit(image_max, 0.);
-    sprintf(buffer, "%s/image_%.4d.png", conf.debug_dir, i_image);
+    sprintf(buffer, "%s/image_%.4d.png", conf.output_dir, i_image);
     sp_image_write(write_image, buffer, SpColormapJet|SpColormapLogScale);
-    sprintf(buffer, "%s/image_%.4d.h5", conf.debug_dir, i_image);
+    sprintf(buffer, "%s/image_%.4d.h5", conf.output_dir, i_image);
     sp_image_write(write_image, buffer, 0);
   }
   sp_image_free(write_image);
@@ -1196,8 +1221,8 @@ int main(int argc, char **argv)
     write_2d_array_trans_hdf5(buffer, respons, N_slices, N_images);
 
     /* output average responsabilities */
-    sprintf(buffer, "%s/average_resp_%.4d.data", conf.output_dir, iteration);
-    average_resp_file = fopen(buffer, "wp");
+
+    //average_resp_file = fopen(buffer, "wp");
     for (int i_slice = 0; i_slice < N_slices; i_slice++) {
       average_resp[i_slice] = 0.;
     }
@@ -1206,11 +1231,14 @@ int main(int argc, char **argv)
 	average_resp[i_slice] += respons[i_slice*N_images+i_image];
       }
     }
+    sprintf(buffer, "%s/average_resp_%.4d.h5", conf.output_dir, iteration);
+    write_1d_array_hdf5(buffer, average_resp, N_slices);
+    /*
     for (int i_slice = 0; i_slice < N_slices; i_slice++) {
       fprintf(average_resp_file, "%g\n", average_resp[i_slice]);
     }
     fclose(average_resp_file);
-    
+    */
 
     /* output sorted responsabilities */
     for (int i_slice = 0; i_slice < N_slices; i_slice++) {

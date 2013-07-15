@@ -7,6 +7,7 @@ import module_template
 from pyface.qt import QtCore, QtGui
 import embedded_mayavi
 import convenient_widgets
+import os
 
 def enum(*enums):
     return type('Enum', (), dict(zip(enums, range(len(enums)))))
@@ -20,28 +21,52 @@ class RotationData(module_template.Data):
         self._number_of_rotations = None
         #self._setup_rotations()
     
-    def setup_rotations(self):
-        """Create an index of the plotting bins for the rotations."""
-        def closest_coordinate(coordinate, points_list):
-            return (((points_list - coordinate)**2).sum(axis=1)).argmax()
+    # def setup_rotations(self):
+    #     """Create an index of the plotting bins for the rotations."""
+    #     def closest_coordinate(coordinate, points_list):
+    #         return (((points_list - coordinate)**2).sum(axis=1)).argmax()
         
-        self._rotations = loadtxt('output/rotations.data')
-        # self._euler_angles = array([rotations.quaternion_to_euler_angle(rotation) for rotation in self._rotations])
-        # self._coordinates = transpose(array([sin(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
-        #                                      cos(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
-        #                                      sin(self._euler_angles[:, 1])]))
-        self._coordinates = array([rotations.rotate(rotation, [1., 0., 0.]) for rotation in self._rotations])
-        self._number_of_rotations = len(self._rotations)
-        self._rotation_sphere_coordinates = array(icosahedral_sphere.sphere_sampling(rotations.rots_to_n(self._number_of_rotations)))
-        number_of_bins = len(self._rotation_sphere_coordinates)
-        self._rotation_sphere_weights = zeros(number_of_bins)
-        self._rotation_sphere_bins = zeros(number_of_bins)
-        self._rotation_mapping_table = zeros(self._number_of_rotations, dtype='int32')
-        for i, c in enumerate(self._coordinates):
-            index = closest_coordinate(c, self._rotation_sphere_coordinates)
-            self._rotation_sphere_weights[index] += 1.
-            self._rotation_mapping_table[i] = index
+    #     self._rotations = loadtxt('output/rotations.data')
+    #     # self._euler_angles = array([rotations.quaternion_to_euler_angle(rotation) for rotation in self._rotations])
+    #     # self._coordinates = transpose(array([sin(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
+    #     #                                      cos(self._euler_angles[:, 2])*cos(self._euler_angles[:, 1]),
+    #     #                                      sin(self._euler_angles[:, 1])]))
+    #     self._coordinates = array([rotations.rotate(rotation, [1., 0., 0.]) for rotation in self._rotations])
+    #     self._number_of_rotations = len(self._rotations)
+    #     self._rotation_sphere_coordinates = array(icosahedral_sphere.sphere_sampling(rotations.rots_to_n(self._number_of_rotations)))
+    #     number_of_bins = len(self._rotation_sphere_coordinates)
+    #     self._rotation_sphere_weights = zeros(number_of_bins)
+    #     self._rotation_sphere_bins = zeros(number_of_bins)
+    #     self._rotation_mapping_table = zeros(self._number_of_rotations, dtype='int32')
+    #     for i, c in enumerate(self._coordinates):
+    #         index = closest_coordinate(c, self._rotation_sphere_coordinates)
+    #         self._rotation_sphere_weights[index] += 1.
+    #         self._rotation_mapping_table[i] = index
+    #     self._rotation_sphere_good_indices = self._rotation_sphere_weights > 0.
+
+    def _read_average_resp(self, iteration):
+        if os.path.isfile("output/average_resp_%.4d.h5" % (iteration)):
+            with h5py.File("output/average_resp_%.4d.h5" % (iteration), "r") as f:
+                average_resp = f["data"][...]
+        else:
+            average_resp = loadtxt("output/average_resp_%.4d.data" % (iteration))
+        return average_resp
+
+    def setup_rotations(self):
+        self._number_of_rotations = len(self._read_average_resp(0))
+        n = rotations.rots_to_n(self._number_of_rotations)
+
+        self._rotation_sphere_coordinates = array(icosahedral_sphere.sphere_sampling(n))
+
+        with h5py.File("%s/data/rotations_table_n%d.h5" % (os.path.split(__file__)[0], n)) as f:
+            self._rotation_sphere_weights = f['weights'][...]
+            self._rotation_mapping_table = f['table'][...]
+
         self._rotation_sphere_good_indices = self._rotation_sphere_weights > 0.
+
+        self._number_of_bins = len(self._rotation_sphere_weights)
+        self._rotation_sphere_bins = zeros(self._number_of_bins)
+
 
     def get_rotation_coordinates(self):
         # best_index = list(int32(loadtxt('output/best_rot.data')[self._current_iteration]))
@@ -51,7 +76,8 @@ class RotationData(module_template.Data):
     def get_average_rotation_values(self, iteration):
         """Get the average rotation distribution of all images"""
         try:
-            average_resp = loadtxt('output/average_resp_%.4d.data' % iteration)
+            #average_resp = loadtxt('output/average_resp_%.4d.data' % iteration)
+            average_resp = self._read_average_resp(iteration)
         except IOError:
             self.read_error.emit()
             return self._rotation_sphere_bins
@@ -114,6 +140,9 @@ class RotationViewer(module_template.Viewer):
             self._points.actor.mapper.lookup_table.range = (0., 1.)
             self._points.module_manager.scalar_lut_manager.data_name = "Resp"
             self._points.module_manager.scalar_lut_manager.show_scalar_bar = True
+            color_black = (0., 0., 0.)
+            self._points.module_manager.scalar_lut_manager.scalar_bar.label_text_property.color = color_black #scalbar text is black
+            self._points.module_manager.scalar_lut_manager.scalar_bar.title_text_property.color = color_black #scalbar text is black
             self._points.update_pipeline()
             self._points.actor.render()
 

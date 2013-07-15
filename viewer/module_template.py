@@ -53,6 +53,9 @@ class Controll(QtCore.QObject):
     def draw(self):
         if self._active:
             self.draw_hard()
+            
+    def on_dir_change(self):
+        self.draw()
 
 class Plugin(QtCore.QObject):
     def __init__(self, common_controll):

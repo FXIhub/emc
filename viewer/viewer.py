@@ -14,6 +14,7 @@ import convenient_widgets
 
 SLIDER_LENGTH = 100
 #state_variables = tools.enum(iteration=1)
+#state_variables = ["iteration", "number_of_images"]
 state_variables = ["iteration"]
 
 class ModelData(QtCore.QObject):
@@ -248,7 +249,14 @@ class StateWatcher(QtCore.QObject):
         return self._state.get_value(variable)
 
     def set_file(self, new_file_name):
-        self._watcher.set_file(new_file_name)
+        # print "start watching %s" % new_file_name
+        if os.path.isfile(new_file_name):
+            self._watcher.set_file(new_file_name)
+            self._file_handle.close()
+            self._file_handle = h5py.File(new_file_name)
+            
+    def set_base_dir(self, new_dir):
+        self.set_file("%s/output/state.h5" % (new_dir))
 
     def _on_file_change(self):
         old_state = self._state
@@ -365,8 +373,10 @@ class StartMain(QtGui.QMainWindow):
         self._load_module('modelmap_module')
         self._load_module('rotations_module')
         self._load_module('weightmap_module')
-        #self._load_module('likelihood_module')
+        self._load_module('likelihood_module')
         self._load_module('fit_module')
+        self._load_module('image_module')
+        self._load_module('slice_module')
 
         self._active_module_index = 0
 
@@ -374,7 +384,7 @@ class StartMain(QtGui.QMainWindow):
         self._state_watcher = StateWatcher("output/state.h5")
         self._common_controll.set_max_iterations(self._state_watcher.get_value('iteration'))
         self._state_watcher.iterationChanged.connect(self._common_controll.set_max_iterations)
-        self._common_controll.dirChanged.connect(self._state_watcher.set_file)
+        self._common_controll.dirChanged.connect(self._state_watcher.set_base_dir)
 
     def _setup_actions(self):
         self._actions = {}
@@ -405,19 +415,20 @@ class StartMain(QtGui.QMainWindow):
     def _load_module(self, module_name):
         print "Loading module: %s" % module_name
         module = __import__(module_name)
+        #plugin = module.Plugin(self._common_controll, self._view_stack)
         plugin = module.Plugin(self._common_controll)
         self._plugins.append([module_name, plugin])
         plugin.get_data().read_error.connect(self._common_controll._on_read_error)
         self._common_controll.changed.connect(plugin.get_controll().draw)
-        self._common_controll.dirChanged.connect(plugin.get_controll().draw)
+        self._common_controll.dirChanged.connect(plugin.get_controll().on_dir_change)
         self._view_stack.addWidget(plugin.get_viewer().get_widget())
         self._controll_stack.addWidget(plugin.get_controll().get_widget())
         self._module_box.addItem(module_name)
         plugin.get_controll().draw()
 
     def _setup_gui(self):
-        self._view_stack = QtGui.QStackedWidget()
-        self._controll_stack = QtGui.QStackedWidget()
+        self._view_stack = QtGui.QStackedWidget(self)
+        self._controll_stack = QtGui.QStackedWidget(self)
 
         layout = QtGui.QVBoxLayout()
         layout.addWidget(self._view_stack)
@@ -468,6 +479,7 @@ class StartMain(QtGui.QMainWindow):
         for name,plugin in self._plugins:
             plugin.get_controll().set_active(False)
         self._plugins[index][1].get_controll().set_active(True)
+        self._plugins[index][1].get_controll().draw()
 
 if __name__ == "__main__":
     parser = OptionParser(usage="%prog <3d_file.h5>")

@@ -17,6 +17,10 @@ class LikelihoodData(module_template.Data):
         try:
             self._likelihood_data = pylab.loadtxt('output/likelihood.data')
         except IOError:
+            try:
+                self._likelihood_data = pylab.loadtxt('likelihood.data')
+            except IOError:
+                self.read_error.emit()
             self.read_error.emit()
         self.data_changed.emit()
 

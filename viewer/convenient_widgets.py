@@ -48,24 +48,25 @@ class IntegerControll(QtGui.QWidget):
         return self._value
 
     def change_value(self, new_value):
-        if new_value >= self._min_lim:
+        if new_value >= self._min_lim and (self._max_lim == None or new_value <= self._max_lim):
             self._value = new_value
             self._spin_box.setValue(self._value)
             self.valueChanged.emit(self._value)
 
     def shift_value(self, shift):
-        if (self._value + shift) >= self._min_lim:
-            new_value = self._value + shift
-        else:
-            new_value = self._min_lim
-        self.change_value(new_value)
+        # if (self._value + shift) >= self._min_lim and (self._value + shift) <= self._max_lim:
+        #     new_value = self._value + shift
+        # else:
+        #     new_value = self._min_lim
+        # self.change_value(new_value)
+        self.change_value(self._value + shift)
 
     def set_max(self, new_max):
         self._max_lim = new_max
         #self._spin_box.setRange(self._min_lim, self._max_lim)
         self._update_spinbox_max(self._max_lim)
         if self._value > self._max_lim:
-            self._change_value(self._max_lim)
+            self.change_value(self._max_lim)
         self._update_max_label(self._max_lim)
 
     def _setup_connections(self):

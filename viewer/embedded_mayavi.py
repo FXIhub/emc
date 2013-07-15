@@ -18,7 +18,7 @@ class MlabVisualization(HasTraits):
                 resizable=True)
 
 class MlabWidget(QtGui.QWidget):
-    """This returns an embedded mayavi object throug the get_mlab function
+    """This returns an embedded mayavi object through the get_mlab function
     I don't really understand this class, it was stolen from an example for qt-embedded mayavi"""
     def __init__(self, parent=None):
         i = 0
@@ -30,6 +30,8 @@ class MlabWidget(QtGui.QWidget):
         layout.addWidget(self._ui)
         self.setLayout(layout)
         self._ui.setParent(self)
+
+        self.get_scene().background = (1., 1., 1.)
 
         # policy = QtGui.QSizePolicy()
         # # policy.setVerticalStretch(1)
@@ -43,7 +45,10 @@ class MlabWidget(QtGui.QWidget):
     def get_mlab(self):
         return self._vis.scene.mlab
 
+    def get_scene(self):
+        return self._vis.scene
+
     def save_image(self, file_name, size=(DEFAULT_IMAGE_OUTPUT_SIDE, )*2):
         #self.get_mlab().savefig(file_name, figure=self.get_mlab().figure(1), magnification=1)
         #self._vis.scene.save_png(file_name)
-        self._vis.scene.save(file_name)
+        self.get_scene().save(file_name)

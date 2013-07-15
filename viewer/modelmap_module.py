@@ -151,8 +151,9 @@ class ModelmapControll(module_template.Controll):
         self._surface_level_slider.setTracking(True)
         self._surface_level_slider.setRange(1, self._SLIDER_LENGTH)
         def on_slider_changed(cls, slider_level):
-            cls._viewer.set_surface_level(slider_level/float(cls._SLIDER_LENGTH))
+            # cls._viewer.set_surface_level(slider_level/float(cls._SLIDER_LENGTH))
             # cls._viewer.set_surface_level(self._SLIDER_LENGTH/(float(slider_level)))
+            cls._viewer.set_surface_level((exp(float(slider_level)/float(self._SLIDER_LENGTH))-1.) / (exp(1.)-1.))
         self._surface_level_slider.valueChanged.connect(partial(on_slider_changed, self))
         self._surface_level_slider.setSliderPosition(self._SLIDER_LENGTH*INIT_SURFACE_LEVEL)
 
