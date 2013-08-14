@@ -1,10 +1,11 @@
-from pyface.qt import QtCore, QtGui
-import matplotlib
+"""Small function to embedd matplotlib visualization in qt."""
+from pyface.qt import QtGui
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
 from matplotlib.figure import Figure
 
 def get_matplotlib_widget():
+    """Returns four objects: A widget, a figure, a canvas an mpl_toolbar."""
     widget = QtGui.QWidget()
     fig = Figure((5., 4.))
     canvas = FigureCanvas(fig)

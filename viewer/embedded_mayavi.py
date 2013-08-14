@@ -1,6 +1,7 @@
+"""Small widget to embedd mayavi visualization in qt."""
 from pyface.qt import QtCore, QtGui
 
-from traits.api import HasTraits, Instance, on_trait_change, Int, Dict
+from traits.api import HasTraits, Instance
 from traitsui.api import View, Item
 try:
     from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
@@ -8,21 +9,19 @@ except RuntimeError:
     pass
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
 
-DEFAULT_IMAGE_OUTPUT_SIDE = 1024
-
 class MlabVisualization(HasTraits):
     """I don't really understand this class, it was stolen from an example for qt-embedded mayavi"""
     scene = Instance(MlabSceneModel, ())
 
-    view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
+    view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene),
+                     height=600, width=600, show_label=False),
                 resizable=True)
 
 class MlabWidget(QtGui.QWidget):
     """This returns an embedded mayavi object through the get_mlab function
     I don't really understand this class, it was stolen from an example for qt-embedded mayavi"""
     def __init__(self, parent=None):
-        i = 0
-        QtGui.QWidget.__init__(self, parent)
+        super(MlabWidget, self).__init__(parent)
         layout = QtGui.QHBoxLayout(self)
 
         self._vis = MlabVisualization()
@@ -33,22 +32,16 @@ class MlabWidget(QtGui.QWidget):
 
         self.get_scene().background = (1., 1., 1.)
 
-        # policy = QtGui.QSizePolicy()
-        # # policy.setVerticalStretch(1)
-        # # policy.setHorizontalStretch(1)
-        # policy.setHorizontalPolicy(QtGui.QSizePolicy.Expanding)
-        # policy.setHorizontalPolicy(QtGui.QSizePolicy.Expanding)
-        # self._ui.setSizePolicy(policy)
-        # #self.get_widget().setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
-
-
     def get_mlab(self):
+        """Returns an mlab object that can be used to call mayavi functions"""
         return self._vis.scene.mlab
 
     def get_scene(self):
+        """Scene object which mlab calls are rendered into."""
         return self._vis.scene
 
-    def save_image(self, file_name, size=(DEFAULT_IMAGE_OUTPUT_SIDE, )*2):
+    def save_image(self, file_name):
+        """Save the current view."""
         #self.get_mlab().savefig(file_name, figure=self.get_mlab().figure(1), magnification=1)
         #self._vis.scene.save_png(file_name)
         self.get_scene().save(file_name)
