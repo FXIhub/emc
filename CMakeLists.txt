@@ -26,15 +26,18 @@ find_package(GSL REQUIRED)
 #add_executable(emc emc.c rotations.c)
 #target_link_libraries(emc emc_cuda spimage config rotations gsl gslcblas)
 
+set(LOCAL_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set(LOCAL_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-cuda_add_executable(emc emc.c rotations.c configuration.c emc_cuda.cu emc_atomic.cu)
-cuda_add_cufft_to_target(emc)
-target_link_libraries(emc spimage config gsl gslcblas hdf5)
+add_subdirectory(src)
 
-cuda_add_executable(generate_rotations generate_rotations.c rotations.c)
-target_link_libraries(generate_rotations spimage config gsl gslcblas
-hdf5)
+# cuda_add_executable(emc emc.c rotations.c configuration.c emc_cuda.cu emc_atomic.cu)
+# cuda_add_cufft_to_target(emc)
+# target_link_libraries(emc spimage config gsl gslcblas hdf5)
 
-cuda_add_executable(modify_configuration modify_configuration.c)
-target_link_libraries(modify_configuration config)
+# cuda_add_executable(generate_rotations generate_rotations.c rotations.c)
+# target_link_libraries(generate_rotations spimage config gsl gslcblas hdf5)
+
+# cuda_add_executable(modify_configuration modify_configuration.c)
+# target_link_libraries(modify_configuration config)
 

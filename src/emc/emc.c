@@ -44,6 +44,72 @@ void write_1d_array_hdf5(char *filename, real *array, int index1_max) {
   H5Fclose(file_id);
 }
 
+void write_1d_int_array_hdf5(char *filename, int *array, int index1_max) {
+  hid_t file_id;
+  file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  hid_t space_id;
+  hid_t dataset_id;
+  hsize_t dim[1]; dim[0] = index1_max;
+  
+  space_id = H5Screate_simple(1, dim, NULL);
+  dataset_id = H5Dcreate1(file_id, "/data", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, array);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+  H5Fclose(file_id);
+}
+/*
+hid_t init_scaling_file(char *filename, int N_images, hid_t *file_id) {
+  *file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  if (file_id < 0) {printf("Error creating file\n");}
+
+  const int init_stack_size = 10;
+  hsize_t dims[2]; dims[0] = init_stack_size; dims[1] = N_images;
+  hsize_t maxdims[2]; maxdims[0] = H5S_UNLIMITED; maxdims[1] = N_images;
+  
+  //hid_t dataset = H5Dopen1(file, "scaling");
+  //if (dataset < 0) {printf("Error creating dataset in write\n");}
+  hid_t dataspace = H5Dget_space(dataset);
+  if (dataspace < 0) {printf("Error creating dataspace in write\n");}
+  hsize_t block[2];
+  hsize_t mdims[2];
+  H5Sget_simple_extent_dims(dataspace, block, mdims);
+  if (block[0] <= iteration) {
+    while(block[0] <= iteration) {
+      block[0] *= 2;
+    }
+    H5Dset_extent(dataset, block);
+    H5Sclose(dataspace);
+    dataspace = H5Dget_space(dataset);
+    if (dataspace < 0) {printf("Error creating dataspace in write in extend\n");}
+  }
+  block[0] = 1;
+  hid_t memspace = H5Screate_simple(2, block, NULL);
+  hsize_t offset[2] = {iteration, 0};
+  printf("offset = %d, %d\n", offset[0], offset[1]);
+  hsize_t stride[2] = {1, 1};
+  hsize_t count[2] = {1, 1};
+  hid_t hs = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, stride, count, block);
+  if (hs < 0) {printf("Error selecting hyperslab\n");}
+  hid_t w = H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, dataspace, H5P_DEFAULT, scaling_at_best);
+  if (w < 0) {printf("Error writing dataset\n");}
+  H5Sclose(memspace);
+  H5Sclose(dataspace);
+  //H5Dclose(dataset);
+  H5Fflush(dataset, H5F_SCOPE_GLOBAL);
+}
+
+void write_scaling_to_file() {
+
+}
+
+*/
+
+void close_scaling_file(hid_t dataset, hid_t file) {
+  H5Sclose(dataset);
+  H5Sclose(file);
+}
+
 void write_2d_array_hdf5(char *filename, real *array, int index1_max, int index2_max) {
   hid_t file_id;
   file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
@@ -849,7 +915,7 @@ int main(int argc, char **argv)
   }
 
   real *scaling = malloc(N_images*N_slices*sizeof(real));
-  for (int i = 0; i < N_images; i++) {
+  for (int i = 0; i < N_images*N_slices; i++) {
     scaling[i] = 1.0;
   }
 
@@ -975,7 +1041,11 @@ int main(int argc, char **argv)
 
   int current_chunk;
 
-  
+  /*  
+  hid_t scaling_file;
+  sprintf(buffer, "%s/best_scaling.h5", conf.output_dir);
+  hid_t scaling_dataset =  init_scaling_file(buffer, N_images, &scaling_file);
+  */
   /*
   real sigma_half_life = 25; // 1000.
   real sigma_start = 0.12;   // relative: 0.09 -> 0.05
@@ -1204,6 +1274,9 @@ int main(int argc, char **argv)
 
       sprintf(buffer, "%s/scaling_%.4d.h5", conf.output_dir, iteration);
       write_2d_array_hdf5(buffer, scaling, N_slices, N_images);
+      
+      /* this is the best reps scaling */
+      // write_scaling_to_file(scaling_dataset, scaling, respons, N_images, N_slices, iteration);
     }
     //fprintf(scaling_file, "\n");
     //fclose(scaling_file);
@@ -1296,8 +1369,51 @@ int main(int argc, char **argv)
       }
     }
     if (conf.exclude_images == 1 && iteration > -1) {
+      real *best_respons = malloc(N_images*sizeof(real));
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	best_respons[i_image] = respons[0*N_images+i_image];
+	for (int i_slice = 1; i_slice < N_slices; i_slice++) {
+	  /*
+	  if (respons[i_slice*N_images+i_image] > best_respons[i_image]) {
+	    best_respons[i_image] = respons[i_slice*N_images+i_image];
+	  }
+	  */
+	  if (!isnan(respons[i_slice*N_images+i_image]) && (respons[i_slice*N_images+i_image] > best_respons[i_image] || isnan(best_respons[i_image]))) {
+	    best_respons[i_image] = respons[i_slice*N_images+i_image];
+	  }
+	}
+
+	if (isnan(best_respons[i_image])) {
+	  printf("%d: best resp is nan\n", i_image);
+	  for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+	    if (!isnan(respons[i_slice*N_images+i_image])){
+	      printf("tot resp is bad but single is good\n");
+	    }
+	  }
+	}
+      }
+      real *best_respons_copy = malloc(N_images*sizeof(real));
+      memcpy(best_respons_copy, best_respons, N_images*sizeof(real));
+      qsort(best_respons_copy, N_images, sizeof(real), compare_real);
+      real threshold = best_respons_copy[(int)((real)N_images*conf.exclude_ratio)];
+      printf("threshold = %g\n", threshold);
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	if (best_respons[i_image]  > threshold) {
+	  active_images[i_image] = 1;
+	} else { 
+	  active_images[i_image] = 0;
+	}
+      }
+      sprintf(buffer, "%s/active_%.4d.h5", conf.output_dir, iteration);
+      write_1d_int_array_hdf5(buffer, active_images, N_images);
+      free(best_respons_copy);
+      free(best_respons);
+    }
+    /*
+    if (conf.exclude_images == 1 && iteration > -1) {
       real *fit_copy = malloc(N_images*sizeof(real));
-      memcpy(fit_copy,fit,N_images*sizeof(real));
+      //memcpy(fit_copy,fit,N_images*sizeof(real));
+      memcpy(fit_copy,fit_best_rot,N_images*sizeof(real));
       qsort(fit_copy, N_images, sizeof(real), compare_real);
       real threshold = fit_copy[(int)((real)N_images*conf.exclude_ratio)];
       for (int i_image = 0; i_image < N_images; i_image++) {
@@ -1312,6 +1428,7 @@ int main(int argc, char **argv)
       }
       printf("\n");
     }
+    */
     cuda_copy_int_to_device(active_images, d_active_images, N_images);
     /* end exclude images */
 
@@ -1513,5 +1630,6 @@ int main(int argc, char **argv)
 	    rotations[final_best_rotation]->q[2], rotations[final_best_rotation]->q[3]);
   }
   fclose(final_best_rotations_file);
+  // close_scaling_file(scaling_dataset, scaling_file);
   close_state_file(state_file);
 }
