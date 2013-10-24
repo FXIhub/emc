@@ -22,6 +22,7 @@ class RotationData(module_template.Data):
     def __init__(self):
         super(RotationData, self).__init__()
         self._rotation_type = ROTATION_TYPE.single # 0 = average, 1 = single
+        self._setup_done = False
         self._number_of_rotations = None
         self._number_of_bins = None
         self._rotation_sphere_weights = None
@@ -59,16 +60,26 @@ class RotationData(module_template.Data):
 
         self._number_of_bins = len(self._rotation_sphere_weights)
         self._rotation_sphere_bins = numpy.zeros(self._number_of_bins)
+        
+        self._setup_done = True
 
+    def is_ready(self):
+        return self._setup_done
+
+    def check_ready(self):
+        if not self.is_ready():
+            raise ValueError("RotationData is not set up. Call setup_rotations first.")
 
     def get_rotation_coordinates(self):
         """Get the coordinates of the points of the sphere."""
+        self.check_ready()
         # best_index = list(int32(loadtxt('output/best_rot.data')[self._current_iteration]))
         # return self._rotation_sphere_coordinates
         return self._rotation_sphere_coordinates
 
     def get_average_rotation_values(self, iteration):
         """Get the average rotation distribution of all images"""
+        self.check_ready()
         try:
             #average_resp = loadtxt('output/average_resp_%.4d.data' % iteration)
             average_resp = self._read_average_resp(iteration)
@@ -87,6 +98,7 @@ class RotationData(module_template.Data):
 
     def get_single_rotation_values(self, iteration, image_number):
         """Get the rotation distribution of a single image"""
+        self.check_ready()
         try:
             resp_handle = h5py.File('output/responsabilities_%.4d.h5' % iteration)
             resp = resp_handle['data'][image_number, :]
@@ -108,6 +120,7 @@ class RotationViewer(module_template.Viewer):
     def __init__(self, parent=None):
         super(RotationViewer, self).__init__()
         self._mlab_widget = embedded_mayavi.MlabWidget()
+        self._setup_done = False
         self._points = None
 
     def get_mlab(self):
@@ -121,6 +134,8 @@ class RotationViewer(module_template.Viewer):
     def plot_rotations(self, values):
         """Update the viwer to show the current values. The values has to be
         precalculated which is done in the RotationsData object."""
+        if not self._setup_done:
+            raise ValueError("RotationViewer is not set up. Call plot_rotations_init instead.")
         self._points.glyph.glyph.input.point_data.scalars = values
         self._points.glyph.glyph.input.point_data.modified()
         self._points.actor.mapper.lookup_table.range = (0., values.max())
@@ -151,6 +166,7 @@ class RotationViewer(module_template.Viewer):
             self._points.module_manager.scalar_lut_manager.scalar_bar.title_text_property.color = color_black
             self._points.update_pipeline()
             self._points.actor.render()
+        self._setup_done = True
 
     def save_image(self, filename):
         """Output the current view to file."""

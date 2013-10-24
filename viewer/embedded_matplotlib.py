@@ -1,5 +1,8 @@
 """Small function to embedd matplotlib visualization in qt."""
+# try:
 from pyface.qt import QtGui
+# except IOError:
+#     from pyface.qt import QtGui
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
 from matplotlib.figure import Figure

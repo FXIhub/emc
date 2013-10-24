@@ -829,7 +829,7 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
 					     d_y_coordinates,d_z_coordinates,d_model, d_weight,
 					     sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
 					     sp_3matrix_x(model),sp_3matrix_y(model),
-					     sp_3matrix_z(model));  
+					     sp_3matrix_z(model));
   cudaEventRecord(k_end,0);
   cudaEventSynchronize(k_end);
   real k_ms;

@@ -4,33 +4,35 @@ from optparse import OptionParser
 import h5py
 import assemble_slices
 import sphelper
+import spimage
 import time_tools
 import sys
 from mpi4py import MPI
+import parse_libconfig
+import os.path
 
-parser = OptionParser(usage="%prog IMAGE_DIR RESP_FILE SCALING_FILE")
-options, args = parser.parse_args()
+# parser = OptionParser(usage="%prog EMC_CONF ITERATION")
+# parser.add_option("-o", action="store", type="string", dest="output_prefix", default="./split")
+# options, args = parser.parse_args()
 
-# image_dir = args[0]
-# resp_filename = args[1]
-# scaling_filename = args[2]
-# rotations_filename = args[3]
-# image_dir = "/scratch/fhgfs/ekeberg/emc/multiple_run2/run_30/debug/"
-# resp_filename = "/scratch/fhgfs/ekeberg/emc/multiple_run2/run_30/output/responsabilities_0099.h5"
-# scaling_filename = "/scratch/fhgfs/ekeberg/emc/multiple_run2/run_30/output/scaling_0099.h5"
-# rotations_filename = "/home/ekeberg/Work/programs/emc/rotations/rotations_20.h5"
+#emc_configuration_file = args[0]
+#iteration = int(args[1])
 
-image_dir = "/home/ekeberg/Work/programs/emc/my_emc_runs/mimi/multi_run/run_13/debug/"
-resp_filename = "/home/ekeberg/Work/programs/emc/my_emc_runs/mimi/multi_run/run_13/output/responsabilities_0099.h5"
-scaling_filename = "/home/ekeberg/Work/programs/emc/my_emc_runs/mimi/multi_run/run_13/output/scaling_0099.h5"
-rotations_filename = "/home/ekeberg/Work/programs/emc/rotations/rotations_20.h5"
+emc_configuration_file = "/home/ekeberg/Work/programs/emc/my_emc_runs/mimi/multi_run4/run_41/emc.conf"
+iteration = 99
+output_prefix = "/scratch/fhgfs/ekeberg/emc/mimi/multiple_run4/split_41/"
 
-# image_dir = "/home/ekeberg/Work/programs/emc/my_emc_runs/mimi/multi_run/coarse_run/run_5/debug/"
-# resp_filename = "/home/ekeberg/Work/programs/emc/my_emc_runs/mimi/multi_run/coarse_run/run_5/output/responsabilities_0099.h5"
-# scaling_filename = "/home/ekeberg/Work/programs/emc/my_emc_runs/mimi/multi_run/coarse_run/run_5/output/scaling_0099.h5"
-# rotations_filename = "/home/ekeberg/Work/programs/emc/rotations/rotations_10.h5"
+file_parser = parse_libconfig.Parser(emc_configuration_file)
+emc_output_dir = file_parser.get_option("output_dir")
+if not os.path.isabs(emc_output_dir):
+    emc_output_dir = os.path.dirname(emc_configuration_file)+"/"+emc_output_dir
+image_dir = emc_output_dir
+resp_filename = emc_output_dir+"/responsabilities_%.4d.h5" % iteration
+scaling_filename = emc_output_dir+"/scaling_%.4d.h5" % iteration
+rotations_filename = file_parser.get_option("rotations_file")
 
-output_prefix = "split_model/coarse"
+
+#output_prefix = options.output_prefix
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -71,6 +73,10 @@ with h5py.File(resp_filename, 'r') as resp_file_handle, h5py.File(scaling_filena
     indices_1.sort()
     indices_2.sort()
     #indices_1 = arange(number_of_images, dtype='int32')
+
+    # test
+    # indices_1 = arange(number_of_images)
+    # indices_2 = array([0, 1])
 
     images_1 = images[indices_1]
     masks_1 = masks[indices_1]
@@ -140,12 +146,15 @@ if rank == 0:
     good_indices_1 = final_weight_1 > 0
     final_model_1[-good_indices_1] = 0.
     final_model_1[good_indices_1] /= final_weight_1[good_indices_1]
-    sphelper.save_spimage(final_model_1, "%s_assembled_model_1.h5" % (output_prefix))
+    sphelper.save_spimage(final_model_1, "%s_assembled_model_1.h5" % (output_prefix), mask=int32(good_indices_1))
+    # output_sp = spimage.sp_image_alloc(final_model_1.shape[0], final_model_1.shape[1], final_model_1.shape[2])
+    # output_sp.image[:, :, :] = final_model_1
+    # output_sp.mask[:, :, :] = int32(good_indices)
 
     good_indices_2 = final_weight_2 > 0
     final_model_2[-good_indices_2] = 0.
     final_model_2[good_indices_2] /= final_weight_2[good_indices_2]
-    sphelper.save_spimage(final_model_2, "%s_assembled_model_2.h5" % (output_prefix))
+    sphelper.save_spimage(final_model_2, "%s_assembled_model_2.h5" % (output_prefix), mask=int32(good_indices_2))
 
     savetxt("%s_indices_1.data" % (output_prefix), indices_1, fmt='%d')
     savetxt("%s_indices_2.data" % (output_prefix), indices_2, fmt='%d')

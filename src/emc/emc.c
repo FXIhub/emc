@@ -1,4 +1,4 @@
-//#include "fragmentation.h"
+#include "fragmentation.h"
 #include <spimage.h>
 #include <gsl/gsl_rng.h>
 #include <time.h>
@@ -58,22 +58,41 @@ void write_1d_int_array_hdf5(char *filename, int *array, int index1_max) {
   H5Sclose(space_id);
   H5Fclose(file_id);
 }
-/*
+
 hid_t init_scaling_file(char *filename, int N_images, hid_t *file_id) {
   *file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   if (file_id < 0) {printf("Error creating file\n");}
-
+  
   const int init_stack_size = 10;
   hsize_t dims[2]; dims[0] = init_stack_size; dims[1] = N_images;
   hsize_t maxdims[2]; maxdims[0] = H5S_UNLIMITED; maxdims[1] = N_images;
-  
+
+  hid_t dataspace = H5Screate_simple(2, dims, maxdims);
+  if (dataspace < 0) {printf("Error creating scaling dataspace in write\n"); exit(1);}
+
   //hid_t dataset = H5Dopen1(file, "scaling");
   //if (dataset < 0) {printf("Error creating dataset in write\n");}
+  //hid_t dataspace = H5Dget_space(dataset);
+  //if (dataspace < 0) {printf("Error creating scaling dataspace in write\n"); exit(1);}
+  hid_t cparms = H5Pcreate(H5P_DATASET_CREATE);
+  H5Pset_chunk(cparms, 2, dims);
+  
+  hid_t dataset = H5Dcreate(*file_id, "scaling", H5T_NATIVE_FLOAT, dataspace, H5P_DEFAULT, cparms, H5P_DEFAULT);
+  if (dataset < 0) {printf("Error creating scaling dataset\n"); exit(1);}
+  H5Pset_chunk_cache(H5Dget_access_plist(dataset), H5D_CHUNK_CACHE_NSLOTS_DEFAULT, N_images, 1);
+  
+  H5Sclose(dataspace);
+  H5Pclose(cparms);
+  return dataset;
+}
+
+void write_scaling_to_file(const hid_t dataset, const int iteration, float *scaling, float *respons, int N_slices) {
   hid_t dataspace = H5Dget_space(dataset);
-  if (dataspace < 0) {printf("Error creating dataspace in write\n");}
+  if (dataspace < 0) {printf("Can not create dataset when writing scaling.\n"); exit(1);}
   hsize_t block[2];
   hsize_t mdims[2];
   H5Sget_simple_extent_dims(dataspace, block, mdims);
+  /* check if stack has enough space, otherwhise enlarge */
   if (block[0] <= iteration) {
     while(block[0] <= iteration) {
       block[0] *= 2;
@@ -81,29 +100,42 @@ hid_t init_scaling_file(char *filename, int N_images, hid_t *file_id) {
     H5Dset_extent(dataset, block);
     H5Sclose(dataspace);
     dataspace = H5Dget_space(dataset);
-    if (dataspace < 0) {printf("Error creating dataspace in write in extend\n");}
+    if (dataspace<0) {printf("Error enlarging dataspace in scaling\n"); exit(1);}
   }
+
+  /* now that we know the extent, find the best respons and compile a scaling array*/
+  int N_images = block[1];
+  float *data = malloc(N_images*sizeof(float));
+  int best_index;
+  float best_resp;
+  for (int i_image = 0; i_image < N_images; i_image++) {
+    best_resp = respons[i_image];
+    best_index = 0;
+    for (int i_slice = 1; i_slice < N_slices; i_slice++) {
+      if (respons[i_slice*N_images + i_image] > best_resp) {
+	best_resp = respons[i_slice*N_images + i_image];
+	best_index = i_slice;
+      }
+    }
+    data[i_image] = scaling[best_index*N_images + i_image];
+  }
+
+  /* now get the hyperslab for the current iteration */
   block[0] = 1;
   hid_t memspace = H5Screate_simple(2, block, NULL);
+  if (memspace < 0) {printf("Error creating memspace when writing scaling\n"); exit(1);}
   hsize_t offset[2] = {iteration, 0};
-  printf("offset = %d, %d\n", offset[0], offset[1]);
   hsize_t stride[2] = {1, 1};
   hsize_t count[2] = {1, 1};
   hid_t hs = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, stride, count, block);
-  if (hs < 0) {printf("Error selecting hyperslab\n");}
-  hid_t w = H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, dataspace, H5P_DEFAULT, scaling_at_best);
-  if (w < 0) {printf("Error writing dataset\n");}
+  if (hs < 0) {printf("Error selecting hyperslab in scaling\n"); exit(1);}
+  hid_t w = H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, dataspace, H5P_DEFAULT, data);
+  if (w < 0) {printf("Error writing scaling\n"); exit(1);}
+  free(data);
   H5Sclose(memspace);
   H5Sclose(dataspace);
-  //H5Dclose(dataset);
   H5Fflush(dataset, H5F_SCOPE_GLOBAL);
 }
-
-void write_scaling_to_file() {
-
-}
-
-*/
 
 void close_scaling_file(hid_t dataset, hid_t file) {
   H5Sclose(dataset);
@@ -1041,11 +1073,11 @@ int main(int argc, char **argv)
 
   int current_chunk;
 
-  /*  
+
   hid_t scaling_file;
   sprintf(buffer, "%s/best_scaling.h5", conf.output_dir);
   hid_t scaling_dataset =  init_scaling_file(buffer, N_images, &scaling_file);
-  */
+
   /*
   real sigma_half_life = 25; // 1000.
   real sigma_start = 0.12;   // relative: 0.09 -> 0.05
@@ -1276,10 +1308,11 @@ int main(int argc, char **argv)
       write_2d_array_hdf5(buffer, scaling, N_slices, N_images);
       
       /* this is the best reps scaling */
-      // write_scaling_to_file(scaling_dataset, scaling, respons, N_images, N_slices, iteration);
+      write_scaling_to_file(scaling_dataset, iteration, scaling, respons, N_slices);
     }
     //fprintf(scaling_file, "\n");
     //fclose(scaling_file);
+
     /* end update scaling */
 
     /* start calculate responsabilities */
@@ -1459,9 +1492,10 @@ int main(int argc, char **argv)
 	printf("update slices chunk %d\n", slice_start/slice_chunk);
       }
 
+      /* is this problematic. Debug!
       cuda_get_slices(model, d_model, slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
 		      slice_start, current_chunk);
-
+      */
       cuda_update_slices(d_images, slices, d_mask,
 			 d_respons, d_scaling, d_active_images,
 			 N_images, slice_start, current_chunk, N_2d,
@@ -1630,6 +1664,6 @@ int main(int argc, char **argv)
 	    rotations[final_best_rotation]->q[2], rotations[final_best_rotation]->q[3]);
   }
   fclose(final_best_rotations_file);
-  // close_scaling_file(scaling_dataset, scaling_file);
+  close_scaling_file(scaling_dataset, scaling_file);
   close_state_file(state_file);
 }
