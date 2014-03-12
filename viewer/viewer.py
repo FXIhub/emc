@@ -65,7 +65,7 @@ class StateWatcher(QtCore.QObject):
     iterationChanged = QtCore.Signal(int)
     def __init__(self, file_name, parent=None):
         super(StateWatcher, self).__init__(parent)
-        print file_name
+        #print file_name
         # self._watcher = QtCore.QFileSystemWatcher(self)
         # self._watcher.addPath(file_name)
         self._watcher = FileWatcher(file_name)

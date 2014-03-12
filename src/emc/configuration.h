@@ -40,6 +40,8 @@ extern "C"{
     const char *output_dir;
     const char *debug_dir;
     int random_seed;
+    int calculate_r_free;
+    double r_free_ratio;
   }Configuration;
 
   Configuration read_configuration_file(const char *filename);

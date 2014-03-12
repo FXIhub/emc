@@ -51,7 +51,12 @@ class SliceData(module_template.Data):
             self.read_error.emit()
         self._number_of_images = len(list_of_images)
         for i in range(self._number_of_images):
-            image, mask = sphelper.import_spimage("%s/image_%.4d.h5" % (prefix, i), ['image', 'mask'])
+            try:
+                image, mask = sphelper.import_spimage("%s/image_%.4d.h5" % (prefix, i), ['image', 'mask'])
+            except:
+                print "{0} is bad".format(i)
+                image = numpy.zeros(self._images[0].shape, dtype="float32")
+                mask = numpy.zeros(self._images[0].shape, dtype="int32")
             self._images.append(image)
             self._masks.append(mask)
 

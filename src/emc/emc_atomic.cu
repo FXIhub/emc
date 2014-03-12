@@ -308,7 +308,7 @@ __global__ void update_slices_final_kernel(real * images, real * slices, int * m
     real sum = 0.0;
     real count = 0.0;
     for (int i_image = 0; i_image < N_images; i_image++) {
-      if (active_images[i_image] && images[i_image*N_2d+i] >= 0.0) {
+      if (active_images[i_image] > 0 && images[i_image*N_2d+i] >= 0.0) {
 	sum += images[i_image*N_2d+i]*
 	  respons[(slice_start+i_slice)*N_images+i_image]/scaling[(slice_start+i_slice)*N_images+i_image];
 	count += respons[(slice_start+i_slice)*N_images+i_image];
@@ -321,7 +321,7 @@ __global__ void update_slices_final_kernel(real * images, real * slices, int * m
     }
   }
   for (int i_image = 0; i_image < N_images; i_image++) {
-    if (active_images[i_image]) {
+    if (active_images[i_image] > 0) {
       total_respons += respons[(slice_start+i_slice)*N_images+i_image];
     }
   }

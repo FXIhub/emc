@@ -1,6 +1,7 @@
-#include "fragmentation.h"
+//#include "fragmentation.h"
 #include <spimage.h>
 #include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
 #include <time.h>
 #include "emc.h"
 #include "configuration.h"
@@ -723,6 +724,14 @@ int main(int argc, char **argv)
   fclose(rotations_file);
   */
 
+  
+  int N_images_included;
+  if (conf.calculate_r_free) {
+    N_images_included = (1.-conf.r_free_ratio) * (float) N_images;
+  } else {
+    N_images_included = N_images;
+  }
+
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_taus);
   //  gsl_rng_set(rng,time(NULL));
   // Reproducible "random" numbers
@@ -828,8 +837,6 @@ int main(int argc, char **argv)
 
   //change later to random rotations
 
-
-
   for (int i = 0; i < N_model; i++) {
     model->data[i] = 0.0;
     weight->data[i] = 0.0;
@@ -886,9 +893,11 @@ int main(int argc, char **argv)
 		     pow((real)y - conf.model_side/2.0 + 0.5,2) +
 		     pow((real)z - conf.model_side/2.0 + 0.5,2));
 	  r = (int)rad;
-	  if (r < conf.model_side/2.0) {
-	    sp_3matrix_set(model,x,y,z,(radavg[r]*(1.0 - (rad - (real)r)) +
-					radavg[r+1]*(rad - (real)r)) * (1. + conf.initial_model_noise*gsl_rng_uniform(rng)));
+	  if (r < conf.model_side/2-1) {
+	    sp_3matrix_set(model, x, y, z, (radavg[r]*(1.0 - (rad - (real)r)) +
+					    radavg[r+1]*(rad - (real)r)) * (1. + conf.initial_model_noise*gsl_rng_uniform(rng)));
+	  } else if (r < conf.model_side/2){
+	    sp_3matrix_set(model, x, y, z, radavg[r] * (1. + conf.initial_model_noise*gsl_rng_uniform(rng)));
 	  } else {
 	    sp_3matrix_set(model,x,y,z,-1.0);
 	  }
@@ -1059,6 +1068,11 @@ int main(int argc, char **argv)
   sprintf(buffer, "%s/total_resp.data", conf.output_dir);
   FILE *sorted_resp_file = fopen(buffer,"wp");
   FILE *average_resp_file;// = fopen("output/average_resp.data","wp");
+  FILE *r_free;
+  if (conf.calculate_r_free) {
+    sprintf(buffer, "%s/r_free.data", conf.output_dir);
+    r_free = fopen(buffer, "wp");
+  }
 
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
@@ -1071,8 +1085,26 @@ int main(int argc, char **argv)
   real * d_masked_images;
   cuda_allocate_images(&d_masked_images,images,N_images);
 
-  int current_chunk;
+  /* setup active images and choose images for r_free */
+  for (int i_image = 0; i_image < N_images; i_image++) {
+    active_images[i_image] = 1;
+  }
+  if (conf.calculate_r_free) {
+    //int index_list[N_images];
+    int *index_list = malloc(N_images*sizeof(int));
+    for (int i_image = 0; i_image < N_images; i_image++) {
+      index_list[i_image] = i_image;
+    }
+    gsl_ran_shuffle(rng, index_list, N_images, sizeof(int));
+    int cutoff = N_images - N_images_included;
+    for (int i = 0; i < cutoff; i++) {
+      active_images[index_list[i]] = -1;
+    }
+    free(index_list);
+  }
+  cuda_copy_int_to_device(active_images, d_active_images, N_images);
 
+  int current_chunk;
 
   hid_t scaling_file;
   sprintf(buffer, "%s/best_scaling.h5", conf.output_dir);
@@ -1093,6 +1125,10 @@ int main(int argc, char **argv)
   real *d_weight_map;
   cuda_allocate_weight_map(&d_weight_map, conf.model_side);
   real weight_map_radius, weight_map_falloff;
+  /*
+  real weight_map_radius_start = 20.;
+  real weight_map_radius_final = 20.;
+  */
   real weight_map_radius_start = 20.;
   real weight_map_radius_final = 20.;
 
@@ -1308,6 +1344,7 @@ int main(int argc, char **argv)
       write_2d_array_hdf5(buffer, scaling, N_slices, N_images);
       
       /* this is the best reps scaling */
+      cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
       write_scaling_to_file(scaling_dataset, iteration, scaling, respons, N_slices);
     }
     //fprintf(scaling_file, "\n");
@@ -1331,6 +1368,59 @@ int main(int argc, char **argv)
 				      current_chunk, conf.diff);
 
     }
+    /* start r_free exclusion */
+    /* choose a random set of images to from the model */
+    /* this has to be done before normalizing reponsabilities */
+    if (conf.calculate_r_free) {
+      cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
+
+      /* code to calculate best respons */
+      real *best_respons = malloc(N_images*sizeof(real));
+      real this_respons;
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	best_respons[i_image] = respons[0*N_images+i_image];
+	for (int i_slice = 1; i_slice < N_slices; i_slice++) {
+	  this_respons = respons[i_slice*N_images+i_image];
+	  if (this_respons > best_respons[i_image]) {
+	    best_respons[i_image] = this_respons;
+	  }
+	}
+      }
+      real universal_best_respons = best_respons[0];
+      for (int i_image = 1; i_image < N_images; i_image++) {
+	this_respons = best_respons[i_image];
+	if (this_respons > universal_best_respons) {
+	  universal_best_respons = this_respons;
+	}
+      }
+
+      int range = (int) (universal_best_respons / log(10.));
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	best_respons[i_image] = exp(best_respons[i_image]-range*log(10));
+      }
+
+      real average_best_response_included = 0.;
+      real average_best_response_free = 0.;
+      int included_count = 0;
+      int free_count = 0;
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	if (active_images[i_image] == 1) {
+	  average_best_response_included += best_respons[i_image];
+	  included_count++;
+	} else if (active_images[i_image] == -1) {
+	  average_best_response_free += best_respons[i_image];
+	  free_count++;
+	}
+      }
+      free(best_respons);
+      average_best_response_included /= (float) included_count;
+      average_best_response_free /= (float) free_count;
+      printf("Average best response: %g (%g) (10^%d)\n", average_best_response_included, average_best_response_free, range);
+      fprintf(r_free, "%g %g %d\n",  average_best_response_included, average_best_response_free, range);
+      fflush(r_free);
+    }
+
+
     cuda_calculate_responsabilities_sum(respons, d_respons, N_slices, N_images);
     cuda_normalize_responsabilities(d_respons, N_slices, N_images);
     cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
@@ -1395,14 +1485,10 @@ int main(int argc, char **argv)
     printf("models reset\n");
 
 
-    /* start exclude images */
-    if (iteration == 0) {
-      for (int i_image = 0; i_image < N_images; i_image++) {
-	active_images[i_image] = 1;
-      }
-    }
+    /* start exclude images */    
+    real *best_respons;
     if (conf.exclude_images == 1 && iteration > -1) {
-      real *best_respons = malloc(N_images*sizeof(real));
+      best_respons = malloc(N_images*sizeof(real));
       for (int i_image = 0; i_image < N_images; i_image++) {
 	best_respons[i_image] = respons[0*N_images+i_image];
 	for (int i_slice = 1; i_slice < N_slices; i_slice++) {
@@ -1419,49 +1505,60 @@ int main(int argc, char **argv)
 	if (isnan(best_respons[i_image])) {
 	  printf("%d: best resp is nan\n", i_image);
 	  for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-	    if (!isnan(respons[i_slice*N_images+i_image])){
+	    if (!isnan(respons[i_slice*N_images+i_image])) {
 	      printf("tot resp is bad but single is good\n");
 	    }
 	  }
 	}
       }
-      real *best_respons_copy = malloc(N_images*sizeof(real));
-      memcpy(best_respons_copy, best_respons, N_images*sizeof(real));
-      qsort(best_respons_copy, N_images, sizeof(real), compare_real);
-      real threshold = best_respons_copy[(int)((real)N_images*conf.exclude_ratio)];
-      printf("threshold = %g\n", threshold);
+
+      real *best_respons_copy = malloc(N_images_included*sizeof(real));
+      int count = 0;
       for (int i_image = 0; i_image < N_images; i_image++) {
-	if (best_respons[i_image]  > threshold) {
-	  active_images[i_image] = 1;
-	} else { 
-	  active_images[i_image] = 0;
+	if (active_images[i_image] >= 0) {
+	  best_respons_copy[count] = best_respons[i_image];
+	  count++;
 	}
       }
+      assert(count == N_images_included);
+
+      qsort(best_respons_copy, N_images_included, sizeof(real), compare_real);
+      real threshold = best_respons_copy[(int)((real)N_images_included*conf.exclude_ratio)];
+      printf("threshold = %g\n", threshold);
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	if (active_images[i_image] >= 0) {
+	  if (best_respons[i_image]  > threshold) {
+	    active_images[i_image] = 1;
+	  } else { 
+	    active_images[i_image] = 0;
+	  }
+	}
+      }
+
+      count = 0;
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	if (active_images[i_image] < 0) {
+	  best_respons_copy[count] = best_respons[i_image];
+	  count++;
+	}
+      }
+      qsort(best_respons_copy, N_images-N_images_included, sizeof(real), compare_real);
+      threshold = best_respons_copy[(int)((real)(N_images-N_images_included)*conf.exclude_ratio)];
+      for (int i_image = 0; i_image < N_images; i_image++) {
+	if (active_images[i_image] < 0) {
+	  if (best_respons[i_image] > threshold) {
+	    active_images[i_image] = -1;
+	  } else {
+	    active_images[i_image] = -2;
+	  }
+	}
+      }
+
       sprintf(buffer, "%s/active_%.4d.h5", conf.output_dir, iteration);
       write_1d_int_array_hdf5(buffer, active_images, N_images);
       free(best_respons_copy);
       free(best_respons);
     }
-    /*
-    if (conf.exclude_images == 1 && iteration > -1) {
-      real *fit_copy = malloc(N_images*sizeof(real));
-      //memcpy(fit_copy,fit,N_images*sizeof(real));
-      memcpy(fit_copy,fit_best_rot,N_images*sizeof(real));
-      qsort(fit_copy, N_images, sizeof(real), compare_real);
-      real threshold = fit_copy[(int)((real)N_images*conf.exclude_ratio)];
-      for (int i_image = 0; i_image < N_images; i_image++) {
-	if (i_image != 0 && i_image % 10 == 0) printf(" ");
-	if (fit[i_image] > threshold) {
-	  active_images[i_image] = 1;
-	  printf("1");
-	} else {
-	  active_images[i_image] = 0;
-	  printf("0");
-	}
-      }
-      printf("\n");
-    }
-    */
     cuda_copy_int_to_device(active_images, d_active_images, N_images);
     /* end exclude images */
 
@@ -1554,6 +1651,9 @@ int main(int argc, char **argv)
   fclose(radial_fit_file);
   fclose(sorted_resp_file);
   //fclose(average_resp_file);
+  if (conf.calculate_r_free) {
+    fclose(r_free);
+  }
 
   cuda_reset_model(model,d_model_updated);
   cuda_reset_model(weight,d_weight);
