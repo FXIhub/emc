@@ -6,7 +6,7 @@ from functools import partial
 import rotations
 import icosahedral_sphere
 import module_template
-from pyface.qt import QtCore, QtGui
+from QtVersions import QtCore, QtGui
 import embedded_mayavi
 import convenient_widgets
 import os

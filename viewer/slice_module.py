@@ -217,7 +217,7 @@ class SliceGenerator(object):
         transformation.RotateWXYZ(rotation_degrees[0], rotation_degrees[1],
                                   rotation_degrees[2], rotation_degrees[3])
         transform_filter = vtk.vtkTransformFilter()
-        transform_filter.SetInput(self._template_poly_data)
+        transform_filter.SetInputData(self._template_poly_data)
         transform_filter.SetTransform(transformation)
         transform_filter.Update()
         this_poly_data = transform_filter.GetOutput()
@@ -254,6 +254,7 @@ class SliceViewer(module_template.Viewer):
         #self._workspace = QtGui.QWorkspace()
         self._widget = QtGui.QWidget(parent)
         self._vtk_widget = QVTKRenderWindowInteractor(self._widget)
+        self._vtk_widget.SetInteractorStyle(vtk.vtkInteractorStyleRubberBandPick())
         #self._vtk_widget = QtGui.QPushButton("Foo", parent=self._widget)
         layout = QtGui.QVBoxLayout()
         #layout.addWidget(self._workspace)
@@ -294,7 +295,8 @@ class SliceViewer(module_template.Viewer):
         if identifier in self._actors:
             raise ValueError("Actor with identifier %d is already plotted" % identifier)
         mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInput(this_poly_data)
+        #mapper.SetInput(this_poly_data)
+        mapper.SetInputData(this_poly_data)
         mapper.SetScalarModeToUsePointData()
         mapper.UseLookupTableScalarRangeOn()
         mapper.SetLookupTable(self._lut)

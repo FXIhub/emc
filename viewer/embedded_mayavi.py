@@ -1,5 +1,5 @@
 """Small widget to embedd mayavi visualization in qt."""
-from pyface.qt import QtCore, QtGui
+from QtVersions import QtCore, QtGui
 
 from traits.api import HasTraits, Instance
 from traitsui.api import View, Item

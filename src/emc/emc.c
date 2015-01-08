@@ -650,17 +650,37 @@ int main(int argc, char **argv)
 
   char buffer[1000];
 
-
-  if (mkdir(conf.output_dir,0777) == 0) {
+  if (mkdir(conf.output_dir, 0777) == 0) {
     printf("Created output directory: %s\n", conf.output_dir);
   } else {
-    printf("Failed to create output directory: %s\n", conf.output_dir);
+    printf("Failed to create output directory (it probably already exists): %s\n", conf.output_dir);
   }
-  if (mkdir(conf.debug_dir,0777) == 0) {
+
+  if (mkdir(conf.debug_dir, 0777) == 0) {
     printf("Created debug directory: %s\n", conf.debug_dir);
+  } else {
+    printf("Failed to create debug directory (it probably already exists): %s\n", conf.debug_dir);
+  }
+  /*
+  int mkdir_out = mkdir(conf.output_dir,0777);
+  if (mkdir_out == 0) {
+    printf("Created output directory: %s\n", conf.output_dir);
+  } else if (mkdir_out == EEXIST) {
+    printf("Directory %s already exists. Not creating.\n", conf.output_dir);
+  } else {
+    printf("Failed to create output directory: %s\n", conf.output_dir);
+    exit(0);
+  }
+  mkdir_out = mkdir(conf.debug_dir,0777);
+  if (mkdir_out == 0) {
+    printf("Created debug directory: %s\n", conf.debug_dir);
+  } else if (mkdir_out == EEXIST) {
+    printf("Directory %s already exists. Not creating.\n", conf.output_dir);
   } else {
     printf("Failed to create debug directory: %s\n", conf.debug_dir);
   }
+  */
+
   /*
   struct stat sb;
   if (stat(conf.output_dir, &sb) != 0) {
@@ -1108,7 +1128,10 @@ int main(int argc, char **argv)
 
   hid_t scaling_file;
   sprintf(buffer, "%s/best_scaling.h5", conf.output_dir);
-  hid_t scaling_dataset =  init_scaling_file(buffer, N_images, &scaling_file);
+  hid_t scaling_dataset;
+  if (conf.known_intensity) {
+    scaling_dataset =  init_scaling_file(buffer, N_images, &scaling_file);
+  }
 
   /*
   real sigma_half_life = 25; // 1000.
@@ -1129,8 +1152,8 @@ int main(int argc, char **argv)
   real weight_map_radius_start = 20.;
   real weight_map_radius_final = 20.;
   */
-  real weight_map_radius_start = 20.;
-  real weight_map_radius_final = 20.;
+  real weight_map_radius_start = 32.;
+  real weight_map_radius_final = 32.;
 
   real sigma;
   for (int iteration = start_iteration; iteration < conf.max_iterations; iteration++) {
@@ -1214,7 +1237,7 @@ int main(int argc, char **argv)
       */
       /* end output best fitting slices */
 
-      
+
       cuda_calculate_fit(slices, d_images, d_mask, d_scaling,
 			 d_respons, d_fit, sigma, N_2d, N_images,
 			 slice_start, current_chunk);
@@ -1222,6 +1245,7 @@ int main(int argc, char **argv)
       cuda_calculate_fit_best_rot(slices, d_images, d_mask, d_scaling,
 				  d_best_rotation, d_fit_best_rot, N_2d, N_images,
 				  slice_start, current_chunk);
+
       
       //if (iteration % radial_fit_n == 0 && iteration != 0 || iteration == conf.max_iterations-1) {
       if (iteration % radial_fit_n == 0 && iteration != 0) {
@@ -1289,7 +1313,6 @@ int main(int argc, char **argv)
     }
     
       
-
     cuda_copy_real_to_host(fit, d_fit, N_images);
     cuda_copy_real_to_host(fit_best_rot, d_fit_best_rot, N_images);
     for (int i_image = 0; i_image < N_images; i_image++) {
@@ -1764,6 +1787,8 @@ int main(int argc, char **argv)
 	    rotations[final_best_rotation]->q[2], rotations[final_best_rotation]->q[3]);
   }
   fclose(final_best_rotations_file);
-  close_scaling_file(scaling_dataset, scaling_file);
+  if (conf.known_intensity){ 
+    close_scaling_file(scaling_dataset, scaling_file);
+  }
   close_state_file(state_file);
 }

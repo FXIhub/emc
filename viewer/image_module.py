@@ -1,9 +1,10 @@
 """This module plots the diffraction patterns used as input for EMC."""
 import numpy
-from pyface.qt import QtCore, QtGui
+from QtVersions import QtCore, QtGui
 import module_template
 import embedded_matplotlib
-import spimage
+#import spimage
+import sphelper
 import convenient_widgets
 import os
 import re
@@ -21,8 +22,8 @@ class ImageData(module_template.Data):
     def reset(self):
         """Tells the object that something changed so we can no longer use cached images."""
         self.determine_number_of_images()
-        for key in self._images.keys():
-            spimage.sp_image_free(self._images[key])
+        # for key in self._images.keys():
+        #     spimage.sp_image_free(self._images[key])
         self._images = {}
 
     def determine_number_of_images(self):
@@ -39,11 +40,15 @@ class ImageData(module_template.Data):
         if index >= self._number_of_images:
             raise ValueError("Image index out of range. %d is above %d" % (index, self._number_of_images))
         if index in self._images.keys() and not reload_data:
-            return abs(self._images[index].image)
+            #return abs(self._images[index].image)
+            return abs(self._images[index])
         if reload_data and index in self._images.keys():
-            spimage.sp_image_free(self._images[index])
-        self._images[index] = spimage.sp_image_read("output/image_%.4d.h5" % index, 0)
-        return abs(self._images[index].image)
+            #spimage.sp_image_free(self._images[index])
+            pass
+        #self._images[index] = spimage.sp_image_read("output/image_%.4d.h5" % index, 0)
+        self._images[index] = sphelper.import_spimage("output/image_%.4d.h5" % index, ["image"])
+        #return abs(self._images[index].image)
+        return abs(self._images[index])
 
     def get_number_of_images(self):
         """Get the number of images."""

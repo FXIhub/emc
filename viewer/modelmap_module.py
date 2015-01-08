@@ -1,13 +1,12 @@
-"""Plugin for the emc viewer.
-Plot the compressed model."""
-#from pylab import *
-#import pylab
 import numpy
-from functools import partial
 import sphelper
 import module_template
-from pyface.qt import QtCore, QtGui
-import embedded_mayavi
+from QtVersions import QtCore, QtGui
+import vtk
+import vtk_tools
+from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
+from functools import partial
+#import view_3d
 
 INIT_SURFACE_LEVEL = 0.5
 
@@ -67,84 +66,179 @@ class ModelmapData(module_template.Data):
         return self._side
 
 class ModelmapViewer(module_template.Viewer):
-    """Uses mayavi to display the model in 3D as an isosurface or by two slices.
-    This is not a widget but contains one, accessible with get_widget()"""
+    """Uses vtk to display the model in 3D as an isosurface or a slice. This is
+    not a widget but contains one, accessible with get_widget()"""
     def __init__(self, parent=None):
         super(ModelmapViewer, self).__init__(parent)
+        
+        self._widget = QtGui.QWidget(parent) #this is a standard name expected by get_widget()
+        self._vtk_widget = QVTKRenderWindowInteractor(self._widget) # _vtk_widget is actually the RenderWindowInteractor
+        self._vtk_widget.SetInteractorStyle(vtk.vtkInteractorStyleRubberBandPick())
+        layout = QtGui.QVBoxLayout()
+        layout.addWidget(self._vtk_widget)
+        self._widget.setLayout(layout)
+        self._vtk_widget.Initialize()
+        self._vtk_widget.Start()
+        self._renderer = vtk.vtkRenderer()
+        self._vtk_widget.GetRenderWindow().AddRenderer(self._renderer)
+        #self._renderer = self._vtk_widget.GetRenderWindow().GetRenderer()
+        self._lut = vtk_tools.get_lookup_table(0., 1., log=False, colorscale="jet")
+        
+        self._create_volume_map()
+
+        self._setup_slices()
+        self._setup_surface()
+        self.set_view_type(VIEW_TYPE.surface)
+        #self.set_view_type(VIEW_TYPE.slice)
+        #self._vtk_widget.GetRenderWindow().Render()
+
+    def _create_volume_map(self):
+        self._volume_max = 1.
+
+        self._volume = vtk.vtkImageData()
+        default_side = 100
+        self._volume.SetDimensions(default_side, default_side, default_side)
+        
+        self._volume_scalars = vtk.vtkFloatArray()
+        self._volume_scalars.SetNumberOfValues(default_side**3)
+        self._volume_scalars.SetNumberOfComponents(1)
+        self._volume_scalars.SetName("FooName")
+        
+        for i in range(default_side**3):
+            self._volume_scalars.SetValue(i, numpy.random.random())
+        
+        self._volume.GetPointData().SetScalars(self._volume_scalars)
+
+    def _setup_surface(self):
         self._surface_level = INIT_SURFACE_LEVEL
-        self._scalar_field = None
-        self._scalar_field_max = None
-        self._slice_plot = None
-        self._surface_plot = None
-        self._mlab_widget = embedded_mayavi.MlabWidget()
+        self._color = (0., 1., 0.)
+        self._surface_algorithm = vtk.vtkMarchingCubes()
+        self._surface_algorithm.SetInputData(self._volume)
+        self._surface_algorithm.ComputeNormalsOn()
+        self._surface_algorithm.SetValue(0, self._surface_level)
+        
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(self._surface_algorithm.GetOutputPort())
+        mapper.ScalarVisibilityOff()
+        self._surface_actor = vtk.vtkActor()
+        self._surface_actor.GetProperty().SetColor(self._color[0], self._color[1], self._color[2])
+        self._surface_actor.SetMapper(mapper)
 
-    def get_mlab(self):
-        """Return an mlab object that can be used to access mayavi functions."""
-        return self._mlab_widget.get_mlab()
+        self._renderer.AddViewProp(self._surface_actor)
 
-    def get_widget(self):
-        """Return the widget containing the view."""
-        return self._mlab_widget
+    def _setup_slices(self):
+        self._planes = []
+        picker = vtk.vtkCellPicker()
+        picker_tolerance = 0.005
+        picker.SetTolerance(picker_tolerance)
 
-    def plot_map(self, modelmap):
-        """Update the viwer to show the provided map."""
-        self._scalar_field.scalar_data = modelmap
-        self._scalar_field_max = self._scalar_field.scalar_data.max()
-        self._surface_plot.contour.contours[0] = self._surface_level*self._scalar_field_max
+        self._planes.append(vtk.vtkImagePlaneWidget())
+        self._planes[0].SetInputData(self._volume)
+        self._planes[0].UserControlledLookupTableOn()
+        self._planes[0].SetLookupTable(self._lut)
+        self._planes[0].SetPlaneOrientationToXAxes()
+        self._planes[0].SetSliceIndex(self._volume.GetExtent()[1]/2) # GetExtent returns a six length array, begin-end pairs
+        self._planes[0].DisplayTextOn()
+        self._planes[0].SetPicker(picker)
+        self._planes[0].SetLeftButtonAction(1)
+        self._planes[0].SetMiddleButtonAction(2)
+        self._planes[0].SetRightButtonAction(0)
+        self._planes[0].SetInteractor(self._vtk_widget)
+        #self._planes[0].On()
 
-    def plot_map_init(self, modelmap):
-        """As opposed to plot_map() this function accepts maps of different side than
-        the active one."""
-        if self._scalar_field == None:
-            self._scalar_field = self.get_mlab().pipeline.scalar_field(modelmap)
-            self._scalar_field_max = self._scalar_field.scalar_data.max()
-            surface_contours = [self._surface_level*self._scalar_field_max]
-            self._surface_plot = self.get_mlab().pipeline.iso_surface(self._scalar_field,
-                                                                      contours=surface_contours)
-            self._slice_plot = [
-                self.get_mlab().pipeline.image_plane_widget(self._scalar_field, plane_orientation='x_axes',
-                                                            slice_index=modelmap.shape[0]/2),
-                self.get_mlab().pipeline.image_plane_widget(self._scalar_field, plane_orientation='y_axes',
-                                                            slice_index=modelmap.shape[1]/2)]
-            self._set_slice_visibility(False)
+        self._planes.append(vtk.vtkImagePlaneWidget())
+        self._planes[1].SetInputData(self._volume)
+        self._planes[1].UserControlledLookupTableOn()
+        self._planes[1].SetLookupTable(self._lut)
+        self._planes[1].SetPlaneOrientationToZAxes()
+        self._planes[1].SetSliceIndex(self._volume.GetExtent()[5]/2) # GetExtent returns a six length array, begin-end pairs
+        self._planes[1].DisplayTextOn()
+        self._planes[1].SetPicker(picker)
+        self._planes[1].SetLeftButtonAction(1)
+        self._planes[1].SetMiddleButtonAction(2)
+        self._planes[1].SetRightButtonAction(0)
+        self._planes[1].SetInteractor(self._vtk_widget)
+        #self._planes[1].On()
+
+    def set_surface_visibility(self, state):
+        if state:
+            self._surface_actor.SetVisibility(1)
         else:
-            self._scalar_field.mlab_source.reset(s=modelmap)
-            self._scalar_field.update_pipeline()
+            self._surface_actor.SetVisibility(0)
+
+    def set_slice_visibility(self, state):
+        if state:
+            self._planes[0].SetEnabled(1)
+            self._planes[1].SetEnabled(1)
+        else:
+            self._planes[0].SetEnabled(0)
+            self._planes[1].SetEnabled(0)
 
     def set_view_type(self, view_type):
-        """Select view type, currently supports surface and slice."""
         if view_type == VIEW_TYPE.surface:
-            self._set_surface_visibility(True)
-            self._set_slice_visibility(False)
+            self.set_slice_visibility(False)
+            self.set_surface_visibility(True)
         elif view_type == VIEW_TYPE.slice:
-            self._set_slice_visibility(True)
-            self._set_surface_visibility(False)
-        else:
-            raise TypeError("set_view_type takes only VIEW_TYPE object")
+            self.set_surface_visibility(False)
+            self.set_slice_visibility(True)
+
+    def _update_surface_level(self):
+        self._surface_algorithm.SetValue(0, self._surface_level*self._volume_max)
+        self._surface_algorithm.Modified()
+        self._vtk_widget.Render()
 
     def set_surface_level(self, value):
-        """Change the level of the surface plot."""
-        if value < 0 or value > 1.:
+        if value < 0. or value > 1.:
             raise ValueError("Surface value must be in [0.,1.], was %g\n", value)
         self._surface_level = value
-        self._surface_plot.contour.contours[0] = self._surface_level*self._scalar_field_max
+        self._update_surface_level()
 
     def get_surface_level(self):
-        """Get the current level of the surface plot."""
         return self._surface_level
 
-    def _set_surface_visibility(self, state):
-        """Set wether the isosurface plot is visible or not"""
-        self._surface_plot.visible = state
+    def plot_map(self, new_data_array):
+        """Update the viwer to show the provided map."""
+        for i, this_value in enumerate(numpy.ravel(new_data_array.swapaxes(0, 2))):
+            self._volume_scalars.SetValue(i, this_value)
+        self._volume_max = new_data_array.max()
+        self._lut.SetTableRange(new_data_array.min(), new_data_array.max())
+        self._update_surface_level()
+        self._volume_scalars.Modified()
 
-    def _set_slice_visibility(self, state):
-        """Set wether the slice plot is visible or not"""
-        for this_slice in self._slice_plot:
-            this_slice.visible = state
+    def plot_map_init(self, new_data_array):
+        """As opposed to plot_map() this function accepts maps of different side than
+        the active one"""
+        self._volume_max = new_data_array.max()
+        
+        old_extent = numpy.array(self._volume.GetExtent())
 
-    def save_image(self, filename):
-        """Output the current view to file."""
-        self._mlab_widget.save_image(filename)
+        self._volume.SetDimensions(new_data_array.shape[0], new_data_array.shape[1], new_data_array.shape[2])
+        
+        self._volume_scalars.SetNumberOfValues(new_data_array.shape[0]*new_data_array.shape[1]*new_data_array.shape[2])
+        
+        for i, this_value in enumerate(numpy.ravel(new_data_array.swapaxes(0, 2))):
+            self._volume_scalars.SetValue(i, this_value)
+
+        self._lut.SetTableRange(new_data_array.min(), new_data_array.max())
+        #self._volume.GetPointData().SetScalars(self._volume_scalars)
+        self._update_surface_level()
+        self._volume_scalars.Modified()
+        self._volume.Modified()
+        new_extent = numpy.array(self._volume.GetExtent())
+        scaling_factors = numpy.float64(new_extent[1::2]) / numpy.float64(old_extent[1::2])
+        print "scaling_factors = {0}".format(str(scaling_factors))
+        self._planes[0].SetOrigin(numpy.array(self._planes[0].GetOrigin()*scaling_factors))
+        self._planes[0].SetPoint1(numpy.array(self._planes[0].GetPoint1()*scaling_factors))
+        self._planes[0].SetPoint2(numpy.array(self._planes[0].GetPoint2()*scaling_factors))
+        self._planes[1].SetOrigin(numpy.array(self._planes[1].GetOrigin()*scaling_factors))
+        self._planes[1].SetPoint1(numpy.array(self._planes[1].GetPoint1()*scaling_factors))
+        self._planes[1].SetPoint2(numpy.array(self._planes[1].GetPoint2()*scaling_factors))
+        # self._planes[0].Modified()
+        # self._planes[1].Modified()
+
+        self._planes[0].UpdatePlacement()
+        self._planes[1].UpdatePlacement()
+        self._renderer.Render()
 
 
 class ModelmapControll(module_template.Controll):
@@ -214,6 +308,7 @@ class ModelmapControll(module_template.Controll):
         layout.addWidget(self._log_scale_widget)
         #layout.addStretch()
         self._widget.setLayout(layout)
+        self._widget.setFixedHeight(120)
 
     def draw_hard(self):
         """Draw the scene. Don't call this function directly. The draw() function calls this one
@@ -228,8 +323,8 @@ class ModelmapControll(module_template.Controll):
         self._state.view_type = view_type
         self._viewer.set_view_type(view_type)
         if view_type == VIEW_TYPE.surface:
-            self._surface_level_slider.show()
             self._log_scale_widget.hide()
+            self._surface_level_slider.show()
         elif view_type == VIEW_TYPE.slice:
             self._surface_level_slider.hide()
             self._log_scale_widget.show()
@@ -241,6 +336,7 @@ class ModelmapControll(module_template.Controll):
         print self._state.log_scale
         self.draw()
 
+
 class Plugin(module_template.Plugin):
     """Collects all parts of the plugin."""
     def __init__(self, common_controll, parent=None):
@@ -248,4 +344,5 @@ class Plugin(module_template.Plugin):
         self._viewer = ModelmapViewer()
         self._data = ModelmapData("output/model")
         self._controll = ModelmapControll(self._common_controll, self._viewer, self._data)
-
+        
+        

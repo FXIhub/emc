@@ -6,7 +6,7 @@ os.environ['ETS_TOOLKIT'] = 'qt4'
 import sys
 import time
 import h5py
-from pyface.qt import QtCore, QtGui
+from QtVersions import QtCore, QtGui
 import convenient_widgets
 
 #state_variables = tools.enum(iteration=1)
@@ -227,14 +227,14 @@ class StartMain(QtGui.QMainWindow):
         self._state_watcher.iterationChanged.connect(self._common_controll.set_max_iterations)
         self._common_controll.dirChanged.connect(self._state_watcher.set_base_dir)
 
-        self._load_module('modelmap_module')
-        self._load_module('rotations_module')
-        self._load_module('weightmap_module')
-        self._load_module('likelihood_module')
-        self._load_module('fit_module')
-        self._load_module('image_module')
-        self._load_module('slice_module')
-        self._load_module('scaling_module')
+        # self._load_module('modelmap_module')
+        self._load_module('rotations_vtk_module')
+        # self._load_module('weightmap_module')
+        # self._load_module('likelihood_module')
+        # self._load_module('fit_module')
+        # self._load_module('image_module')
+        # self._load_module('slice_module')
+        # self._load_module('scaling_module')
 
         self._active_module_index = 0
 

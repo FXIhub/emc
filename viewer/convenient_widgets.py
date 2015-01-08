@@ -1,5 +1,5 @@
 """Library of widgets used througout the modules of the viewer."""
-from pyface.qt import QtCore, QtGui
+from QtVersions import QtCore, QtGui
 from functools import partial
 
 DEFAULT_MAX = 1000000000

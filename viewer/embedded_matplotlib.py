@@ -1,6 +1,9 @@
 """Small function to embedd matplotlib visualization in qt."""
 # try:
-from pyface.qt import QtGui
+#import matplotlib
+#print matplotlib.rcParams["text.usetex"]
+#matplotlib.rcParams["text.usetex"] = False
+from QtVersions import QtGui
 # except IOError:
 #     from pyface.qt import QtGui
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas

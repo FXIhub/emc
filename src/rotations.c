@@ -1,6 +1,7 @@
 #include "rotations.h"
 
-const real tau = (1.0 + sqrt(5.0))/2.0; // the golden ratio
+//const real tau = (1.0 + sqrt(5.0))/2.0; // the golden ratio
+const real tau = 1.6180339887498949; // the golden ratio
 
 Quaternion *quaternion_alloc()
 {
@@ -137,7 +138,7 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   
   /* get edges */
   /* all pairs of of vertices whose sum is longer than 3 is an edge */
-  FILE *f;
+  //FILE *f;
   //FILE *f = fopen("debug_edges.data","wp");
   real dist2;
   int count = 0;
@@ -447,6 +448,10 @@ int generate_rotation_list(const int n, Quaternion ***return_list, real **return
   //return_weights[0] = weights;
   return_weights[0] = pruned_weights;
 
+  for (int i = 0; i < number_of_samples/2; i++) {
+    quaternion_normalize(pruned_list[i]);
+  }
+  
   /*
   f =  fopen("debug_samples.data","wp");
   for (int i = 0; i < number_of_samples/2; i++) {
