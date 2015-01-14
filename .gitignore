@@ -1,0 +1,7 @@
+*.pyc
+*.pylint
+scratch/
+old_files/
+split_model/
+viewer/data*
+rotations/
