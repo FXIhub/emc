@@ -1,13 +1,15 @@
 """Plot the distribution of responsabilities in rotational space.
 In plane rotations are excluded to make the data 2D."""
-import numpy#from pylab import *
+import numpy
 import h5py
 from functools import partial
 import rotations
 import icosahedral_sphere
 import module_template
-from pyface.qt import QtCore, QtGui
-import embedded_mayavi
+from QtVersions import QtCore, QtGui
+import vtk
+import vtk_tools
+from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import convenient_widgets
 import os
 
@@ -30,6 +32,7 @@ class RotationData(module_template.Data):
         self._rotation_sphere_good_indices = None
         self._rotation_mapping_table = None
         self._rotation_sphere_bins = None
+        self._rotations_n = 10
 
         #self._setup_rotations()
 
@@ -44,15 +47,20 @@ class RotationData(module_template.Data):
             average_resp = numpy.loadtxt("output/average_resp_%.4d.data" % (iteration))
         return average_resp
 
+    def set_sampling_coordinates(self, coordinates):
+        self._rotation_sphere_coordinates = coordinates
+
     def setup_rotations(self):
         """Read the appropriate quaternion list and calculate a table for projecting."""
         self._number_of_rotations = len(self._read_average_resp(0))
-        rotations_n = rotations.rots_to_n(self._number_of_rotations)
+        self._rotations_n = rotations.rots_to_n(self._number_of_rotations)
 
-        self._rotation_sphere_coordinates = numpy.array(icosahedral_sphere.sphere_sampling(rotations_n))
+        if self._rotation_sphere_coordinates is None:
+            raise RuntimeError("Must call set_sampling_coordinates before setting up rotations")
 
-        filename = "%s/data/rotations_table_n%d.h5" % (os.path.split(__file__)[0], rotations_n)
-        with h5py.File(filename) as file_handle:
+        filename = "{directory}/data/rotations_table_n{n}.h5".format(directory=os.path.split(__file__)[0], n=self._rotations_n)
+        print filename
+        with h5py.File(filename, "r") as file_handle:
             self._rotation_sphere_weights = file_handle['weights'][...]
             self._rotation_mapping_table = file_handle['table'][...]
 
@@ -60,7 +68,7 @@ class RotationData(module_template.Data):
 
         self._number_of_bins = len(self._rotation_sphere_weights)
         self._rotation_sphere_bins = numpy.zeros(self._number_of_bins)
-        
+
         self._setup_done = True
 
     def is_ready(self):
@@ -69,6 +77,9 @@ class RotationData(module_template.Data):
     def check_ready(self):
         if not self.is_ready():
             raise ValueError("RotationData is not set up. Call setup_rotations first.")
+
+    def get_sampling_n(self):
+        return self._rotations_n
 
     def get_rotation_coordinates(self):
         """Get the coordinates of the points of the sphere."""
@@ -87,6 +98,8 @@ class RotationData(module_template.Data):
             self.read_error.emit()
             return self._rotation_sphere_bins
         if len(average_resp) != self._number_of_rotations:
+            self._number_of_rotations = len(average_resp)
+            self._rotations_n = rotations.rots_to_n(self._number_of_rotations)
             self.properties_changed.emit()
         self._rotation_sphere_bins[:] = 0.
         for i, resp in enumerate(average_resp):
@@ -106,6 +119,8 @@ class RotationData(module_template.Data):
         except IOError:
             self.read_error.emit()
         if len(resp) != self._number_of_rotations:
+            self._number_of_rotations = len(resp)
+            self._rotations_n = rotations.rots_to_n(self._number_of_rotations)
             self.properties_changed.emit()
         self._rotation_sphere_bins[:] = 0.
         for i, resp in enumerate(resp):
@@ -119,58 +134,55 @@ class RotationViewer(module_template.Viewer):
     colors indicate the responsability density."""
     def __init__(self, parent=None):
         super(RotationViewer, self).__init__()
-        self._mlab_widget = embedded_mayavi.MlabWidget()
+        #self._widget = QtGui.QWidget(parent)
+        self._vtk_widget = QVTKRenderWindowInteractor(self._widget) # _vtk_widget is actually the RenderWindowInteractor
+        self._vtk_widget.SetInteractorStyle(vtk.vtkInteractorStyleRubberBandPick())
+
+        #self._vtk_widget.Initialize()
+        layout = QtGui.QVBoxLayout()
+        layout.addWidget(self._vtk_widget)
+        self._widget.setLayout(layout)
+
+        self._renderer = vtk.vtkRenderer()
+        self._vtk_widget.GetRenderWindow().AddRenderer(self._renderer)
+
+        #self._mlab_widget = embedded_mayavi.MlabWidget()
         self._setup_done = False
         self._points = None
+        self._default_sphere_n = 10
+        self._sphere = vtk_tools.SphereMap(self._default_sphere_n)
+        self._renderer.AddViewProp(self._sphere.get_actor())
+        self._renderer.SetBackground(1., 1., 1.)
+        #self._renderer.Render()
 
-    def get_mlab(self):
-        """Return an mlab object that can be used to access mayavi functions."""
-        return self._mlab_widget.get_mlab()
+    def initialize(self):
+        self._vtk_widget.Initialize()
 
-    def get_widget(self):
-        """Return the widget containing the view."""
-        return self._mlab_widget
+    # def get_widget(self):
+    #     """Return the widget containing the view."""
+    #     return self._vtk_widget
+
+    def set_sampling_n(self, sampling_n):
+        """Rerun when the array size changes."""
+        self._sphere.set_n(sampling_n)
+
+    def get_coordinates(self):
+        return self._sphere.get_coordinates()
+
+    def get_number_of_points():
+        pass
 
     def plot_rotations(self, values):
-        """Update the viwer to show the current values. The values has to be
-        precalculated which is done in the RotationsData object."""
-        if not self._setup_done:
-            raise ValueError("RotationViewer is not set up. Call plot_rotations_init instead.")
-        self._points.glyph.glyph.input.point_data.scalars = values
-        self._points.glyph.glyph.input.point_data.modified()
-        self._points.actor.mapper.lookup_table.range = (0., values.max())
-        self._points.glyph.glyph.modified()
-        self._points.update_pipeline()
-        self._points.actor.render()
-        self.get_mlab().draw()
-
-    def plot_rotations_init(self, coordinates):
-        """Setup the rotation view. This needs to be done if the number of rotations
-        change for example when switching directory."""
-        if self._points != None:
-            #self._points.remove()
-            # self._points.mlab_source.m_data.remove()
-            # self._points.update_pipeline()
-            self._points.mlab_source.reset(x=coordinates[:, 0], y=coordinates[:, 1],
-                                           z=coordinates[:, 2], scalars=numpy.ones(len(coordinates)))
-            self._points.update_pipeline()
-        else:
-            self._points = self.get_mlab().points3d(coordinates[:, 0], coordinates[:, 1], coordinates[:, 2],
-                                                    numpy.ones(len(coordinates)), scale_mode='none')
-            self._points.glyph.glyph.modified()
-            self._points.actor.mapper.lookup_table.range = (0., 1.)
-            self._points.module_manager.scalar_lut_manager.data_name = "Resp"
-            self._points.module_manager.scalar_lut_manager.show_scalar_bar = True
-            color_black = (0., 0., 0.)
-            self._points.module_manager.scalar_lut_manager.scalar_bar.label_text_property.color = color_black
-            self._points.module_manager.scalar_lut_manager.scalar_bar.title_text_property.color = color_black
-            self._points.update_pipeline()
-            self._points.actor.render()
-        self._setup_done = True
-
-    def save_image(self, filename):
-        """Output the current view to file."""
-        self._mlab_widget.save_image(filename)
+        """Update the viewer to show the new values."""
+        if len(values) != self._sphere.get_number_of_points():
+            #raise ValueError("values must be array of length {0}. Length {1} array received.".format(self._sphere.get_number_of_points(), len(values)))
+            sampling_n = icosahedral_sphere.points_to_n(len(values))
+            self.set_sampling_n(sampling_n)
+        self._sphere.set_lookup_table(vtk_tools.get_lookup_table(0., values.max(), log=False, colorscale="jet", number_of_colors=1000))
+        self._sphere.set_values(values)
+        #self._sphere
+        #self._renderer.Render()
+        self._vtk_widget.Render()
 
 class RotationControll(module_template.Controll):
     """Provides a widget for controlling the module and handles the calls to get the
@@ -196,8 +208,10 @@ class RotationControll(module_template.Controll):
 
     def _setup_rotation_view(self):
         """Initialize the viewer."""
+        self._viewer.set_sampling_n(self._data.get_sampling_n())
+        self._data.set_sampling_coordinates(self._viewer.get_coordinates())
         self._data.setup_rotations()
-        self._viewer.plot_rotations_init(self._data.get_rotation_coordinates())
+        #self._viewer.plot_rotations_init(self._data.get_rotation_coordinates())
 
     def _setup_gui(self):
         """Create the gui for the widget."""
@@ -233,8 +247,11 @@ class RotationControll(module_template.Controll):
             #self._rotation_image_number_box.hide()
             self._single_slice_widget.hide()
         elif self._state.rotation_type == ROTATION_TYPE.single:
-            self._viewer.plot_rotations(self._data.get_single_rotation_values(
-                self._common_controll.get_iteration(), self._state.image_number))
+            try:
+                self._viewer.plot_rotations(self._data.get_single_rotation_values(
+                    self._common_controll.get_iteration(), self._state.image_number))
+            except IOError:
+                print "Problem reading"
             #self._rotation_image_number_box.show()
             self._single_slice_widget.show()
 

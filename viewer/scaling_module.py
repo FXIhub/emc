@@ -4,6 +4,7 @@ diffraction pattern at the rotation with the highest responsability."""
 import module_template
 import embedded_matplotlib
 import h5py
+import numpy
 
 class ScalingData(module_template.Data):
     """Reads the data and returns it on request."""
@@ -18,7 +19,8 @@ class ScalingData(module_template.Data):
             with h5py.File("output/best_scaling.h5", "r") as scaling_handle:
                 return scaling_handle["scaling"][:max_iterations, :]
         except IOError:
-            self.read_error.emit()
+            #self.read_error.emit()
+            return numpy.zeros((2, max_iterations))
 
 class ScalingViewer(module_template.Viewer):
     """Plots all the scalings in one matplotlib view."""
