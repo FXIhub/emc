@@ -26,7 +26,8 @@ class State(QtCore.QObject):
         return self._values[variable]
 
     def diff(self, other_state):
-        """Return a list of all the variables different between this state and other_state"""
+        """Return a list of all the variables different between
+        this state and other_state"""
         variables_that_changed = []
         for variable in STATE_VARIABLES:
             if self.get_value(variable) != other_state.get_value(variable):
@@ -60,7 +61,8 @@ class FileWatcher(QtCore.QThread):
             self.fileChanged.emit()
 
 class StateWatcher(QtCore.QObject):
-    """Trackes changes in a state file, reporting any change by emiting a signal.
+    """Trackes changes in a state file, reporting any change by
+    emiting a signal.
     Right now the state file only contains the iteration"""
     iterationChanged = QtCore.Signal(int)
     def __init__(self, file_name, parent=None):
@@ -90,7 +92,8 @@ class StateWatcher(QtCore.QObject):
             self._file_handle = h5py.File(new_file_name)
 
     def set_base_dir(self, new_dir):
-        """Change the base dir being watched, assuming the file ends with output/state.h5"""
+        """Change the base dir being watched, assuming the file ends
+        with output/state.h5"""
         self.set_file("%s/output/state.h5" % (new_dir))
 
     def _on_file_change(self):
@@ -107,14 +110,16 @@ class CommonControll(QtGui.QWidget):
     common to all plugins, such as iteration number and active directory."""
     changed = QtCore.Signal()
     dirChanged = QtCore.Signal(str)
-    class State(object):
-        """Container for the variables keept by the common controll."""
-        def __init__(self):
-            self.iteration = 0
-            self.max_iterations = 0
+    # class State(object):
+    #     """Container for the variables keept by the common controll."""
+    #     def __init__(self):
+    #         self.iteration = 0
+    #         self.max_iterations = 0
     def __init__(self, parent=None):
         super(CommonControll, self).__init__(parent)
-        self._state = self.State()
+        #self._state = self.State()
+        self._state = {"iteration": 0,
+                       "max_iterations": 0}
         self._file_system_model = None
         self._work_dir_edit = None
         self._iteration_chooser = None
@@ -150,7 +155,8 @@ class CommonControll(QtGui.QWidget):
         return self._iteration_chooser
 
     def _on_work_dir_changed(self):
-        """Handle an attempt to select a new work dir in the _work_dir_edit text editor"""
+        """Handle an attempt to select a new work dir in the
+        _work_dir_edit text editor"""
         new_dir = self._work_dir_edit.text()
         self._file_system_model.setRootPath(new_dir)
         if not os.path.isdir(new_dir):
@@ -176,23 +182,28 @@ class CommonControll(QtGui.QWidget):
         if iteration == None:
             iteration = self._iteration_chooser.get_value()
         if iteration >= -2:
-            self._state.iteration = iteration
+            #self._state.iteration = iteration
+            self._state["iteration"] = iteration
             #self._iteration_box.setValue(self._state.iteration)
             self.changed.emit()
 
     def set_max_iterations(self, max_iterations):
         """Change the latest iteration number."""
-        self._state.max_iterations = max_iterations
+        #self._state.max_iterations = max_iterations
+        self._state["max_iterations"] = max_iterations
         self._iteration_chooser.set_max(max_iterations)
 
     def get_max_iterations(self):
         """Return the current latest iteration."""
-        return self._state.max_iterations
+        #return self._state.max_iterations
+        return self._state["max_iterations"]
 
     def shift_iteration(self, iteration_delta):
         """Change iteration by shifting the current one."""
-        if (self._state.iteration + iteration_delta) >= -2:
-            self.set_iteration(self._state.iteration + iteration_delta)
+        #if (self._state.iteration + iteration_delta) >= -2:
+        if (self._state["iteration"] + iteration_delta) >= -2:
+            self.set_iteration(self._state["iteration"] + iteration_delta)
+            #self.set_iteration(self._state.iteration + iteration_delta)
         else:
             self.set_iteration(-2)
             # self._state.iteration += iteration_delta
@@ -201,11 +212,14 @@ class CommonControll(QtGui.QWidget):
 
     def get_iteration(self):
         """Sets the current iteration to a specified value."""
-        return self._state.iteration
+        #return self._state.iteration
+        return self._state["iteration"]
 
 
 class StartMain(QtGui.QMainWindow):
     """The program."""
+    #pylint: disable=too-many-instance-attributes
+    #I think the code is still clear
     def __init__(self, parent=None):
         super(StartMain, self).__init__(parent)
         self._module_box = None
@@ -227,16 +241,26 @@ class StartMain(QtGui.QMainWindow):
         self._state_watcher.iterationChanged.connect(self._common_controll.set_max_iterations)
         self._common_controll.dirChanged.connect(self._state_watcher.set_base_dir)
 
-        # self._load_module('modelmap_module')
-        self._load_module('rotations_vtk_module')
-        # self._load_module('weightmap_module')
-        # self._load_module('likelihood_module')
-        # self._load_module('fit_module')
-        # self._load_module('image_module')
-        # self._load_module('slice_module')
-        # self._load_module('scaling_module')
-
+        self._load_module('modelmap_module') #done
+        self._load_module('weightmap_module')
+        self._load_module('rotations_module') #done
+        self._load_module('slice_module') #done
+        self._load_module('likelihood_module')
+        self._load_module('fit_module')
+        self._load_module('image_module')
+        self._load_module('scaling_module')
+        
         self._active_module_index = 0
+
+    def initialize(self):
+        """Call this function after the window is made (for example through show()).
+        Some plugins need to some processing after the window to draw into
+        becomes available. Calling this function executes that code in the plugins.
+        It also does the initial draw of the plugin."""
+        for plugin in self._plugins:
+            print "Intializing module: {0}".format(plugin[0])
+            plugin[1].initialize()
+            #plugin[1].get_controll().draw()
 
     def _setup_actions(self):
         """Setup actions to be used in menues etc."""
@@ -270,7 +294,7 @@ class StartMain(QtGui.QMainWindow):
 
     def _load_module(self, module_name):
         """Load a module, takes the name as a string as input."""
-        print "Loading module: %s" % module_name
+        print "Loading module: {0}".format(module_name)
         module = __import__(module_name)
         #plugin = module.Plugin(self._common_controll, self._view_stack)
         plugin = module.Plugin(self._common_controll)
@@ -281,7 +305,7 @@ class StartMain(QtGui.QMainWindow):
         self._view_stack.addWidget(plugin.get_viewer().get_widget())
         self._controll_stack.addWidget(plugin.get_controll().get_widget())
         self._module_box.addItem(module_name)
-        plugin.get_controll().draw()
+        #plugin.get_controll().draw()
 
     def _setup_gui(self):
         """Setup the entire gui of the program"""
@@ -349,6 +373,7 @@ def main():
 
     program = StartMain()
     program.show()
+    program.initialize()
     sys.exit(app.exec_())
 
 if __name__ == "__main__":

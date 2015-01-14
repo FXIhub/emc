@@ -44,14 +44,14 @@ class IntegerControll(QtGui.QWidget):
 
     def _update_max_label(self, new_max):
         """Change the label indicating the maximum value. Provide the new max"""
-        if new_max != None:
+        if new_max is not None:
             self._max_label.setText("(%d)" % new_max)
         else:
             self._max_label.setText("")
 
     def _update_spinbox_max(self, new_max):
         """Set the newe new maximum value of the spin box."""
-        if new_max == None:
+        if new_max is None:
             new_max = DEFAULT_MAX
         self._spin_box.setRange(self._min_lim, new_max)
 
@@ -61,7 +61,7 @@ class IntegerControll(QtGui.QWidget):
 
     def change_value(self, new_value):
         """Set the value."""
-        if new_value >= self._min_lim and (self._max_lim == None or new_value <= self._max_lim):
+        if new_value >= self._min_lim and (self._max_lim is None or new_value <= self._max_lim):
             self._value = new_value
             self._spin_box.setValue(self._value)
             self.valueChanged.emit(self._value)

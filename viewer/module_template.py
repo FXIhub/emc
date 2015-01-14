@@ -10,12 +10,22 @@ class Data(QtCore.QObject):
     def __init__(self):
         super(Data, self).__init__()
 
+    def initialize(self):
+        """Any initialization that should be done after the viewer is
+        properly set up with a window to draw into."""
+        pass
+
 class Viewer(QtCore.QObject):
     """This class takes care of the plotting. It is not a widget but provides one
     through the get_widget() function."""
     def __init__(self, parent=None):
         super(Viewer, self).__init__(parent)
-        self._widget = QtGui.QWidget()
+        self._widget = QtGui.QWidget(parent)
+
+    def initialize(self):
+        """Any initialization that should be done after the viewer is
+        properly set up with a window to draw into."""
+        pass
 
     def get_widget(self):
         """Returns the plotting widget."""
@@ -40,6 +50,11 @@ class Controll(QtCore.QObject):
         self._data = data
         self._widget = QtGui.QWidget()
         self._active = True
+
+    def initialize(self):
+        """Any initialization that should be done after the viewer is
+        properly set up with a window to draw into."""
+        pass
 
     def get_viewer(self):
         """Returns the Viewer object."""
@@ -97,3 +112,8 @@ class Plugin(QtCore.QObject):
         """Retruns the CommonControll object. This is a global controll for
         module independent things, implemented in viewer.py"""
         return self._common_controll
+
+    def initialize(self):
+        self.get_viewer().initialize()
+        self.get_data().initialize()
+        self.get_controll().initialize()

@@ -40,14 +40,8 @@ class ImageData(module_template.Data):
         if index >= self._number_of_images:
             raise ValueError("Image index out of range. %d is above %d" % (index, self._number_of_images))
         if index in self._images.keys() and not reload_data:
-            #return abs(self._images[index].image)
             return abs(self._images[index])
-        if reload_data and index in self._images.keys():
-            #spimage.sp_image_free(self._images[index])
-            pass
-        #self._images[index] = spimage.sp_image_read("output/image_%.4d.h5" % index, 0)
         self._images[index] = sphelper.import_spimage("output/image_%.4d.h5" % index, ["image"])
-        #return abs(self._images[index].image)
         return abs(self._images[index])
 
     def get_number_of_images(self):
@@ -87,8 +81,7 @@ class ImageControll(module_template.Controll):
     def _setup_gui(self):
         """Create the gui for the widget."""
         layout = QtGui.QVBoxLayout()
-        self._image_index_chooser = convenient_widgets.IntegerControll(0, max_lim =
-                                                                       self._data.get_number_of_images())
+        self._image_index_chooser = convenient_widgets.IntegerControll(0, max_lim=self._data.get_number_of_images())
         self._image_index_chooser.valueChanged.connect(self.set_image)
         self._data.number_of_images_changed.connect(self._image_index_chooser.set_max)
         layout.addWidget(self._image_index_chooser)
