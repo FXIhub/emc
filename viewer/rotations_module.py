@@ -3,12 +3,12 @@ In plane rotations are excluded to make the data 2D."""
 import numpy
 import h5py
 from functools import partial
-import rotations
-import icosahedral_sphere
+from eke import rotations
+from eke import icosahedral_sphere
 import module_template
-from QtVersions import QtCore, QtGui
+from eke.QtVersions import QtCore, QtGui
 import vtk
-import vtk_tools
+from eke import vtk_tools
 from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import convenient_widgets
 import os

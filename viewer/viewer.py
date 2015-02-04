@@ -6,7 +6,7 @@ os.environ['ETS_TOOLKIT'] = 'qt4'
 import sys
 import time
 import h5py
-from QtVersions import QtCore, QtGui
+from eke.QtVersions import QtCore, QtGui
 import convenient_widgets
 
 #state_variables = tools.enum(iteration=1)
@@ -72,6 +72,9 @@ class StateWatcher(QtCore.QObject):
         # self._watcher.addPath(file_name)
         self._watcher = FileWatcher(file_name)
         self._file_handle = h5py.File(file_name)
+        if not self._file_handle:
+            print "Error reading state file. Make sure you are in an EMC output dir."
+            exit(1)
         self._state = State(self._file_handle)
         self._watcher.fileChanged.connect(self._on_file_change)
         self._watcher.start()

@@ -735,8 +735,10 @@ __global__ void update_scaling_full_kernel(real *images, real *slices, int *mask
   const int i_slice = blockIdx.y;
   const int N_images = gridDim.x;
   real this_scaling;
-  this_scaling = calculate_scaling_absolute(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
   /*
+  this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
+  */
+
   if (diff == poisson) {
     this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
   } else if (diff == absolute) {
@@ -744,7 +746,7 @@ __global__ void update_scaling_full_kernel(real *images, real *slices, int *mask
   } else if (diff == relative) {
     this_scaling = calculate_scaling_relative(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
   }
-  */
+
   //this_scaling *= 0.5;
   __syncthreads();
   if (tid == 0) {

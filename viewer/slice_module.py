@@ -10,10 +10,10 @@ import h5py
 import module_template
 import os
 import re
-import sphelper
+from eke import sphelper
 from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
-import rotations
-import vtk_tools
+from eke import rotations
+from eke import vtk_tools
 
 class SliceData(module_template.Data):
     """Provides the diffraction pattern data and the rotations."""

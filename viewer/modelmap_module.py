@@ -1,10 +1,10 @@
 """Module for emc viewer. Used for plotting the assembled model."""
 import numpy
-import sphelper
+from eke import sphelper
 import module_template
-from QtVersions import QtCore, QtGui
+from eke.QtVersions import QtCore, QtGui
 import vtk
-import vtk_tools
+from eke import vtk_tools
 from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from functools import partial
 import enum
@@ -320,6 +320,7 @@ class ModelmapControll(module_template.Controll):
     def initialize(self):
         self._viewer.plot_map_init(self._data.get_map(self._common_controll.get_iteration()))
         self._surface_level_slider.blockSignals(False)
+        self.set_view_type(VIEW_TYPE.slice)
 
     def _setup_viewer(self):
         """Provedes an empty map to the viewer to initialize it."""
@@ -344,8 +345,9 @@ class ModelmapControll(module_template.Controll):
             """Handles the signal from a surface level slider change."""
             # surface_level = slider_level/float(cls._slider_length)
             # surface_level = self._slider_length/(float(slider_level))
-            surface_level = ((numpy.exp(float(slider_level)/float(self._slider_length))-1.) /
-                             (numpy.exp(1.)-1.))
+            # surface_level = ((numpy.exp(float(slider_level)/float(self._slider_length))-1.) /
+            #                  (numpy.exp(1.)-1.))
+            surface_level = (float(slider_level) / float(self._slider_length))**3
             self._viewer.set_surface_level(surface_level)
         self._surface_level_slider.valueChanged.connect(partial(on_slider_changed, self))
         self._surface_level_slider.blockSignals(True)

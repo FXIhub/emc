@@ -1,10 +1,10 @@
 """This module plots the diffraction patterns used as input for EMC."""
 import numpy
-from QtVersions import QtCore, QtGui
+from eke.QtVersions import QtCore, QtGui
 import module_template
 import embedded_matplotlib
 #import spimage
-import sphelper
+from eke import sphelper
 import convenient_widgets
 import os
 import re

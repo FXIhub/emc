@@ -3,7 +3,7 @@
 #import matplotlib
 #print matplotlib.rcParams["text.usetex"]
 #matplotlib.rcParams["text.usetex"] = False
-from QtVersions import QtGui
+from eke.QtVersions import QtGui
 # except IOError:
 #     from pyface.qt import QtGui
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas

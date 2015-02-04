@@ -1129,7 +1129,7 @@ int main(int argc, char **argv)
   hid_t scaling_file;
   sprintf(buffer, "%s/best_scaling.h5", conf.output_dir);
   hid_t scaling_dataset;
-  if (conf.known_intensity) {
+  if (conf.known_intensity == 0) {
     scaling_dataset =  init_scaling_file(buffer, N_images, &scaling_file);
   }
 
@@ -1152,8 +1152,8 @@ int main(int argc, char **argv)
   real weight_map_radius_start = 20.;
   real weight_map_radius_final = 20.;
   */
-  real weight_map_radius_start = 32.;
-  real weight_map_radius_final = 32.;
+  real weight_map_radius_start = 64.;
+  real weight_map_radius_final = 64.;
 
   real sigma;
   for (int iteration = start_iteration; iteration < conf.max_iterations; iteration++) {
@@ -1628,7 +1628,7 @@ int main(int argc, char **argv)
     d_model = d_model_tmp;
 
     cuda_divide_model_by_weight(model, d_model, d_weight);
-    if (!conf.known_intensity) {
+    if (conf.known_intensity == 0) {
       cuda_normalize_model(model, d_model);
     }
 

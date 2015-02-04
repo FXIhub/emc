@@ -1,6 +1,6 @@
 """The templates in this module should be inherited when building a new module
 for the viewer. Refer for example to the modelmap_module for reference on how."""
-from QtVersions import QtCore, QtGui
+from eke.QtVersions import QtCore, QtGui
 
 class Data(QtCore.QObject):
     """This class provides the data to the program."""

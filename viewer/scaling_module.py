@@ -22,6 +22,7 @@ class ScalingData(module_template.Data):
             #self.read_error.emit()
             return numpy.zeros((2, max_iterations))
 
+
 class ScalingViewer(module_template.Viewer):
     """Plots all the scalings in one matplotlib view."""
     def __init__(self):
@@ -50,36 +51,20 @@ class ScalingViewer(module_template.Viewer):
             return
         self._canvas.draw()
 
+
 class ScalingControll(module_template.Controll):
     """This class contains a widget for the user input. It also contains the Data and View
     and the communication between them."""
     def __init__(self, common_controll, viewer, data):
         super(ScalingControll, self).__init__(common_controll, viewer, data)
-        #self._setup_gui()
-        # self.load_and_draw()
-        # self._data.data_changed.connect(self.load_and_draw)
-
-    # def _setup_gui(self):
-    #     reload_button = QtGui.QPushButton("Reload")
-    #     reload_button.pressed.connect(self._data.read_likelihood)
-    #     layout = QtGui.QVBoxLayout()
-    #     layout.addWidget(reload_button)
-    #     # layout.addStretch()
-    #     self.setLayout(layout)
-
-    # def load_and_draw(self):
-    #     self._viewer.plot_likelihood(self._data.get_likelihood(), self._common_controll.get_iteration())
 
     def draw_hard(self):
         """Draw the widget. In practice call draw() instead as it only draws when the
         module is active."""
         iteration = self._common_controll.get_iteration()
-        #self._viewer.plot_scaling(self._data.get_all_scalings(iteration), iteration)
         self._viewer.plot_scaling(self._data.get_scaling(self._common_controll.get_max_iterations()),
                                   iteration)
 
-        #self._viewer.plot_likelihood(self._data.get_likelihood(), self._common_controll.get_iteration())
-        #self._viewer.set_iteration(self._common_controll.get_iteration())
 
 class Plugin(module_template.Plugin):
     """Collects all classes of the module."""
