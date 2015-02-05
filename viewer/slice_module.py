@@ -4,7 +4,7 @@ Module to plot diffraction slices
 We generally use the indexing [x,y] and [x,y,z].
 """
 import numpy
-from PyQt4 import QtCore, QtGui
+from eke.QtVersions import QtCore, QtGui
 import vtk
 import h5py
 import module_template

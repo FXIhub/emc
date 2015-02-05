@@ -17,7 +17,8 @@ INIT_SURFACE_LEVEL = 0.5
 #     return type('Enum', (), dict(zip(enums, range(len(enums)))))
 
 # VIEW_TYPE = enum('surface', 'slice')
-VIEW_TYPE = enum.Enum("View type", ["surface", "slice"])
+# VIEW_TYPE = enum.Enum("View type", ["surface", "slice"])
+VIEW_TYPE = enum.Enum('surface', 'slice')
 
 class ModelmapData(module_template.Data):
     """Reads data as requested."""
