@@ -1545,7 +1545,7 @@ void cuda_blur_model(real *d_model, const int model_side, const real sigma) {
 
   int *d_mask;
   cudaMalloc(&d_mask, model_side*model_side*model_side*sizeof(int));
-  get_mask_from_model<<<(pow(model_side,3)/256+1), 256>>>(d_model, d_mask, pow(model_side, 3));
+  get_mask_from_model<<<(pow((double) model_side,3)/256+1), 256>>>(d_model, d_mask, pow((double) model_side, 3));
 
   cufftHandle plan;
   cufftPlan3d(&plan, model_side, model_side, model_side, CUFFT_R2C);
@@ -1557,7 +1557,7 @@ void cuda_blur_model(real *d_model, const int model_side, const real sigma) {
   multiply_by_gaussian_kernel<<<nblocks,nthreads>>>(ft, sigma);
   cufftPlan3d(&plan, model_side, model_side, model_side, CUFFT_C2R);
   cufftExecC2R(plan, ft, d_model);//, CUFFT_INVERSE);
-  apply_mask<<<(pow(model_side,3)/256+1),256>>>(d_model, d_mask, pow(model_side,3));
+  apply_mask<<<(pow((double) model_side,3)/256+1),256>>>(d_model, d_mask, pow((double) model_side,3));
 
 }
 

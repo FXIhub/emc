@@ -11,7 +11,17 @@ IF(CMAKE_COMPILER_IS_GNUCC)
 	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -std=c99")
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
 
-FIND_PACKAGE(SpImage REQUIRED)
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
+  # Necessary due to CUDA compatibility problems
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libstdc++")
+  # The CUDA module thinks cc is gcc and passes dumpspecs.
+  # This is a workaround
+  if(CUDA_HOST_COMPILER STREQUAL "/usr/bin/cc")
+    SET(CUDA_HOST_COMPILER "/usr/bin/clang")
+  endif()
+endif()
+
+FIND_PACKAGE(SPIMAGE REQUIRED)
 FIND_PACKAGE(HDF5 REQUIRED)
 	
 FIND_PACKAGE(CUDA REQUIRED)

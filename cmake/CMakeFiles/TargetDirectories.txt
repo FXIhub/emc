@@ -1,0 +1,3 @@
+/Users/sellberg/uu/source/emc_single_gpu/cmake/src/emc/CMakeFiles/emc.dir
+/Users/sellberg/uu/source/emc_single_gpu/cmake/src/utils/CMakeFiles/modify_configuration.dir
+/Users/sellberg/uu/source/emc_single_gpu/cmake/src/utils/CMakeFiles/generate_rotations.dir

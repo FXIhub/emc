@@ -1,0 +1,1 @@
+/usr/bin/c++    -stdlib=libstdc++ -Wl,-search_paths_first -Wl,-headerpad_max_install_names  CMakeFiles/modify_configuration.dir/modify_configuration.c.o  -o modify_configuration  /usr/local/cuda/lib/libcudart.dylib -lconfig -Wl,-rpath,/usr/local/cuda/lib 

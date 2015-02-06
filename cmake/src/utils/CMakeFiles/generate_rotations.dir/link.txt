@@ -1,0 +1,1 @@
+/usr/bin/c++    -stdlib=libstdc++ -Wl,-search_paths_first -Wl,-headerpad_max_install_names  CMakeFiles/generate_rotations.dir/generate_rotations.c.o CMakeFiles/generate_rotations.dir/__/rotations.c.o  -o generate_rotations  /usr/local/cuda/lib/libcudart.dylib /usr/local/lib64/libspimage.dylib -lconfig -lgsl -lgslcblas -lhdf5 -Wl,-rpath,/usr/local/cuda/lib 
