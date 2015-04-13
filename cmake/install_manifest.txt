@@ -1,5 +1,0 @@
-/usr/local/bin/emc
-/usr/local/include/emc.h
-/usr/local/include/configuration.h
-/usr/local/bin/generate_rotations
-/usr/local/bin/modify_configuration
