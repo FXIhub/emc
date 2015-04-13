@@ -378,25 +378,29 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 				      (int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0));
     */
 
-    real pixel_sum;
-    int mask_sum;
+    real pixel_sum, pixel_this;
+    int mask_sum, mask_this;
     for (int x = 0; x < conf.model_side; x++) {
       for (int y = 0; y < conf.model_side; y++) {
 	pixel_sum = 0.0;
 	mask_sum = 0;
 	for (int xb = 0; xb < conf.read_stride; xb++) {
 	  for (int yb = 0; yb < conf.read_stride; yb++) {
-	    pixel_sum += sp_cabs(sp_image_get(img, sp_image_x(img)/2 - conf.model_side*conf.read_stride/2 + x*conf.read_stride + xb,
-					     sp_image_y(img)/2 - conf.model_side*conf.read_stride/2 + y*conf.read_stride + yb, 0));
-	    mask_sum += sp_image_mask_get(img, sp_image_x(img)/2 - conf.model_side*conf.read_stride/2 + x*conf.read_stride + xb,
-					 sp_image_y(img)/2 - conf.model_side*conf.read_stride/2 + y*conf.read_stride + yb, 0);
+	    pixel_this = sp_cabs(sp_image_get(img, sp_image_x(img)/2 - (conf.model_side/2)*conf.read_stride + x*conf.read_stride + xb,
+					      sp_image_y(img)/2 - (conf.model_side/2)*conf.read_stride + y*conf.read_stride + yb, 0));
+	    mask_this = sp_image_mask_get(img, sp_image_x(img)/2 - (conf.model_side/2)*conf.read_stride + x*conf.read_stride + xb,
+					  sp_image_y(img)/2 - (conf.model_side/2)*conf.read_stride + y*conf.read_stride + yb, 0);
+	    if (mask_this > 0) {
+	      pixel_sum += pixel_this;
+	      mask_sum += 1;
+	    }
 	    /*
 	    pixel_sum += sp_cabs(sp_image_get(img,(int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,(int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0));
 	    mask_sum += sp_image_mask_get(img,(int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,(int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0);
 	    */
 	  }
 	}
-	if (mask_sum > 1) {
+	if (mask_sum > 0) {
 	  sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
 	  sp_imatrix_set(masks[i],x,y,1);
 	} else {
@@ -428,7 +432,7 @@ sp_imatrix *read_mask(Configuration conf)
 	  }
 	}
       }
-      if (mask_sum > 1) {
+      if (mask_sum > 0) {
 	sp_imatrix_set(mask,x,y,1);
       } else {
 	sp_imatrix_set(mask,x,y,0);
