@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <hdf5.h>
+#include <getopt.h>
 
 static int quit_requested = 0;
 
@@ -578,16 +579,38 @@ int read_rotations_file(const char *filename, Quaternion ***rotations, real **we
 
 int main(int argc, char **argv)
 {
+  char configuration_filename[200] = "emc.conf";
+  char help_text[] =
+    "Options:\n\
+-h Show this text\n\
+-c CONFIGURATION_FILE Specify a configuration file";
+  int command_line_conf;
+  int opterr = 0;
+  while ((command_line_conf = getopt(argc, argv, "hc:")) != -1) {
+    if (command_line_conf == -1) {
+      break;
+    }
+    switch(command_line_conf) {
+    case ('h'):
+      printf("%s\n", help_text);
+      exit(0);
+      break;
+    case ('c'):
+      strcpy(configuration_filename, optarg);
+      break;
+    }
+  }
+
   signal(SIGINT, nice_exit);
   //cuda_set_device(1);
   cuda_choose_best_device();
   cuda_print_device_info();
 
   Configuration conf;
-  if (argc > 1) {
-    conf = read_configuration_file(argv[1]);
-  } else {
-    conf = read_configuration_file("emc.conf");
+  int conf_return = read_configuration_file(configuration_filename, &conf);
+  if (conf_return == 0) {
+    printf("Can't read configuration file %s\nRun emc -h for help.", configuration_filename);
+    exit(0);
   }
 
   char buffer[1000];

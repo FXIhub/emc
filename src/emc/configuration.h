@@ -1,6 +1,7 @@
 #pragma once
 #include <spimage.h>
 #include <libconfig.h>
+#include <unistd.h>
 
 #ifdef __cplusplus
 extern "C"{
@@ -43,7 +44,7 @@ extern "C"{
     int compact_output;
   }Configuration;
 
-  Configuration read_configuration_file(const char *filename);
+  int read_configuration_file(const char *filename, Configuration *config_out);
 
   int write_configuration_file(const char *filename, const Configuration config);
 
