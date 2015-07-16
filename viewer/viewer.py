@@ -62,8 +62,7 @@ class FileWatcher(QtCore.QThread):
 
 class StateWatcher(QtCore.QObject):
     """Trackes changes in a state file, reporting any change by
-    emiting a signal.
-    Right now the state file only contains the iteration"""
+    emiting a signal."""
     iterationChanged = QtCore.Signal(int)
     def __init__(self, file_name, parent=None):
         super(StateWatcher, self).__init__(parent)
@@ -123,6 +122,9 @@ class CommonControll(QtGui.QWidget):
         #self._state = self.State()
         self._state = {"iteration": 0,
                        "max_iterations": 0}
+        self._run_info = {"compact_output": False,
+                          "number_of_images": 0,
+                          "random_seed": 0}
         self._file_system_model = None
         self._work_dir_edit = None
         self._iteration_chooser = None
@@ -133,6 +135,7 @@ class CommonControll(QtGui.QWidget):
         layout = QtGui.QVBoxLayout()
         layout.addLayout(self._setup_dir_chooser())
         layout.addWidget(self._setup_iteration_chooser())
+        layout.addWidget(self._setup_message_board())
         self.setLayout(layout)
 
     def _setup_dir_chooser(self):
@@ -145,7 +148,7 @@ class CommonControll(QtGui.QWidget):
         file_system_completer.setModel(self._file_system_model)
         self._work_dir_edit = QtGui.QLineEdit(os.getcwd())
         self._work_dir_edit.setCompleter(file_system_completer)
-        self._work_dir_edit.editingFinished.connect(self._on_work_dir_changed)
+        self._work_dir_edit.editingFinished.connect(self.on_work_dir_changed)
         work_dir_layout = QtGui.QHBoxLayout()
         work_dir_layout.addWidget(work_dir_label)
         work_dir_layout.addWidget(self._work_dir_edit)
@@ -157,7 +160,16 @@ class CommonControll(QtGui.QWidget):
         self._iteration_chooser.valueChanged.connect(self.set_iteration)
         return self._iteration_chooser
 
-    def _on_work_dir_changed(self):
+    def _setup_message_board(self):
+        self._message_board = QtGui.QLabel("Empty board")
+        self._message_board.setWordWrap(True)
+        self._message_board.setFrameStyle(QtGui.QFrame.Panel)
+        return self._message_board
+
+    def post_message(self, message):
+        self._message_board.setText(message)
+
+    def on_work_dir_changed(self):
         """Handle an attempt to select a new work dir in the
         _work_dir_edit text editor"""
         new_dir = self._work_dir_edit.text()
@@ -172,7 +184,9 @@ class CommonControll(QtGui.QWidget):
         palette = self._work_dir_edit.palette()
         palette.setColor(QtGui.QPalette.Base, QtGui.QColor(255, 255, 255))
         self._work_dir_edit.setPalette(palette)
+        self._read_run_info()
         self.dirChanged.emit(new_dir)
+        self.post_message("Read new directory {0}".format(new_dir))
 
     def on_read_error(self):
         """Handle read error emits"""
@@ -218,6 +232,21 @@ class CommonControll(QtGui.QWidget):
         #return self._state.iteration
         return self._state["iteration"]
 
+    def _read_run_info(self):
+        with h5py.File("output/run_info.h5", "r") as file_handle:
+            self._run_info["compact_output"] = bool(file_handle["compact_output"][...])
+            self._run_info["number_of_images"] = int(file_handle["number_of_images"][...])
+            self._run_info["random_seed"] = int(file_handle["random_seed"][...])
+
+    def output_is_compact(self):
+        return self._run_info["compact_output"]
+    
+    def number_of_images(self):
+        return self._run_info["number_of_images"]
+
+    def random_seed(self):
+        return self._run_info["random_seed"]
+    
 
 class StartMain(QtGui.QMainWindow):
     """The program."""
@@ -252,6 +281,9 @@ class StartMain(QtGui.QMainWindow):
         self._load_module('fit_module')
         self._load_module('image_module')
         self._load_module('scaling_module')
+        
+        #self._common_controll.dirChanged.emit(os.getcwd())
+        self._common_controll.on_work_dir_changed()
         
         self._active_module_index = 0
 

@@ -13,7 +13,6 @@ extern "C"{
     int read_stride;
     double wavelength;
     double pixel_size;
-    int detector_size;
     double detector_distance;
     //int rotations_n;
     const char *rotations_file;
@@ -42,6 +41,7 @@ extern "C"{
     int random_seed;
     int calculate_r_free;
     double r_free_ratio;
+    int compact_output;
   }Configuration;
 
   Configuration read_configuration_file(const char *filename);

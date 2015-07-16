@@ -59,7 +59,6 @@ class RotationData(module_template.Data):
             raise RuntimeError("Must call set_sampling_coordinates before setting up rotations")
 
         filename = "{directory}/data/rotations_table_n{n}.h5".format(directory=os.path.split(__file__)[0], n=self._rotations_n)
-        print filename
         with h5py.File(filename, "r") as file_handle:
             self._rotation_sphere_weights = file_handle['weights'][...]
             self._rotation_mapping_table = file_handle['table'][...]
@@ -241,7 +240,7 @@ class RotationControll(module_template.Controll):
     def draw_hard(self):
         """Draw the scene. Don't call this function directly. The draw() function calls this one
         if the module is visible."""
-        if self._state.rotation_type == ROTATION_TYPE.average:
+        if self._state.rotation_type == ROTATION_TYPE.average or self._common_controll.output_is_compact():
             self._viewer.plot_rotations(self._data.get_average_rotation_values(
                 self._common_controll.get_iteration()))
             #self._rotation_image_number_box.hide()
@@ -266,6 +265,15 @@ class RotationControll(module_template.Controll):
         if new_image_number >= 0:
             self._state.image_number = new_image_number
             self.draw()
+
+    def on_dir_change(self):
+        if self._common_controll.output_is_compact():
+            self._show_single_rotation_radio.setEnabled(False)
+            self._show_average_rotation_radio.setChecked(True)
+            self._common_controll.post_message("Compact output disables single rot view")
+        else:
+            self._show_single_rotation_radio.setEnabled(True)
+        super(RotationControll, self).on_dir_change()
 
 class Plugin(module_template.Plugin):
     """Collects all parts of the plugin."""

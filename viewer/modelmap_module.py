@@ -7,18 +7,19 @@ import vtk
 from eke import vtk_tools
 from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from functools import partial
-import enum
+#import enum
 #import view_3d
 
 INIT_SURFACE_LEVEL = 0.5
 
-# def enum(*enums):
-#     """Gives enumerate functionality."""
-#     return type('Enum', (), dict(zip(enums, range(len(enums)))))
+def enum(*enums):
+    """Gives enumerate functionality."""
+    return type('Enum', (), dict(zip(enums, range(len(enums)))))
 
-# VIEW_TYPE = enum('surface', 'slice')
+VIEW_TYPE = enum('surface', 'slice')
 # VIEW_TYPE = enum.Enum("View type", ["surface", "slice"])
-VIEW_TYPE = enum.Enum('surface', 'slice')
+#VIEW_TYPE = enum.Enum('surface', 'slice')
+#VIEW_TYPE = enum.Enum("ViewType", ["surface", "slice"])
 
 class ModelmapData(module_template.Data):
     """Reads data as requested."""

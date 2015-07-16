@@ -372,18 +372,14 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
       }
     }
 
-    /*
-    pixel_sum += sp_cabs(sp_image_get(img,
-				      (int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,
-				      (int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0));
-    */
-
     real pixel_sum, pixel_this;
     int mask_sum, mask_this;
+    /* Step through all pixels in downsampled image */
     for (int x = 0; x < conf.model_side; x++) {
       for (int y = 0; y < conf.model_side; y++) {
 	pixel_sum = 0.0;
 	mask_sum = 0;
+	/* Step through all sub-pixels and add up values */
 	for (int xb = 0; xb < conf.read_stride; xb++) {
 	  for (int yb = 0; yb < conf.read_stride; yb++) {
 	    pixel_this = sp_cabs(sp_image_get(img, sp_image_x(img)/2 - (conf.model_side/2)*conf.read_stride + x*conf.read_stride + xb,
@@ -394,10 +390,6 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 	      pixel_sum += pixel_this;
 	      mask_sum += 1;
 	    }
-	    /*
-	    pixel_sum += sp_cabs(sp_image_get(img,(int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,(int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0));
-	    mask_sum += sp_image_mask_get(img,(int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+sp_image_x(img)/2-0.5)+xb,(int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+sp_image_y(img)/2-0.5)+yb,0);
-	    */
 	  }
 	}
 	if (mask_sum > 0) {
@@ -566,7 +558,32 @@ void normalize_images_preserve_scaling(sp_matrix ** images, sp_imatrix *mask, Co
   }
 }
 
-hid_t open_state_file(char *filename, Configuration conf) {
+void write_run_info(char *filename, Configuration conf, int random_seed) {
+  hid_t file_id, space_id, dataset_id;
+  file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+
+  space_id = H5Screate(H5S_SCALAR);
+  dataset_id = H5Dcreate1(file_id, "/number_of_images", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.N_images);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+
+  space_id = H5Screate(H5S_SCALAR);
+  dataset_id = H5Dcreate1(file_id, "/compact_output", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.compact_output);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+  
+  space_id = H5Screate(H5S_SCALAR);
+  dataset_id = H5Dcreate1(file_id, "/random_seed", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &random_seed);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+
+  H5Fclose(file_id);
+}
+
+hid_t open_state_file(char *filename) {
   hid_t file_id, space_id, dataset_id;
   file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 
@@ -578,12 +595,7 @@ hid_t open_state_file(char *filename, Configuration conf) {
   H5Dclose(dataset_id);
   H5Sclose(space_id);
 
-  space_id = H5Screate(H5S_SCALAR);
-  dataset_id = H5Dcreate1(file_id, "/number_of_images", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
-  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.N_images);
-  H5Dclose(dataset_id);
-  H5Sclose(space_id);
-
+  
   H5Fflush(file_id, H5F_SCOPE_GLOBAL);
 
   return file_id;
@@ -632,16 +644,8 @@ int read_rotations_file(const char *filename, Quaternion ***rotations, real **we
 
 int main(int argc, char **argv)
 {
-  /*
-  cuda_choose_best_device();
-  cuda_print_device_info();
-  cuda_test_interpolate_set();
-  exit(0);
-  */
-
   signal(SIGINT, nice_exit);
   //cuda_set_device(1);
-  //cuda_set_device(cuda_get_best_device());
   cuda_choose_best_device();
   cuda_print_device_info();
 
@@ -665,89 +669,21 @@ int main(int argc, char **argv)
   } else {
     printf("Failed to create debug directory (it probably already exists): %s\n", conf.debug_dir);
   }
-  /*
-  int mkdir_out = mkdir(conf.output_dir,0777);
-  if (mkdir_out == 0) {
-    printf("Created output directory: %s\n", conf.output_dir);
-  } else if (mkdir_out == EEXIST) {
-    printf("Directory %s already exists. Not creating.\n", conf.output_dir);
-  } else {
-    printf("Failed to create output directory: %s\n", conf.output_dir);
-    exit(0);
-  }
-  mkdir_out = mkdir(conf.debug_dir,0777);
-  if (mkdir_out == 0) {
-    printf("Created debug directory: %s\n", conf.debug_dir);
-  } else if (mkdir_out == EEXIST) {
-    printf("Directory %s already exists. Not creating.\n", conf.output_dir);
-  } else {
-    printf("Failed to create debug directory: %s\n", conf.debug_dir);
-  }
-  */
 
-  /*
-  struct stat sb;
-  if (stat(conf.output_dir, &sb) != 0) {
-    if (mkdir(conf.output_dir,0777) == 0) {
-      printf("Created output directory: %s\n", conf.output_dir);
-    } else {
-      printf("Failed to create output directory: %s\n", conf.output_dir);
-    }
-  }
-  if (stat(conf.debug_dir, &sb) != 0) {
-    if (mkdir(conf.debug_dir,0777) == 0) {
-      printf("Created debug directory: %s\n", conf.debug_dir);
-    } else {
-      printf("Failed to create debug directory: %s\n", conf.debug_dir);
-    }
-  }
-  */
-  //test_blur();
-  //test_weight_map();
-
-  sprintf(buffer, "%s/state.h5", conf.output_dir);
-  hid_t state_file = open_state_file(buffer, conf);
-
-  //signal(SIGKILL, nice_exit);
   const int start_iteration = 0;
   const int N_images = conf.N_images;
   const int slice_chunk = conf.slice_chunk;
   const int output_period = 10;
-  //const int n = conf.rotations_n;
   const int N_2d = conf.model_side*conf.model_side;
   const int N_3d = conf.model_side*conf.model_side*conf.model_side;
 
   Quaternion **rotations;
   real *weights;
-  //const int N_slices = generate_rotation_list(n,&rotations,&weights);
   const int N_slices = read_rotations_file(conf.rotations_file,&rotations,&weights);
   real *d_weights;
   
   cuda_allocate_real(&d_weights, N_slices);
   cuda_copy_real_to_device(weights, d_weights, N_slices);
-  //printf("%d rotations sampled\n",N_slices);
-  /* outpus weigths */
-  /* now h5
-  FILE *weights_file = fopen("debug/weights.data", "wp");
-  for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-    fprintf(weights_file, "%g\n", weights[i_slice]);
-  }
-  fclose(weights_file);
-  */
-  /*
-  spintf(buffer, "%s/weights.h5", conf.debug_dir);
-  write_1d_array_hdf5(buffer, weights, N_slices);
-  */
-  /* output rotations */
-  /* This shouldn't really be needed, we just read the input file instead.
-  sprintf(buffer, "%s/rotations.data", conf.output_dir);
-  FILE *rotations_file = fopen(buffer, "wp");
-  for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-    fprintf(rotations_file, "%g %g %g %g\n", rotations[i_slice]->q[0],rotations[i_slice]->q[1], rotations[i_slice]->q[2], rotations[i_slice]->q[3]);
-  }
-  fclose(rotations_file);
-  */
-
   
   int N_images_included;
   if (conf.calculate_r_free) {
@@ -757,11 +693,8 @@ int main(int argc, char **argv)
   }
 
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_taus);
-  //  gsl_rng_set(rng,time(NULL));
-  // Reproducible "random" numbers
   unsigned long int seed = 0;
   if(conf.random_seed == 0){
-    // generate a random seed from /dev/random
     FILE *devrandom;
     if ((devrandom = fopen("/dev/random","r")) == NULL) {
       fprintf(stderr,"Cannot open /dev/random, setting seed to 0\n");
@@ -776,23 +709,16 @@ int main(int argc, char **argv)
   srand(seed);
   gsl_rng_set(rng, rand());
 
+  sprintf(buffer, "%s/run_info.h5", conf.output_dir);
+  write_run_info(buffer, conf, seed);
+  sprintf(buffer, "%s/state.h5", conf.output_dir);
+  hid_t state_file = open_state_file(buffer);
+
   /* read images */
   sp_imatrix **masks = malloc(conf.N_images*sizeof(sp_imatrix *));
   sp_matrix **images = read_images(conf,masks);
   sp_imatrix * mask = read_mask(conf);
 
-  /* try extending the mask from the center */
-  /*
-  for (int x = 0; x < conf.model_side; x++) {
-    for (int y = 0; y < conf.model_side; y++) {
-      real r = (int)sqrt(pow((real)x - conf.model_side/2.0 + 0.5,2) +
-			 pow((real)y - conf.model_side/2.0 + 0.5,2));
-      if (r < 64.0) {
-	sp_imatrix_set(mask,x,y,0);
-      }
-    }
-  }
-  */
   /* Create output directories in case they don't exist */
   if (conf.normalize_images) {
     if (conf.known_intensity) {
@@ -843,19 +769,9 @@ int main(int argc, char **argv)
 			x_coordinates, y_coordinates, z_coordinates);
 
 
-  /* calculate correlation stuff */
-  /*
-  sp_matrix *corr_average = sp_matrix_alloc(conf.model_side, conf.model_side);
-  sp_matrix *corr_scale = sp_matrix_alloc(conf.model_side, conf.model_side);
-  calculate_normalization(images, N_images, corr_average, corr_scale);
-  */
   /* create and fill model */
   Image *model_out = sp_image_alloc(conf.model_side,conf.model_side,conf.model_side);
   sp_3matrix *model = sp_3matrix_alloc(conf.model_side,conf.model_side,conf.model_side);
-  /*
-  real model_d = 1.0/(conf.pixel_size*(real)conf.detector_size/conf.detector_distance*
-		      conf.wavelength);
-  */
   sp_3matrix *weight = sp_3matrix_alloc(conf.model_side,conf.model_side,conf.model_side);
   const int N_model = conf.model_side*conf.model_side*conf.model_side;
 
@@ -1367,8 +1283,12 @@ int main(int argc, char **argv)
       /* output scaling */
       cuda_copy_real_to_host(scaling, d_scaling, N_images*N_slices);
 
-      sprintf(buffer, "%s/scaling_%.4d.h5", conf.output_dir, iteration);
-      write_2d_array_hdf5(buffer, scaling, N_slices, N_images);
+      if (conf.compact_output == 0) {
+	/* Only output scaling and responsabilities if compact_output
+	   is turned off. */
+	sprintf(buffer, "%s/scaling_%.4d.h5", conf.output_dir, iteration);
+	write_2d_array_hdf5(buffer, scaling, N_slices, N_images);
+      }
       
       /* this is the best reps scaling */
       cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
@@ -1453,9 +1373,12 @@ int main(int argc, char **argv)
     cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
 
     /* output responsabilities */
-    sprintf(buffer, "%s/responsabilities_%.4d.h5", conf.output_dir, iteration);
-    write_2d_array_trans_hdf5(buffer, respons, N_slices, N_images);
-
+    if (conf.compact_output == 0) {
+      /* Only output scaling and responsabilities if compact_output
+	 is turned off. */
+      sprintf(buffer, "%s/responsabilities_%.4d.h5", conf.output_dir, iteration);
+      write_2d_array_trans_hdf5(buffer, respons, N_slices, N_images);
+    }
     /* output average responsabilities */
 
     //average_resp_file = fopen(buffer, "wp");

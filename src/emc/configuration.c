@@ -16,9 +16,7 @@ Configuration read_configuration_file(const char *filename)
   config_lookup_int(&config,"read_stride",&config_out.read_stride);
   config_lookup_float(&config,"wavelength",&config_out.wavelength);
   config_lookup_float(&config,"pixel_size",&config_out.pixel_size);
-  config_lookup_int(&config,"detector_size",&config_out.detector_size);
   config_lookup_float(&config,"detector_distance",&config_out.detector_distance);
-  //config_lookup_int(&config,"rotations_n",&config_out.rotations_n);
   config_lookup_string(&config,"rotations_file",&config_out.rotations_file);
   config_lookup_float(&config,"sigma_start",&config_out.sigma_start);
   config_lookup_float(&config,"sigma_final",&config_out.sigma_final);
@@ -55,7 +53,9 @@ Configuration read_configuration_file(const char *filename)
 
   // If set to zero then read the seed from /dev/random, otherwise
   // set it to the value specified
-  config_lookup_int(&config,"random_seed",&config_out.random_seed);
+  config_out.random_seed = 0;
+  config_lookup_int(&config, "random_seed", &config_out.random_seed);
+  config_lookup_int(&config, "compact_output", &config_out.compact_output);
 
   config_out.pixel_size *= config_out.read_stride;
   return config_out;

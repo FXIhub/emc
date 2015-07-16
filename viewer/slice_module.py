@@ -20,6 +20,7 @@ class SliceData(module_template.Data):
     def __init__(self):
         super(SliceData, self).__init__()
         self._rotations = None
+        self._active_images = None
         #self._images = []
         self._images = {}
         #self._masks = []
@@ -71,6 +72,16 @@ class SliceData(module_template.Data):
             self._images.append(image)
             self._masks.append(mask)
 
+    def _read_active(self):
+        """Read the list of active and excluded images if it exists."""
+        file_name = "output/active_{0:04}.h5".format(self._iteration)
+        if not os.path.isfile(file_name):
+            self._active_images = numpy.ones(self._number_of_images, dtype="int32")
+        else:
+            with h5py.File(file_name, "r") as file_handle:
+                self._active_images = file_handle["data"][...]
+
+
     def _open_scaling_file(self):
         """Open scaling file and keep a handle for use by the object."""
         try:
@@ -101,6 +112,7 @@ class SliceData(module_template.Data):
         self._set_number_of_images()
         self._read_image_and_mask(0)
         self._read_rotations()
+        self._read_active()
         self._update_scaling_handle()
 
     def set_iteration(self, new_iteration):
@@ -108,6 +120,7 @@ class SliceData(module_template.Data):
         if new_iteration >= 0:
             self._iteration = new_iteration
             self._read_rotations()
+            self._read_active()
 
     # def get_image(self, image_index, slice_index=None):
     #     """Returns the diffraction pattern with the specified index. If a slice index is provided
@@ -140,6 +153,9 @@ class SliceData(module_template.Data):
         if mask:
             image = image * self._masks[image_index]
         return image
+
+    def get_active(self):
+        return self._active_images
 
     # def get_mask(self, index):
     #     """Returns the mask of the diffraction pattern."""
@@ -464,6 +480,17 @@ class SliceControll(module_template.Controll):
                 self._pattern_list.removeItemWidget(self._pattern_list.item(number_of_images))
         self._pattern_list.blockSignals(old_blocking_state)
             
+    def _color_active(self):
+        active_images = self._data.get_active()
+        if active_images == None:
+            return
+        old_block_state = self._pattern_list.blockSignals(True)
+        for index in range(len(active_images)):
+            if not active_images[index]:
+                self._pattern_list.item(index).setForeground(QtCore.Qt.red)
+            else:
+                self._pattern_list.item(index).setForeground(QtCore.Qt.black)
+        self._pattern_list.blockSignals(old_block_state)
 
     def _on_list_item_changed(self, item):
         """This function handles additions and removals of single slices."""
@@ -487,6 +514,7 @@ class SliceControll(module_template.Controll):
     def on_dir_change(self):
         self._data.dir_changed()
         self._set_number_of_images(self._data.get_number_of_images())
+        self._color_active()
         self.draw()
 
     def draw_hard(self):
@@ -496,6 +524,7 @@ class SliceControll(module_template.Controll):
         indices = self._viewer.get_all_indices()
         self._viewer.remove_all_slices()
         self._viewer.add_multiple_slices(indices)
+        self._color_active()
 
 class Plugin(module_template.Plugin):
     """Collects all classes of the module."""
