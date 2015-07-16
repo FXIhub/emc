@@ -579,14 +579,17 @@ int read_rotations_file(const char *filename, Quaternion ***rotations, real **we
 
 int main(int argc, char **argv)
 {
+
+  /* Parse command-line options */
   char configuration_filename[200] = "emc.conf";
+  int chosen_device = -1; // negative numbers means the program chooses automatically
   char help_text[] =
     "Options:\n\
 -h Show this text\n\
 -c CONFIGURATION_FILE Specify a configuration file";
   int command_line_conf;
   int opterr = 0;
-  while ((command_line_conf = getopt(argc, argv, "hc:")) != -1) {
+  while ((command_line_conf = getopt(argc, argv, "hc:d:")) != -1) {
     if (command_line_conf == -1) {
       break;
     }
@@ -598,12 +601,23 @@ int main(int argc, char **argv)
     case ('c'):
       strcpy(configuration_filename, optarg);
       break;
+    case('d'):
+      chosen_device = atoi(optarg);
+      int number_of_devices = cuda_get_number_of_devices();
+      if (chosen_device >= number_of_devices) {
+	printf("Asking for device %i with only %i devices available\n", chosen_device, number_of_devices);
+	exit(0);
+      }
+      break;
     }
   }
 
   signal(SIGINT, nice_exit);
-  //cuda_set_device(1);
-  cuda_choose_best_device();
+  if (chosen_device >= 0) {
+    cuda_set_device(chosen_device);
+  } else {
+    cuda_choose_best_device();
+  }
   cuda_print_device_info();
 
   Configuration conf;
@@ -958,7 +972,7 @@ int main(int argc, char **argv)
   FILE *radial_fit_file = fopen(buffer,"wp");
   sprintf(buffer, "%s/total_resp.data", conf.output_dir);
   FILE *sorted_resp_file = fopen(buffer,"wp");
-  FILE *average_resp_file;// = fopen("output/average_resp.data","wp");
+  //FILE *average_resp_file;// = fopen("output/average_resp.data","wp");
   FILE *r_free;
   if (conf.calculate_r_free) {
     sprintf(buffer, "%s/r_free.data", conf.output_dir);

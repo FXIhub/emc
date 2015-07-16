@@ -1127,6 +1127,12 @@ void cuda_set_device(int i_device) {
   cudaSetDevice(i_device);
 }
 
+int cuda_get_number_of_devices() {
+  int n_devices;
+  cudaGetDeviceCount(&n_devices);
+  return n_devices;
+}
+
 void cuda_allocate_real(real ** x, int n){
   cudaMalloc(x,n*sizeof(real));
 }

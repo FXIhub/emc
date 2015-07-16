@@ -81,6 +81,7 @@ typedef struct{
   void cuda_set_device(int i_device);
   int cuda_get_best_device();
   void cuda_choose_best_device();
+  int cuda_get_number_of_devices();
   void cuda_print_device_info();
   int cuda_get_device();
   void cuda_allocate_real(real ** x, int n);
