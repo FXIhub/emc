@@ -274,72 +274,6 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
   }
 }
 
-void test_blur() {
-  int i_device = cuda_get_device();
-  printf("device id = %d\n", i_device);
-  /* test blur */
-  const int image_side = 10;
-  const int N_3d = pow(image_side, 3);
-
-  real *image = malloc(N_3d*sizeof(real));
-  for (int i = 0; i < N_3d; i++) {
-    image[i] = 0.;
-  }
-  //image[image_side*image_side*image_side/2 + image_side*image_side/2 + image_side/2] = 1.;
-  image[image_side*image_side*2 + image_side*3 + 3] = 1.;
-  image[image_side*image_side*7 + image_side*8 + 5] = 1.;
-  image[image_side*image_side*5 + image_side*5 + 5] = -1.;
-  FILE *blur_out = fopen("debug/blur_before.data", "wp");
-  for (int i = 0; i < N_3d; i++) {
-    fprintf(blur_out, "%g\n", image[i]);
-  }
-  fclose(blur_out);
-  real *d_image;
-  cuda_allocate_real(&d_image, N_3d);
-  cuda_copy_real_to_device(image, d_image, N_3d);
-
-
-  int *mask = malloc(N_3d*sizeof(int));
-  for (int i = 0; i < N_3d; i++) {
-    mask[i] = 1;
-  }
-  int *d_mask;
-  cuda_allocate_int(&d_mask, N_3d);
-  cuda_copy_int_to_device(mask, d_mask, N_3d);
-
-  cuda_blur_model(d_image, image_side, 1.);
-
-  cuda_copy_real_to_host(image, d_image, N_3d);
-  blur_out = fopen("debug/blur_after.data", "wp");
-  for (int i = 0; i < N_3d; i++) {
-    fprintf(blur_out, "%g\n", image[i]);
-  }
-  fclose(blur_out);
-  exit(0);
-  /* done testing blur */
-}
-
-void test_weight_map() {
-  int image_side = 100;
-  real width = 20.;
-  real falloff = 10.;
-
-  real *d_weight_map;
-  cuda_allocate_weight_map(&d_weight_map, image_side);
-
-  cuda_calculate_weight_map_ring(d_weight_map, image_side, 0., 0., width, falloff);
-
-  real *weight_map = malloc(image_side*image_side*sizeof(real));
-  cuda_copy_real_to_host(weight_map, d_weight_map, image_side*image_side);
-
-  FILE *weight_map_out = fopen("debug/weight_map.data", "wp");
-  for (int i = 0; i < image_side*image_side; i++) {
-    fprintf(weight_map_out, "%g\n", weight_map[i]);
-  }
-  fclose(weight_map_out);
-  exit(0);
-}
-
 sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 {
   sp_matrix **images = malloc(conf.N_images*sizeof(sp_matrix *));
@@ -662,12 +596,6 @@ int main(int argc, char **argv)
     printf("Created output directory: %s\n", conf.output_dir);
   } else {
     printf("Failed to create output directory (it probably already exists): %s\n", conf.output_dir);
-  }
-
-  if (mkdir(conf.debug_dir, 0777) == 0) {
-    printf("Created debug directory: %s\n", conf.debug_dir);
-  } else {
-    printf("Failed to create debug directory (it probably already exists): %s\n", conf.debug_dir);
   }
 
   const int start_iteration = 0;
@@ -1176,62 +1104,6 @@ int main(int argc, char **argv)
 				  current_chunk);
       }
     }
-
-    /* test scaling by outputting two */
-    /*
-    real *out = malloc(N_2d*sizeof(real));
-    cuda_copy_real_to_host(out, d_images, N_2d);
-    sprintf(buffer, "debug/image_0_%.4d.data", iteration);
-    FILE *fi = fopen(buffer, "wp");
-    for (int i1 = 0; i1 < conf.model_side; i1++) {
-      for (int i2 = 0; i2 < conf.model_side; i2++) {
-	fprintf(fi, "%g ", out[i1*conf.model_side + i2]);
-      }
-      fprintf(fi, "\n");
-    }
-    fclose(fi);
-    cuda_copy_real_to_host(out, slices, N_2d);
-    sprintf(buffer, "debug/slice_0_%.4d.data", iteration);
-    fi = fopen(buffer, "wp");
-    for (int i1 = 0; i1 < conf.model_side; i1++) {
-      for (int i2 = 0; i2 < conf.model_side; i2++) {
-	fprintf(fi, "%g ", out[i1*conf.model_side + i2]);
-      }
-      fprintf(fi, "\n");
-    }
-    fclose(fi);
-    free(out);
-    */
-
-    /* output all slices at choosen iteration */
-    if (iteration == 1000000000) {
-      real *h_slices = malloc(slice_chunk*N_2d*sizeof(real));
-      Image *out = sp_image_alloc(conf.model_side, conf.model_side, 1);	
-      for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
-	if (slice_start + slice_chunk >= N_slices) {
-	  current_chunk = N_slices - slice_start;
-	} else {
-	  current_chunk = slice_chunk;
-	}
-	cuda_get_slices(model, d_model, slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
-			slice_start, current_chunk);
-	
-	cuda_copy_real_to_host(h_slices, slices, current_chunk*N_2d);
-
-	for (int i_slice = 0; i_slice < current_chunk; i_slice++) {
-	  if (i_slice % 1000 == 0) {
-	    printf("output %d %d\n", slice_start/slice_chunk, i_slice);
-	  }
-	  for (int i = 0; i < N_2d; i++) {
-	    out->image->data[i] = sp_cinit(h_slices[i_slice*N_2d + i], 0.);
-	  }
-	  sprintf(buffer, "%s/slice_%.7d.h5", conf.debug_dir, slice_start + i_slice);
-	  sp_image_write(out, buffer, 0);
-	}
-      }
-      exit(0);
-    }
-    
       
     cuda_copy_real_to_host(fit, d_fit, N_images);
     cuda_copy_real_to_host(fit_best_rot, d_fit_best_rot, N_images);
@@ -1539,10 +1411,6 @@ int main(int argc, char **argv)
 	printf("update slices chunk %d\n", slice_start/slice_chunk);
       }
 
-      /* is this problematic. Debug!
-      cuda_get_slices(model, d_model, slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
-		      slice_start, current_chunk);
-      */
       cuda_update_slices(d_images, slices, d_mask,
 			 d_respons, d_scaling, d_active_images,
 			 N_images, slice_start, current_chunk, N_2d,
@@ -1558,12 +1426,6 @@ int main(int argc, char **argv)
     if (conf.known_intensity == 0) {
       cuda_normalize_model(model, d_model);
     }
-
-    //sprintf(buffer, "debug/model_before_blur_%.4d.h5", iteration);
-    //cuda_output_device_model(d_model, buffer, conf.model_side);
-    //cuda_blur_model(d_model, conf.model_side, conf.model_blur);
-    //sprintf(buffer, "debug/model_after_blur_%.4d.h5", iteration);
-    //cuda_output_device_model(d_model, buffer, conf.model_side);
 
     cuda_copy_model(model, d_model);
     cuda_copy_model(weight, d_weight);
@@ -1650,20 +1512,6 @@ int main(int argc, char **argv)
 			     d_weight,images);
 
   }
-  real *debug_model = malloc(conf.model_side*conf.model_side*conf.model_side*sizeof(real));
-  real *debug_weight = malloc(conf.model_side*conf.model_side*conf.model_side*sizeof(real));
-  cuda_copy_real_to_host(debug_model, d_model_updated, conf.model_side*conf.model_side*conf.model_side);
-  cuda_copy_real_to_host(debug_weight, d_weight, conf.model_side*conf.model_side*conf.model_side);
-  for (int i = 0; i < N_model; i++) {
-    model_out->image->data[i] = sp_cinit(debug_model[i],0.0);
-  }
-  sprintf(buffer, "%s/debug_model.h5", conf.debug_dir);
-  sp_image_write(model_out, buffer, 0);
-  for (int i = 0; i < N_model; i++) {
-    model_out->image->data[i] = sp_cinit(debug_weight[i],0.0);
-  }
-  sprintf(buffer, "%s/debug_weight.h5", conf.debug_dir);
-  sp_image_write(model_out, buffer, 0);
 
   cuda_divide_model_by_weight(model, d_model_updated, d_weight);
   if (!conf.known_intensity){
@@ -1695,7 +1543,7 @@ int main(int argc, char **argv)
   sp_image_write(model_out, buffer, 0);
 
 
-  sprintf(buffer, "%s/final_best_rotations.data", conf.debug_dir);
+  sprintf(buffer, "%s/final_best_rotations.data", conf.output_dir);
   FILE *final_best_rotations_file = fopen(buffer,"wp");
   real highest_resp, this_resp;
   int final_best_rotation;
