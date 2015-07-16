@@ -11,8 +11,14 @@
 #include <hdf5.h>
 #include <getopt.h>
 
+#define PATH_MAX 256
+
 static int quit_requested = 0;
 
+  /* Capture a crtl-c event to make a final iteration be
+   run with the individual masked used in the compression.
+   This is consistent with the final iteration when not
+   interupted. Ctrl-c again will exit immediatley. */
 void nice_exit(int sig) {
   if (quit_requested == 0) {
     quit_requested = 1;
@@ -577,11 +583,31 @@ int read_rotations_file(const char *filename, Quaternion ***rotations, real **we
   return N_slices;
 }
 
+static void mkdir_recursive(const char *dir, int permission) {
+  char tmp[PATH_MAX];
+  char *p = NULL;
+  size_t len;
+  
+  snprintf(tmp, sizeof(tmp), "%s", dir);
+  len = strlen(tmp);
+  if (tmp[len-1] == '/') {
+    tmp[len-1] = 0;
+  }
+  for (p = tmp+1; *p; p++) {
+    if (*p == '/') {
+      *p = 0;
+      mkdir(tmp, permission);
+      *p = '/';
+    }
+  }
+  mkdir(tmp, permission);
+}
+
 int main(int argc, char **argv)
 {
 
   /* Parse command-line options */
-  char configuration_filename[200] = "emc.conf";
+  char configuration_filename[PATH_MAX] = "emc.conf";
   int chosen_device = -1; // negative numbers means the program chooses automatically
   char help_text[] =
     "Options:\n\
@@ -612,7 +638,13 @@ int main(int argc, char **argv)
     }
   }
 
+  /* Capture a crtl-c event to make a final iteration be
+   run with the individual masked used in the compression.
+   This is consistent with the final iteration when not
+   interupted. Ctrl-c again will exit immediatley. */
   signal(SIGINT, nice_exit);
+
+  /* Set the cuda device */
   if (chosen_device >= 0) {
     cuda_set_device(chosen_device);
   } else {
@@ -620,6 +652,7 @@ int main(int argc, char **argv)
   }
   cuda_print_device_info();
 
+  /* Read the configuration file */
   Configuration conf;
   int conf_return = read_configuration_file(configuration_filename, &conf);
   if (conf_return == 0) {
@@ -629,11 +662,9 @@ int main(int argc, char **argv)
 
   char buffer[1000];
 
-  if (mkdir(conf.output_dir, 0777) == 0) {
-    printf("Created output directory: %s\n", conf.output_dir);
-  } else {
-    printf("Failed to create output directory (it probably already exists): %s\n", conf.output_dir);
-  }
+  /* Create the output directory if it does not exist. */
+  mkdir_recursive(conf.output_dir, 0777);
+  printf("after mkdir\n");
 
   const int start_iteration = 0;
   const int N_images = conf.N_images;
