@@ -100,7 +100,8 @@ void write_scaling_to_file(const hid_t dataset, const int iteration, float *scal
   hsize_t block[2];
   hsize_t mdims[2];
   H5Sget_simple_extent_dims(dataspace, block, mdims);
-  /* check if stack has enough space, otherwhise enlarge */
+  
+  /* Check if stack has enough space, otherwhise enlarge. */
   if (block[0] <= iteration) {
     while(block[0] <= iteration) {
       block[0] *= 2;
@@ -111,7 +112,8 @@ void write_scaling_to_file(const hid_t dataset, const int iteration, float *scal
     if (dataspace<0) {printf("Error enlarging dataspace in scaling\n"); exit(1);}
   }
 
-  /* now that we know the extent, find the best respons and compile a scaling array*/
+  /* Now that we know the extent, find the best responsability and create an
+     array with the scaling. */
   int N_images = block[1];
   float *data = malloc(N_images*sizeof(float));
   int best_index;
@@ -128,15 +130,15 @@ void write_scaling_to_file(const hid_t dataset, const int iteration, float *scal
     data[i_image] = scaling[best_index*N_images + i_image];
   }
 
-  /* now get the hyperslab for the current iteration */
+  /* Get the hdf5 hyperslab for the current iteration */
   block[0] = 1;
   hid_t memspace = H5Screate_simple(2, block, NULL);
   if (memspace < 0) {printf("Error creating memspace when writing scaling\n"); exit(1);}
   hsize_t offset[2] = {iteration, 0};
   hsize_t stride[2] = {1, 1};
   hsize_t count[2] = {1, 1};
-  hid_t hs = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, stride, count, block);
-  if (hs < 0) {printf("Error selecting hyperslab in scaling\n"); exit(1);}
+  hid_t hyperslab = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, stride, count, block);
+  if (hyperslab < 0) {printf("Error selecting hyperslab in scaling\n"); exit(1);}
   hid_t w = H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, dataspace, H5P_DEFAULT, data);
   if (w < 0) {printf("Error writing scaling\n"); exit(1);}
   free(data);
@@ -145,12 +147,15 @@ void write_scaling_to_file(const hid_t dataset, const int iteration, float *scal
   H5Fflush(dataset, H5F_SCOPE_GLOBAL);
 }
 
+/* Close scaling file. Call this after the last call to
+   write_scaling_to_file. */
 void close_scaling_file(hid_t dataset, hid_t file) {
   H5Sclose(dataset);
   H5Sclose(file);
 }
 
-void write_2d_array_hdf5(char *filename, real *array, int index1_max, int index2_max) {
+/* Writes any real type 2D array in hdf5 format. */
+void write_2d_real_array_hdf5(char *filename, real *array, int index1_max, int index2_max) {
   hid_t file_id;
   file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   hid_t space_id;
@@ -165,7 +170,9 @@ void write_2d_array_hdf5(char *filename, real *array, int index1_max, int index2
   H5Fclose(file_id);
 }
 
-void write_2d_array_trans_hdf5(char *filename, real *array, int index1_max, int index2_max) {
+/* Writes any real type 2D array in hdf5 format. Transposes the
+   array before writing. */
+void write_2d_real_array_hdf5_transpose(char *filename, real *array, int index1_max, int index2_max) {
 
   real *array_trans = malloc(index1_max*index2_max*sizeof(real));
   for (int i1 = 0; i1 < index1_max; i1++) {
@@ -188,6 +195,7 @@ void write_2d_array_trans_hdf5(char *filename, real *array, int index1_max, int 
   free(array_trans);
 }
 
+/* Writes any real type 3D array in hdf5 format. */
 void write_3d_array_hdf5(char *filename, real *array, int index1_max, int index2_max, int index3_max) {
   hid_t file_id;
   file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
@@ -204,33 +212,39 @@ void write_3d_array_hdf5(char *filename, real *array, int index1_max, int index2
   H5Fclose(file_id);
 }
 
+/* Precalculate coordinates. These coordinates represent an
+   Ewald sphere with the xy plane with liftoff in the z direction.
+   These coordinates then only have to be rotated to get coordinates
+   for expansion and compression. */
 void calculate_coordinates(int side, real pixel_size, real detector_distance, real wavelength,
 			   sp_matrix *x_coordinates,
 			   sp_matrix *y_coordinates, sp_matrix *z_coordinates) {
   const int x_max = side;
   const int y_max = side;
-  real pixel_r, real_r, fourier_r, angle_r, fourier_z;
-  real pixel_x, pixel_y, pixel_z;
+  real radius_in_pixels, radius_real, radius_fourier, radius_angle, z_liftoff_fourier;
+  real x_in_pixels, y_in_pixels, z_in_pixels;
   //tabulate angle later
   for (int x = 0; x < x_max; x++) {
     for (int y = 0; y < y_max; y++) {
-      pixel_r = sqrt(pow((real)(x-x_max/2)+0.5,2) + pow((real)(y-y_max/2)+0.5,2));
-      real_r = pixel_r*pixel_size;
-      angle_r = atan2(real_r,detector_distance);
-      fourier_r = sin(angle_r)/wavelength;
-      fourier_z = (1. - cos(angle_r))/wavelength;
+      radius_in_pixels = sqrt(pow((real)(x-x_max/2)+0.5,2) + pow((real)(y-y_max/2)+0.5,2));
+      radius_real = radius_in_pixels*pixel_size;
+      radius_angle = atan2(radius_real, detector_distance);
+      radius_fourier = sin(radius_angle)/wavelength;
+      z_liftoff_fourier = (1. - cos(radius_angle))/wavelength;
 
-      pixel_x = (real)(x-x_max/2)+0.5;
-      pixel_y = (real)(y-y_max/2)+0.5;
-      pixel_z = fourier_z/fourier_r*pixel_r;
-      sp_matrix_set(x_coordinates,x,y,pixel_x);
-      sp_matrix_set(y_coordinates,x,y,pixel_y);
-      sp_matrix_set(z_coordinates,x,y,pixel_z);
+      x_in_pixels = (real)(x-x_max/2)+0.5;
+      y_in_pixels = (real)(y-y_max/2)+0.5;
+      z_in_pixels = z_liftoff_fourier/radius_fourier*radius_in_pixels;
+      sp_matrix_set(x_coordinates, x, y, x_in_pixels);
+      sp_matrix_set(y_coordinates, x, y, y_in_pixels);
+      sp_matrix_set(z_coordinates, x, y, z_in_pixels);
     }
   }
 }
 
-
+/* Like the compression step but only insert one slice into the model. This
+   function is for exapmle used when initializing a model from random
+   orientaitons. */
 void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 		  sp_imatrix * mask, real w, Quaternion *rot, sp_matrix *x_coordinates,
 		  sp_matrix *y_coordinates, sp_matrix *z_coordinates)
@@ -238,12 +252,14 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
   const int x_max = sp_matrix_rows(slice);
   const int y_max = sp_matrix_cols(slice);
   //tabulate angle later
+
   real new_x, new_y, new_z;
   int round_x, round_y, round_z;
   for (int x = 0; x < x_max; x++) {
     for (int y = 0; y < y_max; y++) {
       if (sp_imatrix_get(mask,x,y) == 1) {
-	/* This is just a matrix multiplication with rot */
+	/* This is a matrix multiplication of the x/y/z_coordinates with the
+	   rotation matrix of the rotation rot. */
 	new_x =
 	  (rot->q[0]*rot->q[0] + rot->q[1]*rot->q[1] -
 	   rot->q[2]*rot->q[2] - rot->q[3]*rot->q[3])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
@@ -266,9 +282,14 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 	  (rot->q[0]*rot->q[0] - rot->q[1]*rot->q[1] -
 	   rot->q[2]*rot->q[2] + rot->q[3]*rot->q[3])*sp_matrix_get(x_coordinates,x,y);
 
+	/* Round of the values nearest pixel. This function uses nearest
+	   neighbour interpolation as oposed to the linear interpolation
+	   used by the cuda code. */
 	round_x = round((real)sp_3matrix_x(model)/2.0 - 0.5 + new_x);
 	round_y = round((real)sp_3matrix_y(model)/2.0 - 0.5 + new_y);
 	round_z = round((real)sp_3matrix_z(model)/2.0 - 0.5 + new_z);
+	/* If the rotated coordinates are inside the extent of the model we
+	   add the value to the model and 1 to the weight */
 	if (round_x >= 0 && round_x < sp_3matrix_x(model) &&
 	    round_y >= 0 && round_y < sp_3matrix_y(model) &&
 	    round_z >= 0 && round_z < sp_3matrix_z(model)) {
@@ -276,11 +297,14 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 			 sp_3matrix_get(model,round_x,round_y,round_z)+w*sp_matrix_get(slice,x,y));
 	  sp_3matrix_set(weight,round_x,round_y,round_z,sp_3matrix_get(weight,round_x,round_y,round_z)+w);
 	}
-      }//endif
+      }// end of if
     }
   }
 }
 
+/* Read images in spimage format and read the individual masks. The
+   masks pointer should not be allocated before calling, it is
+   allocated by this function. */
 sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 {
   sp_matrix **images = malloc(conf.N_images*sizeof(sp_matrix *));
@@ -297,25 +321,31 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
     sprintf(filename_buffer,"%s%.4d.h5", conf.image_prefix, i);
     img = sp_image_read(filename_buffer,0);
 
-    /* blur image if enabled */
+    /* Blur input image if specified in the configuration file. This
+       might might be useful for noisy data if the noise is not taken
+       into account by the diff_type. */
     if (conf.blur_image == 1) {
       Image *tmp = sp_gaussian_blur(img,conf.blur_sigma);
       sp_image_free(img);
       img = tmp;
     }
 
+    /* Allocate return arrays */
     images[i] = sp_matrix_alloc(conf.model_side,conf.model_side);
     masks[i] = sp_imatrix_alloc(conf.model_side,conf.model_side);
 
+    /* The algorithm can't handle negative data so if we have negative
+       values they are simply set to 0. */
     for (int pixel_i = 0; pixel_i < sp_image_size(img); pixel_i++) {
       if (sp_real(img->image->data[pixel_i]) < 0.) {
 	sp_real(img->image->data[pixel_i]) = 0.;
       }
     }
 
+    /* Downsample images and masks by nested loops of all
+       downsampled pixels and then all subpixels. */
     real pixel_sum, pixel_this;
     int mask_sum, mask_this;
-    /* Step through all pixels in downsampled image */
     for (int x = 0; x < conf.model_side; x++) {
       for (int y = 0; y < conf.model_side; y++) {
 	pixel_sum = 0.0;
@@ -333,6 +363,9 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 	    }
 	  }
 	}
+	/* As long as there were at least one subpixel contributin to the
+	   pixel (that is that was not masked out) we include the data and
+	   don't mask out the pixel. */
 	if (mask_sum > 0) {
 	  sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
 	  sp_imatrix_set(masks[i],x,y,1);
@@ -347,7 +380,10 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
   return images;
 }
 
-/* init mask */
+/* Read the common mask in a similar way as in which the individual
+   masks are read. The image values of the spimage file are used as
+   the masks and the mask of the image is never read. Values of 0 are
+   masked out. */
 sp_imatrix *read_mask(Configuration conf)
 {
   sp_imatrix *mask = sp_imatrix_alloc(conf.model_side,conf.model_side);;
@@ -372,24 +408,11 @@ sp_imatrix *read_mask(Configuration conf)
       }
     }
   }
-  /*
-  for (int x = 0; x < conf.model_side; x++) {
-    for (int y = 0; y < conf.model_side; y++) {
-      if (sp_cabs(sp_image_get(mask_in,
-			       (int)(conf.read_stride*((real)(x-conf.model_side/2)+0.5)+
-				     sp_image_x(mask_in)/2-0.5),
-			       (int)(conf.read_stride*((real)(y-conf.model_side/2)+0.5)+
-				     sp_image_y(mask_in)/2-0.5),0)) == 0.0) {
-	sp_imatrix_set(mask,x,y,0);
-      } else {
-	sp_imatrix_set(mask,x,y,1);
-      }
-    }
-  }
-  */
   sp_image_free(mask_in);
-  
-  /* mask out everything outside the central sphere */
+
+  /* Also mask out everything outside a sphere with diameter
+     conf.model_side. In this way we avoid any bias from the
+     alignment of the edges of the model. */
   for (int x = 0; x < conf.model_side; x++) {
     for (int y = 0; y < conf.model_side; y++) {
       if (sqrt(pow((real)x - (real)conf.model_side/2.0+0.5,2) +
@@ -402,7 +425,9 @@ sp_imatrix *read_mask(Configuration conf)
   return mask;
 }
 
-/* normalize images so average pixel value is 1.0 */
+/* Normalize all diffraction patterns so that the average pixel
+   value is 1.0 in each pattern. Use the common mask for the
+   normalization. */
 void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
 {
   real sum, count;
@@ -423,13 +448,19 @@ void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
   }
 }
 
-/* A radius of 0 means that the entire image is used */
+/* Normalize all diffraction patterns so that the average pixel value in
+   each patterns in a circle of the specified radius is 0. An input radius
+   of 0 means that the full image is used. */
 void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix * const mask, real radius, const Configuration conf) {
   const int x_max = conf.model_side;
   const int y_max = conf.model_side;
+  /* If the radius is 0 we use the full image by setting the
+     radius to a large number. */
   if (radius == 0) {
     radius = sqrt(pow(x_max, 2) + pow(y_max, 2))/2. + 2;
   }
+
+  /* Create a mask that marks the area to use. */
   sp_imatrix * central_mask = sp_imatrix_alloc(x_max, y_max);
   real r;
   for (int x = 0; x < x_max; x++) {
@@ -442,6 +473,8 @@ void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix *
       }
     }
   }
+
+  /* Do the normalization using the mask just created. */
   real sum, count;
   int N_2d = conf.model_side*conf.model_side;
   for (int i_image = 0; i_image < conf.N_images; i_image++) {
@@ -460,7 +493,9 @@ void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix *
   }
 }
 
-/* normalize images so average pixel value is 1.0 */
+/* Normalize all diffraction patterns so that the average pixel
+   value in each pattern is 1.0. Use the individual masks for
+   the normalization. */
 void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
 				      Configuration conf)
 {
@@ -482,7 +517,10 @@ void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
   }
 }
 
-/* this normalization is intended for use when known_intensities is set */
+/* Normalize all diffraction patterns so that the average pixel value
+   among all diffraction patterns is 1. This normalization is intended
+   for when intensities are known and therefore the relative scaling
+   must be preserved. */
 void normalize_images_preserve_scaling(sp_matrix ** images, sp_imatrix *mask, Configuration conf) {
   int N_2d = conf.model_side*conf.model_side;
   real sum = 0.;
@@ -503,6 +541,10 @@ void normalize_images_preserve_scaling(sp_matrix ** images, sp_imatrix *mask, Co
   }
 }
 
+/* This function writes some run information to a file and closes the
+   file. This is intended to contain things that don't change during the
+   run, currently number of images, the random seed and wether compact_output
+   is used. This file is used by the viewer. */
 void write_run_info(char *filename, Configuration conf, int random_seed) {
   hid_t file_id, space_id, dataset_id;
   file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
@@ -528,41 +570,49 @@ void write_run_info(char *filename, Configuration conf, int random_seed) {
   H5Fclose(file_id);
 }
 
+/* The state file contains info about the run but opposed to the run info
+   this contains things that change during the run. Currently it only
+   contains the current iteration. This file is used by the viewer and
+   is important to be able to view the data while the program is still
+   running. */
 hid_t open_state_file(char *filename) {
   hid_t file_id, space_id, dataset_id;
   file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 
-  //init iteration
   space_id = H5Screate(H5S_SCALAR);
   dataset_id = H5Dcreate1(file_id, "/iteration", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
   int iteration_start_value = -1;
   H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &iteration_start_value);
   H5Dclose(dataset_id);
   H5Sclose(space_id);
-
   
   H5Fflush(file_id, H5F_SCOPE_GLOBAL);
 
   return file_id;
 }
 
-void write_state_file_iteration(hid_t file_id, int value) {
+/* Write new information to the state file. Call this at the beginning of each iteration. */
+void write_state_file_iteration(hid_t file_id, int iteration) {
   hid_t dataset_id;
-
   hsize_t file_size;
   H5Fget_filesize(file_id, &file_size);
   
   dataset_id = H5Dopen(file_id, "/iteration", H5P_DEFAULT);
-  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &value);
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &iteration);
   H5Fflush(dataset_id, H5F_SCOPE_LOCAL);
   H5Dclose(dataset_id);
   H5Fflush(file_id, H5F_SCOPE_GLOBAL);
 }
 
+/* Close state file (duh). */
 void close_state_file(hid_t file_id) {
   H5Fclose(file_id);
 }
 
+/* The rotation sampling is tabulated to save computational time (although i think
+   the new code is fast enough so this is a bit ridicculus). This file reads the
+   rotations from file and returns them and the weights in the respective input
+   pointers and returns the number of rotations. */
 int read_rotations_file(const char *filename, Quaternion ***rotations, real **weights) {
   hid_t file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
   hid_t dataset_id = H5Dopen1(file_id, "/rotations");
@@ -587,6 +637,9 @@ int read_rotations_file(const char *filename, Quaternion ***rotations, real **we
   return N_slices;
 }
 
+/* Create a directory or do nothing if the directory already exists. This
+   function also works if there are several levels of diretcories that does
+   not exist. */
 static void mkdir_recursive(const char *dir, int permission) {
   char tmp[PATH_MAX];
   char *p = NULL;
@@ -607,8 +660,8 @@ static void mkdir_recursive(const char *dir, int permission) {
   mkdir(tmp, permission);
 }
 
-  /* Create the compressed model: model and the model
-     weights used in the compress step: weight. */
+/* Create the compressed model: model and the model
+   weights used in the compress step: weight. */
 static void create_initial_model_uniform(sp_3matrix *model, gsl_rng *rng) {
   const int N_model = sp_3matrix_size(model);
   for (int i = 0; i < N_model; i++) {
@@ -1301,7 +1354,7 @@ int main(int argc, char **argv)
 	 is turned off. */
       if (conf.compact_output == 0) {
 	sprintf(filename_buffer, "%s/scaling_%.4d.h5", conf.output_dir, iteration);
-	write_2d_array_hdf5(filename_buffer, scaling, N_slices, N_images);
+	write_2d_real_array_hdf5(filename_buffer, scaling, N_slices, N_images);
       }
       
       /* Output the best scaling */
@@ -1398,7 +1451,7 @@ int main(int argc, char **argv)
        responsabilities if compact_output is turned off. */
     if (conf.compact_output == 0) {
       sprintf(filename_buffer, "%s/responsabilities_%.4d.h5", conf.output_dir, iteration);
-      write_2d_array_trans_hdf5(filename_buffer, respons, N_slices, N_images);
+      write_2d_real_array_hdf5_transpose(filename_buffer, respons, N_slices, N_images);
     }
 
     /* Output average responsabilities. These are plotted in the
