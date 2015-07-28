@@ -7,7 +7,14 @@
 extern "C"{
 #endif
 
-  enum diff_type {absolute=0, poisson, relative};
+  enum diff_type {absolute=0,
+		  poisson,
+		  relative};
+  enum initial_model_type {initial_model_uniform=0,
+			   initial_model_radial_average,
+			   initial_model_random_orientations,
+			   initial_model_file,
+			   initial_model_given_orientations};
 
    typedef struct{
     int model_side;
@@ -30,7 +37,7 @@ extern "C"{
     const char *image_prefix;
     int normalize_images;
     int known_intensity;
-    int model_input;
+    enum initial_model_type initial_model;
     double initial_model_noise;
     const char *model_file;
     const char *init_rotations_file;

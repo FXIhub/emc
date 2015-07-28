@@ -68,6 +68,8 @@ typedef struct{
   real cuda_model_average(real * model, int model_size);
   void cuda_allocate_model(real ** d_model, sp_3matrix * model);
   void cuda_allocate_mask(int ** d_mask, sp_imatrix * mask);
+  void cuda_apply_masks(real *const d_images, const int *const d_masks, const int N_2d, const int N_images);
+  void cuda_apply_single_mask(real *const d_images, const int *const d_mask, const int N_2d, const int N_images);
   void cuda_reset_model(sp_3matrix * model, real * d_model);
   void cuda_copy_model(sp_3matrix * model, real *d_model);
   void cuda_output_device_model(real *d_model, char *filename, int side);

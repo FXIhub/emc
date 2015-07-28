@@ -977,6 +977,38 @@ void cuda_allocate_masks(int ** d_images, sp_imatrix ** images,  int N_images){
   }
 }
 
+__global__ void apply_mask(real *const array, const int *const mask, const int size) {
+  int i = blockIdx.x*blockDim.x + threadIdx.x;
+  if (i < size) {
+    if (mask[i] == 0) {
+      array[i] = -1.;
+    }
+  }
+}
+
+/* This function is the same as apply_mask except that it
+   periodically steps throug the mask thus applying the same
+   mask to multiple files. */
+__global__ void apply_single_mask(real * const array, const int *const mask, const int mask_size, const int size) {
+  int i = blockIdx.x*blockDim.x + threadIdx.x;
+  if (i < size) {
+    if (mask[i%mask_size] == 0) {
+      array[i] = -1.;
+    }
+  }
+}
+
+void cuda_apply_masks(real *const d_images, const int *const d_masks, const int N_2d, const int N_images) {
+  int nthreads = 256;
+  int nblocks = (N_2d*N_images - 1) / nthreads;
+  apply_mask<<<nblocks, nthreads>>>(d_images, d_masks, N_2d*N_images);
+}
+
+void cuda_apply_single_mask(real *const d_images, const int *const d_mask, const int N_2d, const int N_images) {
+  int nthreads = 256;
+  int nblocks = (N_2d*N_images - 1) / nthreads;
+  apply_single_mask<<<nblocks, nthreads>>>(d_images, d_mask, N_2d, N_2d*N_images);
+}
 
 void cuda_allocate_coords(real ** d_x, real ** d_y, real ** d_z, sp_matrix * x,
 			  sp_matrix * y, sp_matrix * z){
@@ -1532,15 +1564,6 @@ __global__ void get_mask_from_model(real *model, int *mask, int size) {
       model[i] = 0.;
     } else {
       mask[i] = 1;
-    }
-  }
-}
-
-__global__ void apply_mask(real *model, int *mask, int size) {
-  int i = blockIdx.x*blockDim.x + threadIdx.x;
-  if (i < size) {
-    if (mask[i] == 0) {
-      model[i] = -1.;
     }
   }
 }

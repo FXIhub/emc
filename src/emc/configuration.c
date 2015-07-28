@@ -32,7 +32,22 @@ int read_configuration_file(const char *filename, Configuration *config_out)
   config_lookup_string(&config,"image_prefix",&(config_out->image_prefix));
   config_lookup_bool(&config,"normalize_images",&(config_out->normalize_images));
   config_lookup_bool(&config,"known_intensity",&(config_out->known_intensity));
-  config_lookup_int(&config,"model_input",&(config_out->model_input));
+  const char *initial_model_string = malloc(20*sizeof(char));
+  config_lookup_string(&config,"initial_model",&initial_model_string);
+  if (strcmp(initial_model_string, "uniform") == 0) {
+    config_out->initial_model = initial_model_uniform;
+  } else if (strcmp(initial_model_string, "radial average") == 0) {
+    config_out->initial_model = initial_model_radial_average;
+  } else if (strcmp(initial_model_string, "random orientations") == 0) {
+    config_out->initial_model = initial_model_random_orientations;
+  } else if (strcmp(initial_model_string, "file") == 0) {
+    config_out->initial_model = initial_model_file;
+  } else if (strcmp(initial_model_string, "given orientations") == 0) {
+    config_out->initial_model = initial_model_given_orientations;
+  } else {
+    printf("Configuration file: bad value for initial_model: %s\n", initial_model_string);
+    return 0;
+  }
   config_lookup_float(&config,"initial_model_noise",&(config_out->initial_model_noise));
   config_lookup_string(&config,"model_file",&(config_out->model_file));
   config_lookup_string(&config, "init_rotations", &(config_out->init_rotations_file));
@@ -49,6 +64,9 @@ int read_configuration_file(const char *filename, Configuration *config_out)
     config_out->diff = poisson;
   } else if (strcmp(diff_type_string, "relative") == 0) {
     config_out->diff = relative;
+  } else {
+    printf("Configuration file: bad value for diff_type: %s\n", diff_type_string);
+    return 0;
   }
   config_lookup_float(&config,"model_blur",&(config_out->model_blur));
 
