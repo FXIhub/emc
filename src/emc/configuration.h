@@ -18,7 +18,7 @@ extern "C"{
 
    typedef struct{
     int model_side;
-    int read_stride;
+    int image_binning;
     double wavelength;
     double pixel_size;
     double detector_distance;
@@ -28,22 +28,23 @@ extern "C"{
     double sigma_final;
     int sigma_half_life;
     enum diff_type diff;
-    int slice_chunk;
-    int N_images;
-    int max_iterations;
+    int chunk_size;
+    int number_of_images;
+    int number_of_iterations;
     int blur_image;
-    double blur_sigma;
+    double blur_image_sigma;
     const char *mask_file;
     const char *image_prefix;
     int normalize_images;
-    int known_intensity;
+    int recover_scaling;
     enum initial_model_type initial_model;
     double initial_model_noise;
-    const char *model_file;
-    const char *init_rotations_file;
+    const char *initial_model_file;
+    const char *initial_rotations_file;
     int exclude_images;
-    double exclude_ratio;
-    double model_blur;
+    double exclude_images_ratio;
+    int blur_model
+    double blur_model_sigma;
     const char *output_dir;
     int random_seed;
     int calculate_r_free;

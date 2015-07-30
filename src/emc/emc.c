@@ -307,17 +307,17 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
    allocated by this function. */
 sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 {
-  sp_matrix **images = malloc(conf.N_images*sizeof(sp_matrix *));
-  //masks = malloc(conf.N_images*sizeof(sp_imatrix *));
+  sp_matrix **images = malloc(conf.number_of_images*sizeof(sp_matrix *));
+  //masks = malloc(conf.number_of_images*sizeof(sp_imatrix *));
   Image *img;
-  real *intensities = malloc(conf.N_images*sizeof(real));
+  real *intensities = malloc(conf.number_of_images*sizeof(real));
   char filename_buffer[PATH_MAX];
 
-  for (int i = 0; i < conf.N_images; i++) {
+  for (int i = 0; i < conf.number_of_images; i++) {
     intensities[i] = 1.0;
   }
 
-  for (int i = 0; i < conf.N_images; i++) {
+  for (int i = 0; i < conf.number_of_images; i++) {
     sprintf(filename_buffer,"%s%.4d.h5", conf.image_prefix, i);
     img = sp_image_read(filename_buffer,0);
 
@@ -325,7 +325,7 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
        might might be useful for noisy data if the noise is not taken
        into account by the diff_type. */
     if (conf.blur_image == 1) {
-      Image *tmp = sp_gaussian_blur(img,conf.blur_sigma);
+      Image *tmp = sp_gaussian_blur(img,conf.blur_image_sigma);
       sp_image_free(img);
       img = tmp;
     }
@@ -351,12 +351,12 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 	pixel_sum = 0.0;
 	mask_sum = 0;
 	/* Step through all sub-pixels and add up values */
-	for (int xb = 0; xb < conf.read_stride; xb++) {
-	  for (int yb = 0; yb < conf.read_stride; yb++) {
-	    pixel_this = sp_cabs(sp_image_get(img, sp_image_x(img)/2 - (conf.model_side/2)*conf.read_stride + x*conf.read_stride + xb,
-					      sp_image_y(img)/2 - (conf.model_side/2)*conf.read_stride + y*conf.read_stride + yb, 0));
-	    mask_this = sp_image_mask_get(img, sp_image_x(img)/2 - (conf.model_side/2)*conf.read_stride + x*conf.read_stride + xb,
-					  sp_image_y(img)/2 - (conf.model_side/2)*conf.read_stride + y*conf.read_stride + yb, 0);
+	for (int xb = 0; xb < conf.image_binning; xb++) {
+	  for (int yb = 0; yb < conf.image_binning; yb++) {
+	    pixel_this = sp_cabs(sp_image_get(img, sp_image_x(img)/2 - (conf.model_side/2)*conf.image_binning + x*conf.image_binning + xb,
+					      sp_image_y(img)/2 - (conf.model_side/2)*conf.image_binning + y*conf.image_binning + yb, 0));
+	    mask_this = sp_image_mask_get(img, sp_image_x(img)/2 - (conf.model_side/2)*conf.image_binning + x*conf.image_binning + xb,
+					  sp_image_y(img)/2 - (conf.model_side/2)*conf.image_binning + y*conf.image_binning + yb, 0);
 	    if (mask_this > 0) {
 	      pixel_sum += pixel_this;
 	      mask_sum += 1;
@@ -393,10 +393,10 @@ sp_imatrix *read_mask(Configuration conf)
   for (int x = 0; x < conf.model_side; x++) {
     for (int y = 0; y < conf.model_side; y++) {
       mask_sum = 0;
-      for (int xb = 0; xb < conf.read_stride; xb++) {
-	for (int yb = 0; yb < conf.read_stride; yb++) {
-	  if (sp_cabs(sp_image_get(mask_in, sp_image_x(mask_in)/2 - conf.model_side*conf.read_stride/2 + x*conf.read_stride + xb,
-				   sp_image_y(mask_in)/2 - conf.model_side*conf.read_stride/2 + y*conf.read_stride + yb, 0))) {
+      for (int xb = 0; xb < conf.image_binning; xb++) {
+	for (int yb = 0; yb < conf.image_binning; yb++) {
+	  if (sp_cabs(sp_image_get(mask_in, sp_image_x(mask_in)/2 - conf.model_side*conf.image_binning/2 + x*conf.image_binning + xb,
+				   sp_image_y(mask_in)/2 - conf.model_side*conf.image_binning/2 + y*conf.image_binning + yb, 0))) {
 	    mask_sum += 1;
 	  }
 	}
@@ -432,7 +432,7 @@ void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
 {
   real sum, count;
   int N_2d = conf.model_side*conf.model_side;
-  for (int i_image = 0; i_image < conf.N_images; i_image++) {
+  for (int i_image = 0; i_image < conf.number_of_images; i_image++) {
     sum = 0.;
     count = 0.;
     for (int i = 0; i < N_2d; i++) {
@@ -477,7 +477,7 @@ void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix *
   /* Do the normalization using the mask just created. */
   real sum, count;
   int N_2d = conf.model_side*conf.model_side;
-  for (int i_image = 0; i_image < conf.N_images; i_image++) {
+  for (int i_image = 0; i_image < conf.number_of_images; i_image++) {
     sum = 0.;
     count = 0.;
     for (int i = 0; i < N_2d; i++) {
@@ -501,7 +501,7 @@ void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
 {
   real sum, count;
   int N_2d = conf.model_side*conf.model_side;
-  for (int i_image = 0; i_image < conf.N_images; i_image++) {
+  for (int i_image = 0; i_image < conf.number_of_images; i_image++) {
     sum = 0.;
     count = 0.;
     for (int i = 0; i < N_2d; i++) {
@@ -525,7 +525,7 @@ void normalize_images_preserve_scaling(sp_matrix ** images, sp_imatrix *mask, Co
   int N_2d = conf.model_side*conf.model_side;
   real sum = 0.;
   real count = 0.;
-  for (int i_image = 0; i_image < conf.N_images; i_image++) {
+  for (int i_image = 0; i_image < conf.number_of_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
       if (mask->data[i] == 1) {
 	sum += images[i_image]->data[i];
@@ -533,8 +533,8 @@ void normalize_images_preserve_scaling(sp_matrix ** images, sp_imatrix *mask, Co
       }
     }
   }
-  sum = (count*(real)conf.N_images) / sum;
-  for (int i_image = 0; i_image < conf.N_images; i_image++) {
+  sum = (count*(real)conf.number_of_images) / sum;
+  for (int i_image = 0; i_image < conf.number_of_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
       images[i_image]->data[i] *= sum;
     }
@@ -551,7 +551,7 @@ void write_run_info(char *filename, Configuration conf, int random_seed) {
 
   space_id = H5Screate(H5S_SCALAR);
   dataset_id = H5Dcreate1(file_id, "/number_of_images", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
-  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.N_images);
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.number_of_images);
   H5Dclose(dataset_id);
   H5Sclose(space_id);
 
@@ -751,7 +751,7 @@ static void create_initial_model_random_orientations(sp_3matrix *model, sp_3matr
 
 /* Assemble the model from the given diffraction patterns
    with a rotation assigned from the file provided in
-   conf.init_rotations_file. */
+   conf.initial_rotations_file. */
 static void create_initial_model_given_orientations(sp_3matrix *model, sp_3matrix *weight, sp_matrix **images, const int N_images, 
 						    sp_imatrix *mask, sp_matrix *x_coordinates, sp_matrix *y_coordinates,
 						    sp_matrix *z_coordinates, const char *init_rotations_file) {
@@ -856,8 +856,8 @@ int main(int argc, char **argv)
   /* Create constant versions of some of the commonly used
      variables from the configuration file. Also create some
      useful derived variables */
-  const int N_images = conf.N_images;
-  const int slice_chunk = conf.slice_chunk;
+  const int N_images = conf.number_of_images;
+  const int slice_chunk = conf.chunk_size;
   const int N_2d = conf.model_side*conf.model_side;
   const int N_model = conf.model_side*conf.model_side*conf.model_side;
 
@@ -911,12 +911,12 @@ int main(int argc, char **argv)
   hid_t state_file = open_state_file(filename_buffer);
 
   /* Read images and mask */
-  sp_imatrix **masks = malloc(conf.N_images*sizeof(sp_imatrix *));
+  sp_imatrix **masks = malloc(conf.number_of_images*sizeof(sp_imatrix *));
   sp_matrix **images = read_images(conf,masks);
   sp_imatrix * mask = read_mask(conf);
 
   if (conf.normalize_images) {
-    if (conf.known_intensity) {
+    if (!conf.recover_scaling) {
       normalize_images_preserve_scaling(images, mask, conf);
     } else {
       real central_part_radius = 0.; // Zero here means that the entire image is used.
@@ -995,13 +995,13 @@ int main(int argc, char **argv)
 					     y_coordinates, z_coordinates, rng);
   }else if (conf.initial_model == initial_model_file) {
     /* Read the initial model from file.*/
-    create_initial_model_file(model, conf.model_file);
+    create_initial_model_file(model, conf.initial_model_file);
   } else if (conf.initial_model == initial_model_given_orientations) {
     /* Assemble the model from the given diffraction patterns
        with a rotation assigned from the file provided in
-       conf.init_rotations_file. */
+       conf.initial_rotations_file. */
     create_initial_model_given_orientations(model, weight, images, N_images, mask, x_coordinates,
-					    y_coordinates, z_coordinates, conf.init_rotations_file);
+					    y_coordinates, z_coordinates, conf.initial_rotations_file);
   }
 
   /* Allocate spimage object used for outputting the model.*/
@@ -1081,7 +1081,7 @@ int main(int argc, char **argv)
   real * d_model_tmp;
   cuda_allocate_model(&d_model,model);
   cuda_allocate_model(&d_model_updated,model);
-  if (!conf.known_intensity) {
+  if (conf.recover_scaling) {
     cuda_normalize_model(model, d_model);
     cuda_normalize_model(model, d_model_updated);
   }
@@ -1203,7 +1203,7 @@ int main(int argc, char **argv)
   hid_t scaling_file;
   sprintf(filename_buffer, "%s/best_scaling.h5", conf.output_dir);
   hid_t scaling_dataset;
-  if (conf.known_intensity == 0) {
+  if (conf.recover_scaling) {
     scaling_dataset = init_scaling_file(filename_buffer, N_images, &scaling_file);
   }
 
@@ -1221,7 +1221,7 @@ int main(int argc, char **argv)
   int current_chunk;
   
   /* Start the main EMC loop */
-  for (int iteration = 0; iteration < conf.max_iterations; iteration++) {
+  for (int iteration = 0; iteration < conf.number_of_iterations; iteration++) {
     /* If ctrl-c was pressed execution stops but the final
        iteration using individual masks and cleenup still runs. */
     if (quit_requested == 1) {
@@ -1335,7 +1335,7 @@ int main(int argc, char **argv)
     /* In this loop through the chunks the scaling is updated.
        This only runs if the user has specified that the intensity
        is unknown. */
-    if (conf.known_intensity == 0) {
+    if (conf.recover_scaling) {
       for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
 	if (slice_start + slice_chunk >= N_slices) {
 	  current_chunk = N_slices - slice_start;
@@ -1519,7 +1519,7 @@ int main(int argc, char **argv)
       /* Sort the responsabilities and set the active image flag for
 	 the worst diffraction patterns to 0. */
       qsort(best_respons_copy, N_images_included, sizeof(real), compare_real);
-      real threshold = best_respons_copy[(int)((real)N_images_included*conf.exclude_ratio)];
+      real threshold = best_respons_copy[(int)((real)N_images_included*conf.exclude_images_ratio)];
       for (int i_image = 0; i_image < N_images; i_image++) {
 	if (active_images[i_image] >= 0) {
 	  if (best_respons[i_image]  > threshold) {
@@ -1539,7 +1539,7 @@ int main(int argc, char **argv)
 	}
       }
       qsort(best_respons_copy, N_images-N_images_included, sizeof(real), compare_real);
-      threshold = best_respons_copy[(int)((real)(N_images-N_images_included)*conf.exclude_ratio)];
+      threshold = best_respons_copy[(int)((real)(N_images-N_images_included)*conf.exclude_images_ratio)];
       for (int i_image = 0; i_image < N_images; i_image++) {
 	if (active_images[i_image] < 0) {
 	  if (best_respons[i_image] > threshold) {
@@ -1560,7 +1560,7 @@ int main(int argc, char **argv)
     cuda_copy_int_to_device(active_images, d_active_images, N_images);
 
     /* Start update scaling second time (test) */
-    if (conf.known_intensity == 0) {
+    if (conf.recover_scaling) {
       for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
 	if (slice_start + slice_chunk >= N_slices) {
 	  current_chunk = N_slices - slice_start;
@@ -1608,7 +1608,7 @@ int main(int argc, char **argv)
 
     /* If we are recovering the scaling we need to normalize the model
        to keep scalings from diverging. */
-    if (conf.known_intensity == 0) {
+    if (conf.recover_scaling) {
       cuda_normalize_model(model, d_model);
     }
 
@@ -1686,7 +1686,7 @@ int main(int argc, char **argv)
 
   /* If we are recovering the scaling we need to normalize the model
      to keep scalings from diverging. */
-  if (!conf.known_intensity){
+  if (conf.recover_scaling){
     cuda_normalize_model(model, d_model_updated);  
   }
 
@@ -1738,7 +1738,7 @@ int main(int argc, char **argv)
 	    rotations[final_best_rotation]->q[2], rotations[final_best_rotation]->q[3]);
   }
   fclose(final_best_rotations_file);
-  if (conf.known_intensity){ 
+  if (conf.recover_scaling){ 
     close_scaling_file(scaling_dataset, scaling_file);
   }
   close_state_file(state_file);

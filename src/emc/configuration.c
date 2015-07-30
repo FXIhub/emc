@@ -15,7 +15,7 @@ int read_configuration_file(const char *filename, Configuration *config_out)
     exit(1);
   }
   config_lookup_int(&config,"model_side",&(config_out->model_side));
-  config_lookup_int(&config,"read_stride",&(config_out->read_stride));
+  config_lookup_int(&config,"image_binning",&(config_out->image_binning));
   config_lookup_float(&config,"wavelength",&(config_out->wavelength));
   config_lookup_float(&config,"pixel_size",&(config_out->pixel_size));
   config_lookup_float(&config,"detector_distance",&(config_out->detector_distance));
@@ -23,15 +23,15 @@ int read_configuration_file(const char *filename, Configuration *config_out)
   config_lookup_float(&config,"sigma_start",&(config_out->sigma_start));
   config_lookup_float(&config,"sigma_final",&(config_out->sigma_final));
   config_lookup_int(&config,"sigma_half_life",&(config_out->sigma_half_life));
-  config_lookup_int(&config,"slice_chunk",&(config_out->slice_chunk));
-  config_lookup_int(&config,"N_images",&(config_out->N_images));
-  config_lookup_int(&config,"max_iterations",&(config_out->max_iterations));
+  config_lookup_int(&config,"chunk_size",&(config_out->chunk_size));
+  config_lookup_int(&config,"number_of_images",&(config_out->number_of_images));
+  config_lookup_int(&config,"number_of_iterations",&(config_out->number_of_iterations));
   config_lookup_bool(&config,"blur_image",&(config_out->blur_image));
-  config_lookup_float(&config,"blur_sigma",&(config_out->blur_sigma));
+  config_lookup_float(&config,"blur_image_sigma",&(config_out->blur_image_sigma));
   config_lookup_string(&config,"mask_file",&(config_out->mask_file));
   config_lookup_string(&config,"image_prefix",&(config_out->image_prefix));
   config_lookup_bool(&config,"normalize_images",&(config_out->normalize_images));
-  config_lookup_bool(&config,"known_intensity",&(config_out->known_intensity));
+  config_lookup_bool(&config,"recover_scaling",&(config_out->recover_scaling));
   const char *initial_model_string = malloc(20*sizeof(char));
   config_lookup_string(&config,"initial_model",&initial_model_string);
   if (strcmp(initial_model_string, "uniform") == 0) {
@@ -49,10 +49,10 @@ int read_configuration_file(const char *filename, Configuration *config_out)
     return 0;
   }
   config_lookup_float(&config,"initial_model_noise",&(config_out->initial_model_noise));
-  config_lookup_string(&config,"model_file",&(config_out->model_file));
-  config_lookup_string(&config, "init_rotations", &(config_out->init_rotations_file));
+  config_lookup_string(&config,"initial_model_file",&(config_out->initial_model_file));
+  config_lookup_string(&config, "initial_rotations_file", &(config_out->initial_rotations_file));
   config_lookup_bool(&config,"exclude_images",&(config_out->exclude_images));
-  config_lookup_float(&config,"exclude_ratio",&(config_out->exclude_ratio));
+  config_lookup_float(&config,"exclude_images_ratio",&(config_out->exclude_ratio));
   config_lookup_string(&config, "output_dir", &(config_out->output_dir));
   config_lookup_bool(&config, "calculate_r_free", &(config_out->calculate_r_free));
   config_lookup_float(&config, "r_free_ratio", &(config_out->r_free_ratio));
@@ -68,7 +68,8 @@ int read_configuration_file(const char *filename, Configuration *config_out)
     printf("Configuration file: bad value for diff_type: %s\n", diff_type_string);
     return 0;
   }
-  config_lookup_float(&config,"model_blur",&(config_out->model_blur));
+  config_lookup_int(&config,"blur_model",&(config_out->blur_model));
+  config_lookup_float(&config,"blur_model_sigma",&(config_out->blur_model_sigma));
 
   // If set to zero then read the seed from /dev/random, otherwise
   // set it to the value specified
@@ -76,7 +77,7 @@ int read_configuration_file(const char *filename, Configuration *config_out)
   config_lookup_int(&config, "random_seed", &(config_out->random_seed));
   config_lookup_int(&config, "compact_output", &(config_out->compact_output));
 
-  config_out->pixel_size *= config_out->read_stride;
+  config_out->pixel_size *= config_out->image_binning;
   return 1;
 }
 
