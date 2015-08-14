@@ -52,7 +52,7 @@ int read_configuration_file(const char *filename, Configuration *config_out)
   config_lookup_string(&config,"initial_model_file",&(config_out->initial_model_file));
   config_lookup_string(&config, "initial_rotations_file", &(config_out->initial_rotations_file));
   config_lookup_bool(&config,"exclude_images",&(config_out->exclude_images));
-  config_lookup_float(&config,"exclude_images_ratio",&(config_out->exclude_ratio));
+  config_lookup_float(&config,"exclude_images_ratio",&(config_out->exclude_images_ratio));
   config_lookup_string(&config, "output_dir", &(config_out->output_dir));
   config_lookup_bool(&config, "calculate_r_free", &(config_out->calculate_r_free));
   config_lookup_float(&config, "r_free_ratio", &(config_out->r_free_ratio));

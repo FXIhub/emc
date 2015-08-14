@@ -8,6 +8,9 @@
 #include <sys/stat.h>
 #include <hdf5.h>
 #include <getopt.h>
+#include <time.h>
+#include <cxi.h>
+#include <stdarg.h>
 
 #define PATH_MAX 256
 
@@ -23,6 +26,15 @@ void nice_exit(int sig) {
   } else {
     exit(1);
   }
+}
+
+void exit_with_message(const char *message, ...) {
+  va_list ap;
+  va_start(ap, message);
+  vfprintf(stderr, message, ap);
+  fprintf(stderr, "\n");
+  va_end(ap);
+  exit(1);
 }
 
 /* Only used to provide to qsort. */
@@ -78,13 +90,13 @@ hid_t init_scaling_file(char *filename, int N_images, hid_t *file_id) {
   hsize_t maxdims[2]; maxdims[0] = H5S_UNLIMITED; maxdims[1] = N_images;
 
   hid_t dataspace = H5Screate_simple(2, dims, maxdims);
-  if (dataspace < 0) {printf("Error creating scaling dataspace in write\n"); exit(1);}
+  if (dataspace < 0) exit_with_message("Error creating scaling dataspace\n");
 
   hid_t cparms = H5Pcreate(H5P_DATASET_CREATE);
   H5Pset_chunk(cparms, 2, dims);
   
   hid_t dataset = H5Dcreate(*file_id, "scaling", H5T_NATIVE_FLOAT, dataspace, H5P_DEFAULT, cparms, H5P_DEFAULT);
-  if (dataset < 0) {printf("Error creating scaling dataset\n"); exit(1);}
+  if (dataset < 0) exit_with_message("Error creating scaling dataset\n");
   H5Pset_chunk_cache(H5Dget_access_plist(dataset), H5D_CHUNK_CACHE_NSLOTS_DEFAULT, N_images, 1);
   
   H5Sclose(dataspace);
@@ -96,7 +108,7 @@ hid_t init_scaling_file(char *filename, int N_images, hid_t *file_id) {
    hdf5 file. */
 void write_scaling_to_file(const hid_t dataset, const int iteration, float *scaling, float *respons, int N_slices) {
   hid_t dataspace = H5Dget_space(dataset);
-  if (dataspace < 0) {printf("Can not create dataset when writing scaling.\n"); exit(1);}
+  if (dataspace < 0) exit_with_message("Can not create dataset when writing scaling.\n");
   hsize_t block[2];
   hsize_t mdims[2];
   H5Sget_simple_extent_dims(dataspace, block, mdims);
@@ -109,7 +121,7 @@ void write_scaling_to_file(const hid_t dataset, const int iteration, float *scal
     H5Dset_extent(dataset, block);
     H5Sclose(dataspace);
     dataspace = H5Dget_space(dataset);
-    if (dataspace<0) {printf("Error enlarging dataspace in scaling\n"); exit(1);}
+    if (dataspace<0) exit_with_message("Error enlarging dataspace in scaling\n");
   }
 
   /* Now that we know the extent, find the best responsability and create an
@@ -133,14 +145,14 @@ void write_scaling_to_file(const hid_t dataset, const int iteration, float *scal
   /* Get the hdf5 hyperslab for the current iteration */
   block[0] = 1;
   hid_t memspace = H5Screate_simple(2, block, NULL);
-  if (memspace < 0) {printf("Error creating memspace when writing scaling\n"); exit(1);}
+  if (memspace < 0) exit_with_message("Error creating memspace when writing scaling\n");
   hsize_t offset[2] = {iteration, 0};
   hsize_t stride[2] = {1, 1};
   hsize_t count[2] = {1, 1};
   hid_t hyperslab = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, stride, count, block);
-  if (hyperslab < 0) {printf("Error selecting hyperslab in scaling\n"); exit(1);}
+  if (hyperslab < 0) exit_with_message("Error selecting hyperslab in scaling\n");
   hid_t w = H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, dataspace, H5P_DEFAULT, data);
-  if (w < 0) {printf("Error writing scaling\n"); exit(1);}
+  if (w < 0) exit_with_message("Error writing scaling\n");
   free(data);
   H5Sclose(memspace);
   H5Sclose(dataspace);
@@ -246,7 +258,7 @@ void calculate_coordinates(int side, real pixel_size, real detector_distance, re
    function is for exapmle used when initializing a model from random
    orientaitons. */
 void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
-		  sp_imatrix * mask, real w, Quaternion *rot, sp_matrix *x_coordinates,
+		  sp_imatrix * mask, real w, Quaternion rot, sp_matrix *x_coordinates,
 		  sp_matrix *y_coordinates, sp_matrix *z_coordinates)
 {
   const int x_max = sp_matrix_rows(slice);
@@ -261,26 +273,26 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 	/* This is a matrix multiplication of the x/y/z_coordinates with the
 	   rotation matrix of the rotation rot. */
 	new_x =
-	  (rot->q[0]*rot->q[0] + rot->q[1]*rot->q[1] -
-	   rot->q[2]*rot->q[2] - rot->q[3]*rot->q[3])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
-	  (2.0*rot->q[1]*rot->q[2] -
-	   2.0*rot->q[0]*rot->q[3])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
-	  (2.0*rot->q[1]*rot->q[3] +
-	   2.0*rot->q[0]*rot->q[2])*sp_matrix_get(x_coordinates,x,y);
+	  (rot.q[0]*rot.q[0] + rot.q[1]*rot.q[1] -
+	   rot.q[2]*rot.q[2] - rot.q[3]*rot.q[3])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
+	  (2.0*rot.q[1]*rot.q[2] -
+	   2.0*rot.q[0]*rot.q[3])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
+	  (2.0*rot.q[1]*rot.q[3] +
+	   2.0*rot.q[0]*rot.q[2])*sp_matrix_get(x_coordinates,x,y);
 	new_y =
-	  (2.0*rot->q[1]*rot->q[2] +
-	   2.0*rot->q[0]*rot->q[3])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
-	  (rot->q[0]*rot->q[0] - rot->q[1]*rot->q[1] +
-	   rot->q[2]*rot->q[2] - rot->q[3]*rot->q[3])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
-	  (2.0*rot->q[2]*rot->q[3] -
-	   2.0*rot->q[0]*rot->q[1])*sp_matrix_get(x_coordinates,x,y);
+	  (2.0*rot.q[1]*rot.q[2] +
+	   2.0*rot.q[0]*rot.q[3])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
+	  (rot.q[0]*rot.q[0] - rot.q[1]*rot.q[1] +
+	   rot.q[2]*rot.q[2] - rot.q[3]*rot.q[3])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
+	  (2.0*rot.q[2]*rot.q[3] -
+	   2.0*rot.q[0]*rot.q[1])*sp_matrix_get(x_coordinates,x,y);
 	new_z =
-	  (2.0*rot->q[1]*rot->q[3] -
-	   2.0*rot->q[0]*rot->q[2])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
-	  (2.0*rot->q[2]*rot->q[3] +
-	   2.0*rot->q[0]*rot->q[1])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
-	  (rot->q[0]*rot->q[0] - rot->q[1]*rot->q[1] -
-	   rot->q[2]*rot->q[2] + rot->q[3]*rot->q[3])*sp_matrix_get(x_coordinates,x,y);
+	  (2.0*rot.q[1]*rot.q[3] -
+	   2.0*rot.q[0]*rot.q[2])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
+	  (2.0*rot.q[2]*rot.q[3] +
+	   2.0*rot.q[0]*rot.q[1])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
+	  (rot.q[0]*rot.q[0] - rot.q[1]*rot.q[1] -
+	   rot.q[2]*rot.q[2] + rot.q[3]*rot.q[3])*sp_matrix_get(x_coordinates,x,y);
 
 	/* Round of the values nearest pixel. This function uses nearest
 	   neighbour interpolation as oposed to the linear interpolation
@@ -300,6 +312,14 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
       }// end of if
     }
   }
+}
+
+ImageArray *read_images_cxi(const char *filename, const int number_of_images) {
+  CXI_File *file = cxi_open_file(filename, "r");
+  if (!file) exit_with_message("unable to open file");
+
+  ImageArray *image_array = sp_array_alloc(2, 10, 10, 1);
+  return image_array;
 }
 
 /* Read images in spimage format and read the individual masks. The
@@ -613,7 +633,7 @@ void close_state_file(hid_t file_id) {
    the new code is fast enough so this is a bit ridicculus). This file reads the
    rotations from file and returns them and the weights in the respective input
    pointers and returns the number of rotations. */
-int read_rotations_file(const char *filename, Quaternion ***rotations, real **weights) {
+int read_rotations_file(const char *filename, Quaternion **rotations, real **weights) {
   hid_t file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
   hid_t dataset_id = H5Dopen1(file_id, "/rotations");
   hid_t space_id = H5Dget_space(dataset_id);
@@ -626,11 +646,17 @@ int read_rotations_file(const char *filename, Quaternion ***rotations, real **we
   real *input_array = malloc(N_slices*5*sizeof(real));
   H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, input_array);
   
-  *rotations = malloc(N_slices*sizeof(Quaternion *));
+  *rotations = malloc(N_slices*sizeof(Quaternion));
   *weights = malloc(N_slices*sizeof(real));
   for (int i_slice = 0; i_slice < N_slices; i_slice++) {
+    /*
     Quaternion *this_quaternion = quaternion_alloc();
     memcpy(this_quaternion->q, &input_array[i_slice*5], 4*sizeof(real));
+    (*rotations)[i_slice] = this_quaternion;
+    (*weights)[i_slice] = input_array[i_slice*5+4];
+    */
+    Quaternion this_quaternion;
+    memcpy(this_quaternion.q, &input_array[i_slice*5], 4*sizeof(real));
     (*rotations)[i_slice] = this_quaternion;
     (*weights)[i_slice] = input_array[i_slice*5+4];
   }
@@ -733,12 +759,12 @@ static void create_initial_model_random_orientations(sp_3matrix *model, sp_3matr
 						     const int N_images, sp_imatrix *mask, sp_matrix *x_coordinates,
 						     sp_matrix *y_coordinates, sp_matrix *z_coordinates, gsl_rng *rng) {
   const int N_model = sp_3matrix_size(model);
-  Quaternion *random_rot;
+  Quaternion random_rot;
   for (int i = 0; i < N_images; i++) {
     random_rot = quaternion_random(rng);
     insert_slice(model, weight, images[i], mask, 1.0, random_rot,
 		 x_coordinates, y_coordinates, z_coordinates);
-    free(random_rot);
+    //free(random_rot);
   }
   for (int i = 0; i < N_model; i++) {
     if (weight->data[i] > 0.0) {
@@ -757,13 +783,14 @@ static void create_initial_model_given_orientations(sp_3matrix *model, sp_3matri
 						    sp_matrix *z_coordinates, const char *init_rotations_file) {
   const int N_model = sp_3matrix_size(model);
   FILE *given_rotations_file = fopen(init_rotations_file, "r");
-  Quaternion *this_rotation = quaternion_alloc();
+  //Quaternion *this_rotation = quaternion_alloc();
+  Quaternion this_rotation;
   for (int i_image = 0; i_image < N_images; i_image++) {
-    fscanf(given_rotations_file, "%g %g %g %g\n", &(this_rotation->q[0]), &(this_rotation->q[1]), &(this_rotation->q[2]), &(this_rotation->q[3]));
+    fscanf(given_rotations_file, "%g %g %g %g\n", &(this_rotation.q[0]), &(this_rotation.q[1]), &(this_rotation.q[2]), &(this_rotation.q[3]));
     insert_slice(model, weight, images[i_image], mask, 1., this_rotation,
 		 x_coordinates, y_coordinates, z_coordinates);
   }
-  free(this_rotation);
+  //free(this_rotation);
   fclose(given_rotations_file);
     
   for (int i = 0; i < N_model; i++) {
@@ -781,11 +808,9 @@ static void create_initial_model_file(sp_3matrix *model, const char *model_file)
   Image *model_in = sp_image_read(model_file,0);
   if (sp_3matrix_x(model) != sp_image_x(model_in) ||
       sp_3matrix_y(model) != sp_image_y(model_in) ||
-      sp_3matrix_z(model) != sp_image_z(model_in)) {
-    printf("Input model is of wrong size. Should be (%i, %i, %i\n",
-	   sp_3matrix_x(model), sp_3matrix_y(model), sp_3matrix_z(model));
-    exit(1);
-  }
+      sp_3matrix_z(model) != sp_image_z(model_in))
+    exit_with_message("Input model is of wrong size. Should be (%i, %i, %i\n",
+		      sp_3matrix_x(model), sp_3matrix_y(model), sp_3matrix_z(model));
   for (int i = 0; i < N_model; i++) {
     model->data[i] = sp_cabs(model_in->image->data[i]);
   }
@@ -824,7 +849,7 @@ int main(int argc, char **argv)
       break;
     }
   }
-
+  
   /* Capture a crtl-c event to make a final iteration be
    run with the individual masked used in the compression.
    This is consistent with the final iteration when not
@@ -842,10 +867,8 @@ int main(int argc, char **argv)
   /* Read the configuration file */
   Configuration conf;
   int conf_return = read_configuration_file(configuration_filename, &conf);
-  if (conf_return == 0) {
-    printf("Can't read configuration file %s\nRun emc -h for help.", configuration_filename);
-    exit(0);
-  }
+  if (conf_return == 0)
+    exit_with_message("Can't read configuration file %s\nRun emc -h for help.", configuration_filename);
   
   /* This buffer is used for names of all output files */
   char filename_buffer[PATH_MAX];
@@ -869,9 +892,16 @@ int main(int argc, char **argv)
   }
 
   /* Read the list of sampled rotations and rotational weights */
-  Quaternion **rotations;
+  //Quaternion **rotations;
+  Quaternion *rotations;
   real *weights;
-  const int N_slices = read_rotations_file(conf.rotations_file, &rotations, &weights);
+  //const int N_slices = read_rotations_file(conf.rotations_file, &rotations, &weights);
+  printf("start generating rotations\n");
+  clock_t begin, end;
+  begin = clock();
+  const int N_slices = generate_rotation_list(20, &rotations, &weights);
+  end = clock();
+  printf("done generating rotations: %g s\n", (real) (end-begin) / CLOCKS_PER_SEC);
 
   /* Copy rotational weights to the GPU */
   real *d_weights;
@@ -1093,7 +1123,7 @@ int main(int argc, char **argv)
   /* List of all sampled rotations. Used in both expansion and
      compression. Does not change. */
   real * d_rotations;
-  cuda_allocate_rotations(&d_rotations,rotations,N_slices);
+  cuda_allocate_rotations(&d_rotations, rotations, N_slices);
 
   /* Precalculated Ewald sphere. */
   real * d_x_coord;
@@ -1266,8 +1296,8 @@ int main(int argc, char **argv)
     sprintf(filename_buffer, "%s/best_quaternion_%.4d.data", conf.output_dir, iteration);
     best_quat_file = fopen(filename_buffer, "wp");
     for (int i_image = 0; i_image < N_images; i_image++) {
-      fprintf(best_quat_file, "%g %g %g %g\n", rotations[best_rotation[i_image]]->q[0], rotations[best_rotation[i_image]]->q[1],
-	      rotations[best_rotation[i_image]]->q[2], rotations[best_rotation[i_image]]->q[3]);
+      fprintf(best_quat_file, "%g %g %g %g\n", rotations[best_rotation[i_image]].q[0], rotations[best_rotation[i_image]].q[1],
+	      rotations[best_rotation[i_image]].q[2], rotations[best_rotation[i_image]].q[3]);
     }
     fclose(best_quat_file);
 	
@@ -1734,8 +1764,8 @@ int main(int argc, char **argv)
       }
     }
     fprintf(final_best_rotations_file, "%g %g %g %g\n",
-	    rotations[final_best_rotation]->q[0], rotations[final_best_rotation]->q[1],
-	    rotations[final_best_rotation]->q[2], rotations[final_best_rotation]->q[3]);
+	    rotations[final_best_rotation].q[0], rotations[final_best_rotation].q[1],
+	    rotations[final_best_rotation].q[2], rotations[final_best_rotation].q[3]);
   }
   fclose(final_best_rotations_file);
   if (conf.recover_scaling){ 

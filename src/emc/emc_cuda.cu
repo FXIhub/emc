@@ -954,11 +954,14 @@ void cuda_allocate_mask(int ** d_mask, sp_imatrix * mask){
   cudaMemcpy(*d_mask,mask->data,sizeof(int)*sp_imatrix_size(mask),cudaMemcpyHostToDevice);
 }
 
-void cuda_allocate_rotations(real ** d_rotations, Quaternion ** rotations,  int N_slices){
-  cudaMalloc(d_rotations,sizeof(real)*4*N_slices);
-  for(int i = 0;i<N_slices;i++){
+void cuda_allocate_rotations(real ** d_rotations, Quaternion *rotations,  int N_slices){
+  cudaMalloc(d_rotations, sizeof(real)*4*N_slices);
+  /*
+  for(int i = 0; i<N_slices; i++){
     cudaMemcpy(&((*d_rotations)[4*i]),rotations[i]->q,sizeof(real)*4,cudaMemcpyHostToDevice);
   }
+  */
+  cudaMemcpy(d_rotations, rotations, sizeof(real)*4, cudaMemcpyHostToDevice);
 }
 
 void cuda_allocate_images(real ** d_images, sp_matrix ** images,  int N_images){

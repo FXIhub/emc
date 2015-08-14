@@ -43,7 +43,7 @@ extern "C"{
     const char *initial_rotations_file;
     int exclude_images;
     double exclude_images_ratio;
-    int blur_model
+    int blur_model;
     double blur_model_sigma;
     const char *output_dir;
     int random_seed;

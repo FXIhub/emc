@@ -19,7 +19,7 @@ typedef struct{
 }Setup;
 
   void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
-		    sp_imatrix * mask, real w, Quaternion *rot, sp_matrix *x_coordinates,
+		    sp_imatrix * mask, real w, Quaternion rot, sp_matrix *x_coordinates,
 		    sp_matrix *y_coordinates, sp_matrix *z_coordinates);
 
   void cuda_update_slices(real * d_images, real * slices, int * d_mask,
@@ -75,7 +75,7 @@ typedef struct{
   void cuda_output_device_model(real *d_model, char *filename, int side);
   void cuda_divide_model_by_weight(sp_3matrix * model, real * d_model, real * d_weight);
   void cuda_normalize_model(sp_3matrix * model, real * d_model);
-  void cuda_allocate_rotations(real ** d_rotations, Quaternion ** rotations, int N_slices);
+  void cuda_allocate_rotations(real ** d_rotations, Quaternion * rotations, int N_slices);
   void cuda_allocate_images(real ** d_images, sp_matrix ** images, int N_images);
   void cuda_allocate_masks(int ** d_images, sp_imatrix ** images,  int N_images);
   void cuda_allocate_coords(real ** d_x, real ** d_y, real ** d_z, sp_matrix * x,
