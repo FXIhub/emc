@@ -233,10 +233,15 @@ class CommonControll(QtGui.QWidget):
         return self._state["iteration"]
 
     def _read_run_info(self):
-        with h5py.File("output/run_info.h5", "r") as file_handle:
-            self._run_info["compact_output"] = bool(file_handle["compact_output"][...])
-            self._run_info["number_of_images"] = int(file_handle["number_of_images"][...])
-            self._run_info["random_seed"] = int(file_handle["random_seed"][...])
+        try:
+            with h5py.File("output/run_info.h5", "r") as file_handle:
+                self._run_info["compact_output"] = bool(file_handle["compact_output"][...])
+                self._run_info["number_of_images"] = int(file_handle["number_of_images"][...])
+                self._run_info["random_seed"] = int(file_handle["random_seed"][...])
+        except IOError:
+            self._run_info["compact_output"] = False
+            self._run_info["number_of_images"] = 100 #this is fine as long as this is not used.
+            self._run_info["random_seed"] = 0 #this is fine as long as this is not used.
 
     def output_is_compact(self):
         return self._run_info["compact_output"]
