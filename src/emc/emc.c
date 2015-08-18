@@ -28,13 +28,23 @@ void nice_exit(int sig) {
   }
 }
 
-void exit_with_message(const char *message, ...) {
+void error_exit_with_message(const char *message, ...) {
   va_list ap;
   va_start(ap, message);
+  fprintf("Error: ");
   vfprintf(stderr, message, ap);
   fprintf(stderr, "\n");
   va_end(ap);
   exit(1);
+}
+
+void error_warning(const char *message, ...) {
+  va_list ap;
+  va_start(ap, message);
+  fprintf("Warning: ");
+  vfprintf(stderr, message, ap);
+  fprintf(stderr, "\n");
+  va_end(ap);
 }
 
 /* Only used to provide to qsort. */
@@ -90,13 +100,13 @@ hid_t init_scaling_file(char *filename, int N_images, hid_t *file_id) {
   hsize_t maxdims[2]; maxdims[0] = H5S_UNLIMITED; maxdims[1] = N_images;
 
   hid_t dataspace = H5Screate_simple(2, dims, maxdims);
-  if (dataspace < 0) exit_with_message("Error creating scaling dataspace\n");
+  if (dataspace < 0) error_exit_with_message("Error creating scaling dataspace\n");
 
   hid_t cparms = H5Pcreate(H5P_DATASET_CREATE);
   H5Pset_chunk(cparms, 2, dims);
   
   hid_t dataset = H5Dcreate(*file_id, "scaling", H5T_NATIVE_FLOAT, dataspace, H5P_DEFAULT, cparms, H5P_DEFAULT);
-  if (dataset < 0) exit_with_message("Error creating scaling dataset\n");
+  if (dataset < 0) error_exit_with_message("Error creating scaling dataset\n");
   H5Pset_chunk_cache(H5Dget_access_plist(dataset), H5D_CHUNK_CACHE_NSLOTS_DEFAULT, N_images, 1);
   
   H5Sclose(dataspace);
@@ -108,7 +118,7 @@ hid_t init_scaling_file(char *filename, int N_images, hid_t *file_id) {
    hdf5 file. */
 void write_scaling_to_file(const hid_t dataset, const int iteration, float *scaling, float *respons, int N_slices) {
   hid_t dataspace = H5Dget_space(dataset);
-  if (dataspace < 0) exit_with_message("Can not create dataset when writing scaling.\n");
+  if (dataspace < 0) error_exit_with_message("Can not create dataset when writing scaling.\n");
   hsize_t block[2];
   hsize_t mdims[2];
   H5Sget_simple_extent_dims(dataspace, block, mdims);
@@ -121,7 +131,7 @@ void write_scaling_to_file(const hid_t dataset, const int iteration, float *scal
     H5Dset_extent(dataset, block);
     H5Sclose(dataspace);
     dataspace = H5Dget_space(dataset);
-    if (dataspace<0) exit_with_message("Error enlarging dataspace in scaling\n");
+    if (dataspace<0) error_exit_with_message("Error enlarging dataspace in scaling\n");
   }
 
   /* Now that we know the extent, find the best responsability and create an
@@ -145,14 +155,14 @@ void write_scaling_to_file(const hid_t dataset, const int iteration, float *scal
   /* Get the hdf5 hyperslab for the current iteration */
   block[0] = 1;
   hid_t memspace = H5Screate_simple(2, block, NULL);
-  if (memspace < 0) exit_with_message("Error creating memspace when writing scaling\n");
+  if (memspace < 0) error_exit_with_message("Error creating memspace when writing scaling\n");
   hsize_t offset[2] = {iteration, 0};
   hsize_t stride[2] = {1, 1};
   hsize_t count[2] = {1, 1};
   hid_t hyperslab = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, stride, count, block);
-  if (hyperslab < 0) exit_with_message("Error selecting hyperslab in scaling\n");
+  if (hyperslab < 0) error_exit_with_message("Error selecting hyperslab in scaling\n");
   hid_t w = H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, dataspace, H5P_DEFAULT, data);
-  if (w < 0) exit_with_message("Error writing scaling\n");
+  if (w < 0) error_exit_with_message("Error writing scaling\n");
   free(data);
   H5Sclose(memspace);
   H5Sclose(dataspace);
@@ -316,8 +326,19 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 
 ImageArray *read_images_cxi(const char *filename, const int number_of_images) {
   CXI_File *file = cxi_open_file(filename, "r");
-  if (!file) exit_with_message("unable to open file");
+  if (!file) error_exit_with_message("Unable to open file");
+  
+  CXI_Entry *entry_1 = cxi_open_entry(file->entries[0]);
+  if (!entry_1) error_exit_with_message("Unable to open entry in file %s", filename);
+  if (entry_1->instrument_count < 1) error_exit_with_message("No instrument in entry in file %s", filename);
 
+  CXI_Instrument *instrument_1 = cxi_open_instrument(entry_1->instrument[0]);
+  if (!instrument_1) error_exit_with_message("Unable to open instrument in file %s", filename);
+
+  CXI_Dataset *dataset = cxi_open_dataset(instrument_1->detectors[0]);
+
+  ImageArray *image_array = sp_array_alloc(cxi_dataset_length(dataset), 
+  
   ImageArray *image_array = sp_array_alloc(2, 10, 10, 1);
   return image_array;
 }
@@ -809,7 +830,7 @@ static void create_initial_model_file(sp_3matrix *model, const char *model_file)
   if (sp_3matrix_x(model) != sp_image_x(model_in) ||
       sp_3matrix_y(model) != sp_image_y(model_in) ||
       sp_3matrix_z(model) != sp_image_z(model_in))
-    exit_with_message("Input model is of wrong size. Should be (%i, %i, %i\n",
+    error_exit_with_message("Input model is of wrong size. Should be (%i, %i, %i\n",
 		      sp_3matrix_x(model), sp_3matrix_y(model), sp_3matrix_z(model));
   for (int i = 0; i < N_model; i++) {
     model->data[i] = sp_cabs(model_in->image->data[i]);
@@ -868,7 +889,7 @@ int main(int argc, char **argv)
   Configuration conf;
   int conf_return = read_configuration_file(configuration_filename, &conf);
   if (conf_return == 0)
-    exit_with_message("Can't read configuration file %s\nRun emc -h for help.", configuration_filename);
+    error_exit_with_message("Can't read configuration file %s\nRun emc -h for help.", configuration_filename);
   
   /* This buffer is used for names of all output files */
   char filename_buffer[PATH_MAX];
