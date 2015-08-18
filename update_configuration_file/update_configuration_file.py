@@ -1,3 +1,4 @@
+#!/bin/env python
 __author__ = 'ekeberg'
 
 import pylibconfig2
@@ -103,14 +104,17 @@ def change_name_and_write(value_update, old_conf, new_conf_file_handle):
             raise ValueError("Configuration file must contain {0}".format(value_update.key()))
     new_conf_file_handle.write(str(new_conf)+"\n")
 
-input_file = sys.argv[1]
-output_file = sys.argv[2]
-#input_file = "emc.conf"
-#output_file = "foo.conf"
+    
+if __name__ == "__main__":
+    if len(sys.argv) < 3 or sys.argv[1] == "-h":
+        print "Usage: update_configuration_file.py OLD_FILE NEW_FILE"
 
-with open(input_file) as file_handle:
-    old_conf = pylibconfig2.Config(file_handle.read())
+    input_file = sys.argv[1]
+    output_file = sys.argv[2]
 
-with open(output_file, "wp") as file_handle:
-    for value_update in value_updates:
-        change_name_and_write(value_update, old_conf, file_handle)
+    with open(input_file) as file_handle:
+        old_conf = pylibconfig2.Config(file_handle.read())
+
+    with open(output_file, "wp") as file_handle:
+        for value_update in value_updates:
+            change_name_and_write(value_update, old_conf, file_handle)
