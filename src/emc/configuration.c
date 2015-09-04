@@ -26,8 +26,6 @@ int read_configuration_file(const char *filename, Configuration *config_out)
   config_lookup_int(&config,"chunk_size",&(config_out->chunk_size));
   config_lookup_int(&config,"number_of_images",&(config_out->number_of_images));
   config_lookup_int(&config,"number_of_iterations",&(config_out->number_of_iterations));
-  config_lookup_bool(&config,"blur_image",&(config_out->blur_image));
-  config_lookup_float(&config,"blur_image_sigma",&(config_out->blur_image_sigma));
   config_lookup_string(&config,"mask_file",&(config_out->mask_file));
   config_lookup_string(&config,"image_prefix",&(config_out->image_prefix));
   config_lookup_bool(&config,"normalize_images",&(config_out->normalize_images));
@@ -64,6 +62,8 @@ int read_configuration_file(const char *filename, Configuration *config_out)
     config_out->diff = poisson;
   } else if (strcmp(diff_type_string, "relative") == 0) {
     config_out->diff = relative;
+  } else if (strcmp(diff_type_string, "annealing_poisson") == 0) {
+    config_out->diff = annealing_poisson;
   } else {
     printf("Configuration file: bad value for diff_type: %s\n", diff_type_string);
     return 0;
@@ -75,7 +75,7 @@ int read_configuration_file(const char *filename, Configuration *config_out)
   // set it to the value specified
   config_out->random_seed = 0;
   config_lookup_int(&config, "random_seed", &(config_out->random_seed));
-  config_lookup_int(&config, "compact_output", &(config_out->compact_output));
+  config_lookup_bool(&config, "compact_output", &(config_out->compact_output));
 
   config_out->pixel_size *= config_out->image_binning;
   return 1;

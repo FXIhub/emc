@@ -9,7 +9,8 @@ extern "C"{
 
   enum diff_type {absolute=0,
 		  poisson,
-		  relative};
+		  relative,
+		  annealing_poisson};
   enum initial_model_type {initial_model_uniform=0,
 			   initial_model_radial_average,
 			   initial_model_random_orientations,
@@ -31,8 +32,6 @@ extern "C"{
     int chunk_size;
     int number_of_images;
     int number_of_iterations;
-    int blur_image;
-    double blur_image_sigma;
     const char *mask_file;
     const char *image_prefix;
     int normalize_images;

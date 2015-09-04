@@ -66,9 +66,6 @@ value_updates = [
 
     ValueUpdate("number_of_iterations", "max_iterations", default_value=100),
 
-    ValueUpdate("blur_image", default_value=False),
-    ValueUpdate("blur_image_sigma", "blur_sigma", default_value=0.),
-
     ValueUpdate("recover_scaling", "known_intensity", function=lambda x: not x),
     ValueUpdate("normalize_images", default_value=False),
 

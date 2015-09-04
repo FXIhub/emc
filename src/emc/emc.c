@@ -31,7 +31,7 @@ void nice_exit(int sig) {
 void error_exit_with_message(const char *message, ...) {
   va_list ap;
   va_start(ap, message);
-  fprintf("Error: ");
+  fprintf(stderr, "Error: ");
   vfprintf(stderr, message, ap);
   fprintf(stderr, "\n");
   va_end(ap);
@@ -41,7 +41,7 @@ void error_exit_with_message(const char *message, ...) {
 void error_warning(const char *message, ...) {
   va_list ap;
   va_start(ap, message);
-  fprintf("Warning: ");
+  fprintf(stderr, "Warning: ");
   vfprintf(stderr, message, ap);
   fprintf(stderr, "\n");
   va_end(ap);
@@ -324,6 +324,7 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
   }
 }
 
+/*
 ImageArray *read_images_cxi(const char *filename, const int number_of_images) {
   CXI_File *file = cxi_open_file(filename, "r");
   if (!file) error_exit_with_message("Unable to open file");
@@ -342,6 +343,61 @@ ImageArray *read_images_cxi(const char *filename, const int number_of_images) {
   ImageArray *image_array = sp_array_alloc(2, 10, 10, 1);
   return image_array;
 }
+*/
+/*
+ImageArray *read_images_cxi(const char *filename, const char *image_identifier, const char *mask_identifier, const int number_of_images, const int image_side) {
+  int status;
+  hid_t file = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+  if (file_id < 0) exit_with_message("Problem reading file %s", filename);
+  hid_t dataset = H5Dopen1(file, image_identifier, H5P_DEFAULT);
+  if (dataset < 0) exit_with_message("Problem reading dataset %s in file %s", image_identifier, filename);
+
+  hsize_t dims[3];
+  hid_t file_dataspace = H5Dget_space(dataset);
+  H5Sget_simple_extent_dims(file_dataspace, dims, NULL);
+  if (number_of_images > dims[0]) exit_with_message("Dataset in %s does not contain %d images", filename, number_of_images);
+
+  hsize_t hyperslab_start[3] = {0, 0, 0};
+  hsize_t read_dims[3] = {number_of_images, dims[1], dims[2]};
+  status = H5Sselect_hyperslab(file_dataspace, H5S_SELECT_SET, hyperslab_start, NULL, read_dims, NULL);
+  if (status < 0) exit_with_message("error selecting hyperslab in file %s" filename);
+
+  hid_t data_dataspace = H5Screate_simple(3, read_dims, NULL);
+
+  real *raw_image_data = malloc(read_dims[0]*read_dims[1]*read_dims[2]*sizeof(real));
+  status = H5Dread(dataset, H5T_NATIVE_FLOAT, data_dataspace, file_dataspace, H5P_DEFAULT, raw_image_data);
+  if (status < 0) exit_with_message("error reading data in file %s", filename);
+  H5Dclose(dataset);
+
+  dataset = H5Dopen1(file, mask_identifier, H5P_DEFAULT);
+  if (dataset < 0) exit_with_message("Problem reading dataset %s in file %s", mask_identifier, filename);
+
+  int *raw_mask_data = malloc(read_dims[0]*read_dims[1]*read_dims[2]*sizeof(int));
+  status = H5Dread(dataset, H5T_NATIVE_INT, data_dataspace, file_dataspace, H5P_DEFAULT, raw_mask_data);
+  H5Dclose(dataset);
+  
+  H5Sclose(data_dataspace);
+  H5Sclose(file_dataspace);
+
+  H5Fclose(file);
+
+  Image *container_image = sp_image_alloc(dims[1], dims[2], 1);
+  real *container_image_data = container_image->image->data;
+  int *container_image_mask = container_image->mask->data;
+  for (int image_index = 0; image_index < number_of_images; image_index++) {
+    container_image->image->data = &(raw_image_data[image_index*dims[1]*dims[1]]);
+    container_image->mask->data = &(raw_mask_data[image_index*dims[1]*dims[1]]);
+    
+    /* Allocate return arrays */
+    images[i] = sp_matrix_alloc(image_side, image_side);
+    masks[i] = sp_imatrix_alloc(image_side, image_side);
+
+  }
+  container_image->image->data = container_image_data;
+  container_image->mask->data = container_image_mask;
+  sp_image_free(container_image);
+}
+*/
 
 /* Read images in spimage format and read the individual masks. The
    masks pointer should not be allocated before calling, it is
@@ -387,6 +443,7 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
        downsampled pixels and then all subpixels. */
     real pixel_sum, pixel_this;
     int mask_sum, mask_this;
+    int transformed_x, transformed_y;
     for (int x = 0; x < conf.model_side; x++) {
       for (int y = 0; y < conf.model_side; y++) {
 	pixel_sum = 0.0;
@@ -394,10 +451,16 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 	/* Step through all sub-pixels and add up values */
 	for (int xb = 0; xb < conf.image_binning; xb++) {
 	  for (int yb = 0; yb < conf.image_binning; yb++) {
-	    pixel_this = sp_cabs(sp_image_get(img, sp_image_x(img)/2 - (conf.model_side/2)*conf.image_binning + x*conf.image_binning + xb,
-					      sp_image_y(img)/2 - (conf.model_side/2)*conf.image_binning + y*conf.image_binning + yb, 0));
-	    mask_this = sp_image_mask_get(img, sp_image_x(img)/2 - (conf.model_side/2)*conf.image_binning + x*conf.image_binning + xb,
-					  sp_image_y(img)/2 - (conf.model_side/2)*conf.image_binning + y*conf.image_binning + yb, 0);
+	    transformed_x = sp_image_x(img)/2 - (conf.model_side/2)*conf.image_binning + x*conf.image_binning + xb;
+	    transformed_y = sp_image_y(img)/2 - (conf.model_side/2)*conf.image_binning + y*conf.image_binning + yb;
+	    if (transformed_x >= 0 && transformed_x < sp_image_x(img) &&
+		transformed_y >= 0 && transformed_y < sp_image_y(img)) {
+	      pixel_this = sp_cabs(sp_image_get(img, transformed_x, transformed_y, 0));
+	      mask_this = sp_image_mask_get(img,  transformed_x, transformed_y, 0);
+	    } else {
+	      pixel_this = 0.;
+	      mask_this = 0;
+	    }
 	    if (mask_this > 0) {
 	      pixel_sum += pixel_this;
 	      mask_sum += 1;
@@ -431,13 +494,22 @@ sp_imatrix *read_mask(Configuration conf)
   Image *mask_in = sp_image_read(conf.mask_file,0);
   /* read and rescale mask */
   int mask_sum;
+  int this_value;
+  int transformed_x, transformed_y;
   for (int x = 0; x < conf.model_side; x++) {
     for (int y = 0; y < conf.model_side; y++) {
       mask_sum = 0;
       for (int xb = 0; xb < conf.image_binning; xb++) {
 	for (int yb = 0; yb < conf.image_binning; yb++) {
-	  if (sp_cabs(sp_image_get(mask_in, sp_image_x(mask_in)/2 - conf.model_side*conf.image_binning/2 + x*conf.image_binning + xb,
-				   sp_image_y(mask_in)/2 - conf.model_side*conf.image_binning/2 + y*conf.image_binning + yb, 0))) {
+	  transformed_x = sp_image_x(mask_in)/2 - (conf.model_side/2)*conf.image_binning + x*conf.image_binning + xb;
+	  transformed_y = sp_image_y(mask_in)/2 - (conf.model_side/2)*conf.image_binning + y*conf.image_binning + yb;
+	  if (transformed_x >= 0 && transformed_x < sp_image_x(mask_in) &&
+	      transformed_y >= 0 && transformed_y < sp_image_y(mask_in)) {
+	    this_value = sp_cabs(sp_image_get(mask_in, transformed_x, transformed_y, 0));
+	  } else {
+	    this_value = 0;
+	  }
+	  if (this_value) {
 	    mask_sum += 1;
 	  }
 	}
@@ -916,13 +988,15 @@ int main(int argc, char **argv)
   //Quaternion **rotations;
   Quaternion *rotations;
   real *weights;
-  //const int N_slices = read_rotations_file(conf.rotations_file, &rotations, &weights);
+  const int N_slices = read_rotations_file(conf.rotations_file, &rotations, &weights);
+  /*
   printf("start generating rotations\n");
   clock_t begin, end;
   begin = clock();
   const int N_slices = generate_rotation_list(20, &rotations, &weights);
   end = clock();
   printf("done generating rotations: %g s\n", (real) (end-begin) / CLOCKS_PER_SEC);
+  */
 
   /* Copy rotational weights to the GPU */
   real *d_weights;
@@ -970,7 +1044,8 @@ int main(int argc, char **argv)
     if (!conf.recover_scaling) {
       normalize_images_preserve_scaling(images, mask, conf);
     } else {
-      real central_part_radius = 0.; // Zero here means that the entire image is used.
+      //real central_part_radius = 0.; // Zero here means that the entire image is used.
+      real central_part_radius = 10.; // Zero here means that the entire image is used.
       normalize_images_central_part(images, mask, central_part_radius, conf);
     }
   }
@@ -1291,7 +1366,7 @@ int main(int argc, char **argv)
     weight_map_falloff = 0.;
     /* This function sets the d_weight_map to all ones. Other
        functions are available in emc_cuda.cu.*/
-    cuda_allocate_weight_map(&d_weight_map, conf.model_side);
+    //cuda_allocate_weight_map(&d_weight_map, conf.model_side);
 
     /* Reset the fit parameters */
     int radial_fit_n = 1; // Allow less frequent output of the fit by changing this output period
