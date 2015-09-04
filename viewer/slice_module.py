@@ -40,10 +40,10 @@ class SliceData(module_template.Data):
 
     def _read_rotations(self):
         """Read rotations and save them within the object."""
-        self._rotations = numpy.loadtxt("output/best_quaternion_%.4d.data" % (self._iteration))
+        self._rotations = numpy.loadtxt("best_quaternion_%.4d.data" % (self._iteration))
 
     def _set_number_of_images(self):
-        prefix = "output"
+        prefix = "."
         list_of_all_files = os.listdir(prefix)
         list_of_images = [f for f in list_of_all_files if re.search("^image_[0-9]{4}.h5$", f)]
         self._number_of_images = len(list_of_images)
@@ -51,9 +51,9 @@ class SliceData(module_template.Data):
     def _read_images(self):
         """Read diffraction patterns and save them within the object."""
         #should I normalize images??
-        list_of_all_files = os.listdir("output")
+        list_of_all_files = os.listdir(".")
         list_of_images = [f for f in list_of_all_files if re.search("^image_[0-9]{4}.h5$", f)]
-        prefix = "output"
+        prefix = "."
         if len(list_of_images) == 0:
             # maybe this is an old run with images output in debug
             list_of_all_files = os.listdir("debug")
@@ -74,7 +74,7 @@ class SliceData(module_template.Data):
 
     def _read_active(self):
         """Read the list of active and excluded images if it exists."""
-        file_name = "output/active_{0:04}.h5".format(self._iteration)
+        file_name = "active_{0:04}.h5".format(self._iteration)
         if not os.path.isfile(file_name):
             self._active_images = numpy.ones(self._number_of_images, dtype="int32")
         else:
@@ -85,7 +85,7 @@ class SliceData(module_template.Data):
     def _open_scaling_file(self):
         """Open scaling file and keep a handle for use by the object."""
         try:
-            self._scaling_file_handle = h5py.File("output/scaling_%.4d.h5" % self._iteration, "r")
+            self._scaling_file_handle = h5py.File("scaling_%.4d.h5" % self._iteration, "r")
         except IOError:
             self._scaling_file_handle = None
 
@@ -134,7 +134,7 @@ class SliceData(module_template.Data):
         """Load the image and mask if they have not been viewed before."""
         if index in self._images and index in self._masks:
             return
-        prefix = "output"
+        prefix = "."
         try:
             image, mask = sphelper.import_spimage(os.path.join(prefix, "image_{0:04}.h5".format(index)), ["image", "mask"])
         except IOError:

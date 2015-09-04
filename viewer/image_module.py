@@ -28,7 +28,7 @@ class ImageData(module_template.Data):
 
     def determine_number_of_images(self):
         """Count the number of diffraction patterns available. Store it withing the class."""
-        output = os.listdir("output")
+        output = os.listdir(".")
         image_files = [image_name for image_name in output if re.search("^image_[0-9]{4}.h5$", image_name)]
         new_number = len(image_files)
         if new_number != self._number_of_images:
@@ -41,7 +41,7 @@ class ImageData(module_template.Data):
             raise ValueError("Image index out of range. %d is above %d" % (index, self._number_of_images))
         if index in self._images.keys() and not reload_data:
             return abs(self._images[index])
-        self._images[index] = sphelper.import_spimage("output/image_%.4d.h5" % index, ["image"])
+        self._images[index] = sphelper.import_spimage("image_%.4d.h5" % index, ["image"])
         return abs(self._images[index])
 
     def get_number_of_images(self):

@@ -168,6 +168,8 @@ class ModelmapViewer(module_template.Viewer):
         picker.SetTolerance(picker_tolerance)
         text_color = (0., 0., 0.)
 
+        if len(self._planes) != 0:
+            raise RuntimeError("planes initialized twice")
         self._planes.append(vtk.vtkImagePlaneWidget())
         self._planes[0].SetInputData(self._volume)
         self._planes[0].UserControlledLookupTableOn()
@@ -226,9 +228,10 @@ class ModelmapViewer(module_template.Viewer):
     def _update_surface_level(self):
         """Set the isosurface level based on the relative level in _surface_level
         and the maximum value of the current model."""
-        self._surface_algorithm.SetValue(0, self._surface_level*self._volume_max)
-        self._surface_algorithm.Modified()
-        self._vtk_widget.Render()
+        if self._surface_algorithm != None:
+            self._surface_algorithm.SetValue(0, self._surface_level*self._volume_max)
+            self._surface_algorithm.Modified()
+            self._vtk_widget.Render()
 
     def set_surface_level(self, value):
         """Change the relative isosurface level"""
@@ -282,6 +285,7 @@ class ModelmapViewer(module_template.Viewer):
         self._volume.Modified()
         new_extent = numpy.array(self._volume.GetExtent())
         scaling_factors = numpy.float64(new_extent[1::2]) / numpy.float64(old_extent[1::2])
+
         self._planes[0].SetOrigin(numpy.array(self._planes[0].GetOrigin()*scaling_factors))
         self._planes[0].SetPoint1(numpy.array(self._planes[0].GetPoint1()*scaling_factors))
         self._planes[0].SetPoint2(numpy.array(self._planes[0].GetPoint2()*scaling_factors))
@@ -290,9 +294,9 @@ class ModelmapViewer(module_template.Viewer):
         self._planes[1].SetPoint2(numpy.array(self._planes[1].GetPoint2()*scaling_factors))
         # self._planes[0].Modified()
         # self._planes[1].Modified()
-
         self._planes[0].UpdatePlacement()
         self._planes[1].UpdatePlacement()
+
         self._vtk_widget.Render()
         self._renderer.Render()
 
@@ -378,10 +382,11 @@ class ModelmapControll(module_template.Controll):
     def draw_hard(self):
         """Draw the scene. Don't call this function directly. The draw() function calls this one
         if the module is visible."""
+        datamap = self._data.get_map(self._common_controll.get_iteration())
         if (self._state["view_type"] == VIEW_TYPE.slice) and self._state["log_scale"]:
-            self._viewer.plot_map(numpy.log(1.+self._data.get_map(self._common_controll.get_iteration())))
+            self._viewer.plot_map(numpy.log(0.0001*datamap.max() + datamap))
         else:
-            self._viewer.plot_map(self._data.get_map(self._common_controll.get_iteration()))
+            self._viewer.plot_map(datamap)
 
     def set_view_type(self, view_type):
         """Select between isosurface and slice plot."""
@@ -406,5 +411,6 @@ class Plugin(module_template.Plugin):
     def __init__(self, common_controll, parent=None):
         super(Plugin, self).__init__(common_controll, parent)
         self._viewer = ModelmapViewer()
-        self._data = ModelmapData("output/model")
+        self._data = ModelmapData("model")
         self._controll = ModelmapControll(self._common_controll, self._viewer, self._data)
+        

@@ -95,8 +95,8 @@ class StateWatcher(QtCore.QObject):
 
     def set_base_dir(self, new_dir):
         """Change the base dir being watched, assuming the file ends
-        with output/state.h5"""
-        self.set_file("%s/output/state.h5" % (new_dir))
+        with state.h5"""
+        self.set_file("%s/state.h5" % (new_dir))
 
     def _on_file_change(self):
         """Handles file changed calles from the watcher"""
@@ -233,7 +233,7 @@ class CommonControll(QtGui.QWidget):
         return self._state["iteration"]
 
     def _read_run_info(self):
-        with h5py.File("output/run_info.h5", "r") as file_handle:
+        with h5py.File("run_info.h5", "r") as file_handle:
             self._run_info["compact_output"] = bool(file_handle["compact_output"][...])
             self._run_info["number_of_images"] = int(file_handle["number_of_images"][...])
             self._run_info["random_seed"] = int(file_handle["random_seed"][...])
@@ -268,7 +268,7 @@ class StartMain(QtGui.QMainWindow):
         self._setup_menus()
 
         #setup watcher of the description of the current rec.
-        self._state_watcher = StateWatcher("output/state.h5")
+        self._state_watcher = StateWatcher("state.h5")
         self._common_controll.set_max_iterations(self._state_watcher.get_value('iteration'))
         self._state_watcher.iterationChanged.connect(self._common_controll.set_max_iterations)
         self._common_controll.dirChanged.connect(self._state_watcher.set_base_dir)
