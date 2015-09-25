@@ -313,7 +313,7 @@ class SliceViewer(module_template.Viewer):
         super(SliceViewer, self).__init__()
         self._data = data
         self._lut = None
-        self._actors = None
+        self._actors = {}
         self._camera = None
 
         #self._slice_generator = SliceGenerator(self._data.get_image_side(), self._data.get_curvature())
@@ -330,6 +330,7 @@ class SliceViewer(module_template.Viewer):
         # self._vtk_widget.Initialize()
         # self._vtk_widget.Start()
         self._renderer = vtk.vtkRenderer()
+        self._renderer.SetDraw(0)
         self._vtk_render_window = self._vtk_widget.GetRenderWindow()
         self._vtk_render_window.AddRenderer(self._renderer)
         #self._setup_slice_view()
@@ -339,6 +340,10 @@ class SliceViewer(module_template.Viewer):
         self._vtk_widget.Initialize()
         self._setup_slice_view()
         self._slice_generator = SliceGenerator(self._data.get_image_side(), self._data.get_curvature())
+
+    def set_active(self, state):
+        super(SliceViewer, self).set_active(state)
+        self._renderer.SetDraw(int(state))
 
     def _draw(self):
         if self._vtk_render_window.IsDrawable():
@@ -358,7 +363,6 @@ class SliceViewer(module_template.Viewer):
         # self._lut = vtk_tools.get_lookup_table(self._data.get_total_min(), self._data.get_total_max(),
         #                                        log=True, colorscale="jet")
         self._lut = vtk_tools.get_lookup_table(0.1, 10., log=True, colorscale="jet")
-        self._actors = {}
 
     def _update_lut(self):
         """Call after new images were added to update the LUT to include
@@ -482,7 +486,7 @@ class SliceControll(module_template.Controll):
             
     def _color_active(self):
         active_images = self._data.get_active()
-        if active_images == None:
+        if active_images is None:
             return
         old_block_state = self._pattern_list.blockSignals(True)
         for index in range(len(active_images)):

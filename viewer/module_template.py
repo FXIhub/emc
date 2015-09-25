@@ -21,6 +21,7 @@ class Viewer(QtCore.QObject):
     def __init__(self, parent=None):
         super(Viewer, self).__init__(parent)
         self._widget = QtGui.QWidget(parent)
+        self._active = False
 
     def initialize(self):
         """Any initialization that should be done after the viewer is
@@ -30,6 +31,9 @@ class Viewer(QtCore.QObject):
     def get_widget(self):
         """Returns the plotting widget."""
         return self._widget
+
+    def set_active(self, state):
+        self._active = bool(state)
 
     def save_image(self, file_name):
         """Save the current view to file. If the module doesn't implement it
@@ -49,11 +53,13 @@ class Controll(QtCore.QObject):
         self._viewer = viewer
         self._data = data
         self._widget = QtGui.QWidget()
-        self._active = True
+        self._active = False
+        #self._active = True
 
     def initialize(self):
         """Any initialization that should be done after the viewer is
         properly set up with a window to draw into."""
+        #self._active = True
         pass
 
     def get_viewer(self):
@@ -71,6 +77,7 @@ class Controll(QtCore.QObject):
     def set_active(self, state):
         """Tells the class that this is now the visible widget."""
         self._active = bool(state)
+        self._viewer.set_active(self._active)
 
     def draw_hard(self):
         """Draw the widget."""

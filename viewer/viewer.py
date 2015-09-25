@@ -233,10 +233,16 @@ class CommonControll(QtGui.QWidget):
         return self._state["iteration"]
 
     def _read_run_info(self):
-        with h5py.File("run_info.h5", "r") as file_handle:
-            self._run_info["compact_output"] = bool(file_handle["compact_output"][...])
-            self._run_info["number_of_images"] = int(file_handle["number_of_images"][...])
-            self._run_info["random_seed"] = int(file_handle["random_seed"][...])
+        try:
+            with h5py.File("run_info.h5", "r") as file_handle:
+                self._run_info["compact_output"] = bool(file_handle["compact_output"][...])
+                self._run_info["number_of_images"] = int(file_handle["number_of_images"][...])
+                self._run_info["random_seed"] = int(file_handle["random_seed"][...])
+        except IOError:
+            self._run_info["compact_output"] = False
+            with h5py.File("state.h5", "r") as file_handle:
+                self._run_info["number_of_images"] = file_handle["number_of_images"][...]
+            self._run_info["random_seed"] = 0
 
     def output_is_compact(self):
         return self._run_info["compact_output"]
@@ -296,6 +302,7 @@ class StartMain(QtGui.QMainWindow):
             print "Intializing module: {0}".format(plugin[0])
             plugin[1].initialize()
             #plugin[1].get_controll().draw()
+        self._select_module(self._active_module_index)
 
     def _setup_actions(self):
         """Setup actions to be used in menues etc."""
@@ -404,11 +411,19 @@ class StartMain(QtGui.QMainWindow):
 def main():
     """Launch program"""
     app = QtGui.QApplication(['Controll window'])
+    os.path.realpath(__file__)
+
+    icon_path = os.path.join(os.path.split(os.path.realpath(__file__))[0], "resources/icon_slices.png")
+    print icon_path
+    app.setWindowIcon(QtGui.QIcon(icon_path))
     #app = QtGui.QApplication.instance()
 
     program = StartMain()
     program.show()
     program.initialize()
+    #app.setActiveWindow(program)
+    program.raise_()
+
     sys.exit(app.exec_())
 
 if __name__ == "__main__":

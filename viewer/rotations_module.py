@@ -143,6 +143,7 @@ class RotationViewer(module_template.Viewer):
         self._widget.setLayout(layout)
 
         self._renderer = vtk.vtkRenderer()
+        self._renderer.SetDraw(0)
         self._vtk_widget.GetRenderWindow().AddRenderer(self._renderer)
 
         #self._mlab_widget = embedded_mayavi.MlabWidget()
@@ -160,6 +161,10 @@ class RotationViewer(module_template.Viewer):
     # def get_widget(self):
     #     """Return the widget containing the view."""
     #     return self._vtk_widget
+
+    def set_active(self, state):
+        super(RotationViewer, self).set_active(state)
+        self._renderer.SetDraw(int(state))
 
     def set_sampling_n(self, sampling_n):
         """Rerun when the array size changes."""
