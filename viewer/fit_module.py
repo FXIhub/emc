@@ -40,7 +40,7 @@ class FitData(module_template.Data):
         try:
             self._fit_data_best_rot = numpy.loadtxt("fit_best_rot.data").mean(axis=1)
             sucess = True
-        except IOError:
+        except (IOError, IndexError):
             print "ioerror"
             self.read_error.emit()
         if sucess:

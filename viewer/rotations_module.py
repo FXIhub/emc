@@ -36,16 +36,19 @@ class RotationData(module_template.Data):
 
         #self._setup_rotations()
 
-    @staticmethod
-    def _read_average_resp(iteration):
+    def _read_average_resp(self, iteration):
         """Read the responsabilities averaged for all images
         (these are precalculated in EMC)."""
-        if os.path.isfile("average_resp_%.4d.h5" % (iteration)):
-            with h5py.File("average_resp_%.4d.h5" % (iteration), "r") as file_handle:
-                average_resp = file_handle["data"][...]
-        else:
-            average_resp = numpy.loadtxt("average_resp_%.4d.data" % (iteration))
-        return average_resp
+        try:
+            if os.path.isfile("average_resp_%.4d.h5" % (iteration)):
+                with h5py.File("average_resp_%.4d.h5" % (iteration), "r") as file_handle:
+                    average_resp = file_handle["data"][...]
+            else:
+                average_resp = numpy.loadtxt("average_resp_%.4d.data" % (iteration))
+            return average_resp
+        except IOError:
+            self.read_error.emit()
+
 
     def set_sampling_coordinates(self, coordinates):
         self._rotation_sphere_coordinates = coordinates

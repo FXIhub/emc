@@ -12,6 +12,7 @@ import convenient_widgets
 #state_variables = tools.enum(iteration=1)
 #state_variables = ["iteration", "number_of_images"]
 STATE_VARIABLES = ["iteration"]
+PROGRAM_NAME = "EMC Viewer"
 
 class State(QtCore.QObject):
     """Class used by the state watcher too  indicate the current state"""
@@ -40,7 +41,7 @@ class FileWatcher(QtCore.QThread):
     def __init__(self, file_name):
         super(FileWatcher, self).__init__()
         self._file_name = file_name
-        self._check_interval = 1. #seconds
+        self._check_interval = 5. #seconds
         self._last_mtime = os.stat(self._file_name).st_mtime
 
     def __del__(self):
@@ -52,6 +53,7 @@ class FileWatcher(QtCore.QThread):
             time.sleep(self._check_interval)
             mtime = os.stat(self._file_name).st_mtime
             if mtime != self._last_mtime:
+                self._last_mtime = mtime
                 self.fileChanged.emit()
 
     def set_file(self, new_file_name):
@@ -267,6 +269,7 @@ class StartMain(QtGui.QMainWindow):
         self._controll_stack = None
         self._central_widget = None
 
+        self.setWindowTitle(PROGRAM_NAME)
         self._common_controll = CommonControll()
         self._plugins = []
         self._setup_gui()
@@ -411,11 +414,10 @@ class StartMain(QtGui.QMainWindow):
 def main():
     """Launch program"""
     app = QtGui.QApplication(['Controll window'])
-    os.path.realpath(__file__)
-
     icon_path = os.path.join(os.path.split(os.path.realpath(__file__))[0], "resources/icon_slices.png")
-    print icon_path
     app.setWindowIcon(QtGui.QIcon(icon_path))
+    app.setApplicationName(PROGRAM_NAME)
+
     #app = QtGui.QApplication.instance()
 
     program = StartMain()

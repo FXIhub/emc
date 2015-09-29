@@ -40,7 +40,10 @@ class SliceData(module_template.Data):
 
     def _read_rotations(self):
         """Read rotations and save them within the object."""
-        self._rotations = numpy.loadtxt("best_quaternion_%.4d.data" % (self._iteration))
+        try:
+            self._rotations = numpy.loadtxt("best_quaternion_%.4d.data" % (self._iteration))
+        except:
+            self.read_error.emit()
 
     def _set_number_of_images(self):
         prefix = "."
@@ -369,7 +372,8 @@ class SliceViewer(module_template.Viewer):
         the entire range."""
         # self._lut = vtk_tools.get_lookup_table(self._data.get_total_min(), self._data.get_total_max(),
         #                                        log=True, colorscale="jet")
-        self._lut.SetTableRange(self._data.get_total_min(), self._data.get_total_max())
+        #self._lut.SetTableRange(self._data.get_total_min(), self._data.get_total_max())
+        self._lut.SetTableRange(max(self._data.get_total_min(), 0.0001*self._data.get_total_max()), self._data.get_total_max())
         self._lut.Build()
         self._draw()
         
@@ -403,7 +407,6 @@ class SliceViewer(module_template.Viewer):
 
     def add_slice(self, index):
         """Add the image with the specified index to the view."""
-        image = self._data.get_image(index)
         self._add_poly_data(self._slice_generator.get_slice(self._data.get_image(index),
                                                             self._data.get_rotation(index)), index)
         self._draw()
