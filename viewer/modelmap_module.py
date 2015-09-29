@@ -27,6 +27,7 @@ class ModelmapData(module_template.Data):
         super(ModelmapData, self).__init__()
         self._file_prefix = file_prefix
         self._side = None
+        self.get_map(0) #get map to make the side valid <test>
 
     def get_map(self, iteration):
         """Return the 3D model as an array for the requested iteration."""
@@ -96,12 +97,15 @@ class ModelmapViewer(module_template.Viewer):
         #self._vtk_widget.Start()
 
         self._renderer = vtk.vtkRenderer()
+        self._renderer.SetDraw(0)
         self._vtk_render_window = self._vtk_widget.GetRenderWindow()
         self._vtk_render_window.AddRenderer(self._renderer)
         #self._renderer = self._vtk_widget.GetRenderWindow().GetRenderer()
         self._lut = vtk_tools.get_lookup_table(0., 1., log=False, colorscale="jet")
 
         self._create_volume_map()
+        #self._setup_slices()
+        #self._setup_surface()
 
         white = (1., 1., 1.)
         self._renderer.SetBackground(white)
@@ -109,6 +113,7 @@ class ModelmapViewer(module_template.Viewer):
         #self._vtk_widget.GetRenderWindow().Render()
 
     def initialize(self):
+        super(ModelmapViewer, self).initialize()
         self._vtk_widget.Initialize()
         self._setup_slices()
         self._setup_surface()
@@ -124,6 +129,10 @@ class ModelmapViewer(module_template.Viewer):
         # print self._renderer.VisibleActorCount()
         # print self._surface_actor.GetBounds()
         # print self._renderer.GetActiveCamera().GetPosition()
+
+    def set_active(self, state):
+        super(ModelmapViewer, self).set_active(state)
+        self._renderer.SetDraw(int(state))
 
     def _create_volume_map(self):
         """Create the vtk objects containing the data."""
@@ -168,6 +177,8 @@ class ModelmapViewer(module_template.Viewer):
         picker.SetTolerance(picker_tolerance)
         text_color = (0., 0., 0.)
 
+        if len(self._planes) != 0:
+            raise RuntimeError("planes initialized twice")
         self._planes.append(vtk.vtkImagePlaneWidget())
         self._planes[0].SetInputData(self._volume)
         self._planes[0].UserControlledLookupTableOn()
@@ -226,9 +237,10 @@ class ModelmapViewer(module_template.Viewer):
     def _update_surface_level(self):
         """Set the isosurface level based on the relative level in _surface_level
         and the maximum value of the current model."""
-        self._surface_algorithm.SetValue(0, self._surface_level*self._volume_max)
-        self._surface_algorithm.Modified()
-        self._vtk_widget.Render()
+        if self._surface_algorithm != None:
+            self._surface_algorithm.SetValue(0, self._surface_level*self._volume_max)
+            self._surface_algorithm.Modified()
+            self._vtk_widget.Render()
 
     def set_surface_level(self, value):
         """Change the relative isosurface level"""
@@ -243,6 +255,9 @@ class ModelmapViewer(module_template.Viewer):
 
     def plot_map(self, new_data_array):
         """Update the viwer to show the provided map."""
+        if (new_data_array.shape != self._volume_numpy.shape):
+            self.plot_map_init(new_data_array)
+            return
         self._volume_numpy[:, :, :] = new_data_array
         self._volume_max = new_data_array.max()
         self._lut.SetTableRange(new_data_array.min(), new_data_array.max())
@@ -282,6 +297,7 @@ class ModelmapViewer(module_template.Viewer):
         self._volume.Modified()
         new_extent = numpy.array(self._volume.GetExtent())
         scaling_factors = numpy.float64(new_extent[1::2]) / numpy.float64(old_extent[1::2])
+
         self._planes[0].SetOrigin(numpy.array(self._planes[0].GetOrigin()*scaling_factors))
         self._planes[0].SetPoint1(numpy.array(self._planes[0].GetPoint1()*scaling_factors))
         self._planes[0].SetPoint2(numpy.array(self._planes[0].GetPoint2()*scaling_factors))
@@ -290,9 +306,9 @@ class ModelmapViewer(module_template.Viewer):
         self._planes[1].SetPoint2(numpy.array(self._planes[1].GetPoint2()*scaling_factors))
         # self._planes[0].Modified()
         # self._planes[1].Modified()
-
         self._planes[0].UpdatePlacement()
         self._planes[1].UpdatePlacement()
+
         self._vtk_widget.Render()
         self._renderer.Render()
 
@@ -317,12 +333,13 @@ class ModelmapControll(module_template.Controll):
                        "log_scale": False}
         #self._viewer.plot_map_init(self._data.get_map(self._common_controll.get_iteration()))
         self._setup_gui()
-        self._data.properties_changed.connect(self._setup_viewer)
+        #self._data.properties_changed.connect(self._setup_viewer)
 
     def initialize(self):
         self._viewer.plot_map_init(self._data.get_map(self._common_controll.get_iteration()))
         self._surface_level_slider.blockSignals(False)
         self.set_view_type(VIEW_TYPE.slice)
+        self._data.properties_changed.connect(self._setup_viewer)
 
     def _setup_viewer(self):
         """Provedes an empty map to the viewer to initialize it."""
@@ -378,10 +395,11 @@ class ModelmapControll(module_template.Controll):
     def draw_hard(self):
         """Draw the scene. Don't call this function directly. The draw() function calls this one
         if the module is visible."""
+        datamap = self._data.get_map(self._common_controll.get_iteration())
         if (self._state["view_type"] == VIEW_TYPE.slice) and self._state["log_scale"]:
-            self._viewer.plot_map(numpy.log(1.+self._data.get_map(self._common_controll.get_iteration())))
+            self._viewer.plot_map(numpy.log(0.0001*datamap.max() + datamap))
         else:
-            self._viewer.plot_map(self._data.get_map(self._common_controll.get_iteration()))
+            self._viewer.plot_map(datamap)
 
     def set_view_type(self, view_type):
         """Select between isosurface and slice plot."""
@@ -406,5 +424,6 @@ class Plugin(module_template.Plugin):
     def __init__(self, common_controll, parent=None):
         super(Plugin, self).__init__(common_controll, parent)
         self._viewer = ModelmapViewer()
-        self._data = ModelmapData("output/model")
+        self._data = ModelmapData("model")
         self._controll = ModelmapControll(self._common_controll, self._viewer, self._data)
+        

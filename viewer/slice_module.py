@@ -40,10 +40,13 @@ class SliceData(module_template.Data):
 
     def _read_rotations(self):
         """Read rotations and save them within the object."""
-        self._rotations = numpy.loadtxt("output/best_quaternion_%.4d.data" % (self._iteration))
+        try:
+            self._rotations = numpy.loadtxt("best_quaternion_%.4d.data" % (self._iteration))
+        except:
+            self.read_error.emit()
 
     def _set_number_of_images(self):
-        prefix = "output"
+        prefix = "."
         list_of_all_files = os.listdir(prefix)
         list_of_images = [f for f in list_of_all_files if re.search("^image_[0-9]{4}.h5$", f)]
         self._number_of_images = len(list_of_images)
@@ -51,9 +54,9 @@ class SliceData(module_template.Data):
     def _read_images(self):
         """Read diffraction patterns and save them within the object."""
         #should I normalize images??
-        list_of_all_files = os.listdir("output")
+        list_of_all_files = os.listdir(".")
         list_of_images = [f for f in list_of_all_files if re.search("^image_[0-9]{4}.h5$", f)]
-        prefix = "output"
+        prefix = "."
         if len(list_of_images) == 0:
             # maybe this is an old run with images output in debug
             list_of_all_files = os.listdir("debug")
@@ -74,7 +77,7 @@ class SliceData(module_template.Data):
 
     def _read_active(self):
         """Read the list of active and excluded images if it exists."""
-        file_name = "output/active_{0:04}.h5".format(self._iteration)
+        file_name = "active_{0:04}.h5".format(self._iteration)
         if not os.path.isfile(file_name):
             self._active_images = numpy.ones(self._number_of_images, dtype="int32")
         else:
@@ -85,7 +88,7 @@ class SliceData(module_template.Data):
     def _open_scaling_file(self):
         """Open scaling file and keep a handle for use by the object."""
         try:
-            self._scaling_file_handle = h5py.File("output/scaling_%.4d.h5" % self._iteration, "r")
+            self._scaling_file_handle = h5py.File("scaling_%.4d.h5" % self._iteration, "r")
         except IOError:
             self._scaling_file_handle = None
 
@@ -134,7 +137,7 @@ class SliceData(module_template.Data):
         """Load the image and mask if they have not been viewed before."""
         if index in self._images and index in self._masks:
             return
-        prefix = "output"
+        prefix = "."
         try:
             image, mask = sphelper.import_spimage(os.path.join(prefix, "image_{0:04}.h5".format(index)), ["image", "mask"])
         except IOError:
@@ -313,7 +316,7 @@ class SliceViewer(module_template.Viewer):
         super(SliceViewer, self).__init__()
         self._data = data
         self._lut = None
-        self._actors = None
+        self._actors = {}
         self._camera = None
 
         #self._slice_generator = SliceGenerator(self._data.get_image_side(), self._data.get_curvature())
@@ -330,6 +333,7 @@ class SliceViewer(module_template.Viewer):
         # self._vtk_widget.Initialize()
         # self._vtk_widget.Start()
         self._renderer = vtk.vtkRenderer()
+        self._renderer.SetDraw(0)
         self._vtk_render_window = self._vtk_widget.GetRenderWindow()
         self._vtk_render_window.AddRenderer(self._renderer)
         #self._setup_slice_view()
@@ -339,6 +343,10 @@ class SliceViewer(module_template.Viewer):
         self._vtk_widget.Initialize()
         self._setup_slice_view()
         self._slice_generator = SliceGenerator(self._data.get_image_side(), self._data.get_curvature())
+
+    def set_active(self, state):
+        super(SliceViewer, self).set_active(state)
+        self._renderer.SetDraw(int(state))
 
     def _draw(self):
         if self._vtk_render_window.IsDrawable():
@@ -358,14 +366,14 @@ class SliceViewer(module_template.Viewer):
         # self._lut = vtk_tools.get_lookup_table(self._data.get_total_min(), self._data.get_total_max(),
         #                                        log=True, colorscale="jet")
         self._lut = vtk_tools.get_lookup_table(0.1, 10., log=True, colorscale="jet")
-        self._actors = {}
 
     def _update_lut(self):
         """Call after new images were added to update the LUT to include
         the entire range."""
         # self._lut = vtk_tools.get_lookup_table(self._data.get_total_min(), self._data.get_total_max(),
         #                                        log=True, colorscale="jet")
-        self._lut.SetTableRange(self._data.get_total_min(), self._data.get_total_max())
+        #self._lut.SetTableRange(self._data.get_total_min(), self._data.get_total_max())
+        self._lut.SetTableRange(max(self._data.get_total_min(), 0.0001*self._data.get_total_max()), self._data.get_total_max())
         self._lut.Build()
         self._draw()
         
@@ -399,7 +407,6 @@ class SliceViewer(module_template.Viewer):
 
     def add_slice(self, index):
         """Add the image with the specified index to the view."""
-        image = self._data.get_image(index)
         self._add_poly_data(self._slice_generator.get_slice(self._data.get_image(index),
                                                             self._data.get_rotation(index)), index)
         self._draw()
@@ -482,7 +489,7 @@ class SliceControll(module_template.Controll):
             
     def _color_active(self):
         active_images = self._data.get_active()
-        if active_images == None:
+        if active_images is None:
             return
         old_block_state = self._pattern_list.blockSignals(True)
         for index in range(len(active_images)):

@@ -36,16 +36,19 @@ class RotationData(module_template.Data):
 
         #self._setup_rotations()
 
-    @staticmethod
-    def _read_average_resp(iteration):
+    def _read_average_resp(self, iteration):
         """Read the responsabilities averaged for all images
         (these are precalculated in EMC)."""
-        if os.path.isfile("output/average_resp_%.4d.h5" % (iteration)):
-            with h5py.File("output/average_resp_%.4d.h5" % (iteration), "r") as file_handle:
-                average_resp = file_handle["data"][...]
-        else:
-            average_resp = numpy.loadtxt("output/average_resp_%.4d.data" % (iteration))
-        return average_resp
+        try:
+            if os.path.isfile("average_resp_%.4d.h5" % (iteration)):
+                with h5py.File("average_resp_%.4d.h5" % (iteration), "r") as file_handle:
+                    average_resp = file_handle["data"][...]
+            else:
+                average_resp = numpy.loadtxt("average_resp_%.4d.data" % (iteration))
+            return average_resp
+        except IOError:
+            self.read_error.emit()
+
 
     def set_sampling_coordinates(self, coordinates):
         self._rotation_sphere_coordinates = coordinates
@@ -83,7 +86,7 @@ class RotationData(module_template.Data):
     def get_rotation_coordinates(self):
         """Get the coordinates of the points of the sphere."""
         self.check_ready()
-        # best_index = list(int32(loadtxt('output/best_rot.data')[self._current_iteration]))
+        # best_index = list(int32(loadtxt('best_rot.data')[self._current_iteration]))
         # return self._rotation_sphere_coordinates
         return self._rotation_sphere_coordinates
 
@@ -91,7 +94,7 @@ class RotationData(module_template.Data):
         """Get the average rotation distribution of all images"""
         self.check_ready()
         try:
-            #average_resp = loadtxt('output/average_resp_%.4d.data' % iteration)
+            #average_resp = loadtxt('average_resp_%.4d.data' % iteration)
             average_resp = self._read_average_resp(iteration)
         except IOError:
             self.read_error.emit()
@@ -112,7 +115,7 @@ class RotationData(module_template.Data):
         """Get the rotation distribution of a single image"""
         self.check_ready()
         try:
-            resp_handle = h5py.File('output/responsabilities_%.4d.h5' % iteration)
+            resp_handle = h5py.File('responsabilities_%.4d.h5' % iteration)
             resp = resp_handle['data'][image_number, :]
             resp_handle.close()
         except IOError:
@@ -143,6 +146,7 @@ class RotationViewer(module_template.Viewer):
         self._widget.setLayout(layout)
 
         self._renderer = vtk.vtkRenderer()
+        self._renderer.SetDraw(0)
         self._vtk_widget.GetRenderWindow().AddRenderer(self._renderer)
 
         #self._mlab_widget = embedded_mayavi.MlabWidget()
@@ -160,6 +164,10 @@ class RotationViewer(module_template.Viewer):
     # def get_widget(self):
     #     """Return the widget containing the view."""
     #     return self._vtk_widget
+
+    def set_active(self, state):
+        super(RotationViewer, self).set_active(state)
+        self._renderer.SetDraw(int(state))
 
     def set_sampling_n(self, sampling_n):
         """Rerun when the array size changes."""

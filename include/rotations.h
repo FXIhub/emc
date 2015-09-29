@@ -28,7 +28,7 @@ void quaternion_normalize(Quaternion *a);
 /*
   Generate a random rotation quaternion.
  */
-Quaternion *quaternion_random(gsl_rng *rng);
+Quaternion quaternion_random(gsl_rng *rng);
 
 /*
   Calculate the number of samples for specific n.
@@ -48,9 +48,9 @@ int theta_to_n(real theta);
 /*
   Generate a list of rotations sampled uniformly.
  */
-int generate_rotation_list(const int n, Quaternion ***return_list, real **return_weights);
+int generate_rotation_list(const int n, Quaternion **return_list, real **return_weights);
 
 /*
   Convert quaternion to euler angles a,b,c.
  */
-void quaternion_to_euler(Quaternion *q, real *a, real *b, real *c);
+void quaternion_to_euler(Quaternion q, real *a, real *b, real *c);

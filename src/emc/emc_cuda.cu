@@ -390,7 +390,22 @@ __device__ void cuda_calculate_responsability_true_poisson(float *slice, float *
   count_cache[tid] = count;
   //  return -sum/2.0/(real)count/pow(sigma,2); //return in log scale.
 }
-
+/*
+__device__ void cuda_calculate_responsability_annealing_poisson(float *slice, float *image, int *mask, real sigma,
+								real scaling, real *weight_map, int N_2d, int tid,
+								int step, real *sum_cache, real *count_cache) {
+  real sum = 0.;
+  const int i_max = N_2d;
+  real count = 0;
+  for (int i = tid; i < i_max; i += step) {
+    if (mask[i] != 0 && slice[i] > 0.0f) {
+      sum += logf(sqrt(scaling*slice[i])) + pow((scaling*slice[i] - image[i]), 2) / (scaling*slice[i])*weight_map[i];
+    }
+  }
+  sum_cache[tid] = sum;
+  count_cache[tid] = count;
+}
+*/
 /* Now takes a starting slice. Otherwise unchanged */
 __global__ void calculate_responsabilities_kernel(float * slices, float * images, int * mask, real *weight_map,
 						  real sigma, real * scaling, real * respons, real *weights, 
@@ -416,6 +431,14 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
     cuda_calculate_responsability_absolute(&slices[i_slice*N_2d], &images[i_image*N_2d], mask, weight_map,
 					   sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step,
 					   sum_cache, count_cache);
+  } else if (diff == annealing_poisson) {
+    printf("annealing_poisson is not implemented\n");
+    return;
+    /*
+    cuda_calculate_responsability_annealing_poisson(&slices[i_slice*N_2d], &images[i_image*N_2d], mask, weight_map,
+						    sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,
+						    step, sum_cache, count_cache);
+    */
   }
 
   inblock_reduce(sum_cache);
@@ -427,7 +450,7 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
     //respons[(slice_start+i_slice)*N_images+i_image] = log(weights[slice_start+i_slice]) - sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
     /* I therefore try to remove it altogether */
     respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
-  }   
+  }
 }
 
 
@@ -941,51 +964,148 @@ real cuda_model_average(real * model, int model_size) {
 
 void cuda_allocate_slices(real ** slices, int side, int N_slices){
   //cudaSetDevice(2);
-  cudaMalloc(slices,sizeof(real)*side*side*N_slices);  
+  cudaMalloc(slices,sizeof(real)*side*side*N_slices);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_print_device_info): %s\n",cudaGetErrorString(status));
+  }
 }
 
 void cuda_allocate_model(real ** d_model, sp_3matrix * model){
   cudaMalloc(d_model,sizeof(real)*sp_3matrix_size(model));
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_model: malloc): %s\n",cudaGetErrorString(status));
+  }
   cudaMemcpy(*d_model,model->data,sizeof(real)*sp_3matrix_size(model),cudaMemcpyHostToDevice);
+  status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_model: copy): %s\n",cudaGetErrorString(status));
+  }
 }
 
 void cuda_allocate_mask(int ** d_mask, sp_imatrix * mask){
   cudaMalloc(d_mask,sizeof(int)*sp_imatrix_size(mask));
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_mask: malloc): %s\n",cudaGetErrorString(status));
+  }
+
   cudaMemcpy(*d_mask,mask->data,sizeof(int)*sp_imatrix_size(mask),cudaMemcpyHostToDevice);
+  status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_mask: copy): %s\n",cudaGetErrorString(status));
+  }
 }
 
-void cuda_allocate_rotations(real ** d_rotations, Quaternion ** rotations,  int N_slices){
-  cudaMalloc(d_rotations,sizeof(real)*4*N_slices);
-  for(int i = 0;i<N_slices;i++){
+void cuda_allocate_rotations(real ** d_rotations, Quaternion *rotations,  int N_slices){
+  cudaMalloc(d_rotations, sizeof(real)*4*N_slices);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_rotations: malloc): %s\n",cudaGetErrorString(status));
+  }
+
+  /*
+  for(int i = 0; i<N_slices; i++){
     cudaMemcpy(&((*d_rotations)[4*i]),rotations[i]->q,sizeof(real)*4,cudaMemcpyHostToDevice);
+  }
+  */
+  cudaMemcpy(*d_rotations, rotations, sizeof(real)*4*N_slices, cudaMemcpyHostToDevice);
+  status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_rotations: copy): %s\n",cudaGetErrorString(status));
   }
 }
 
 void cuda_allocate_images(real ** d_images, sp_matrix ** images,  int N_images){
 
   cudaMalloc(d_images,sizeof(real)*sp_matrix_size(images[0])*N_images);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_images: malloc): %s\n",cudaGetErrorString(status));
+  }
+
   for(int i = 0;i<N_images;i++){
     cudaMemcpy(&(*d_images)[sp_matrix_size(images[0])*i],images[i]->data,sizeof(real)*sp_matrix_size(images[0]),cudaMemcpyHostToDevice);
   }
+  status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_images: copy): %s\n",cudaGetErrorString(status));
+  }
+
 }
 
 void cuda_allocate_masks(int ** d_images, sp_imatrix ** images,  int N_images){
 
   cudaMalloc(d_images,sizeof(int)*sp_imatrix_size(images[0])*N_images);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_masks: malloc): %s\n",cudaGetErrorString(status));
+  }
   for(int i = 0;i<N_images;i++){
     cudaMemcpy(&(*d_images)[sp_imatrix_size(images[0])*i],images[i]->data,sizeof(int)*sp_imatrix_size(images[0]),cudaMemcpyHostToDevice);
   }
+  status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_masks: copy): %s\n",cudaGetErrorString(status));
+  }
+
 }
 
+__global__ void apply_mask(real *const array, const int *const mask, const int size) {
+  int i = blockIdx.x*blockDim.x + threadIdx.x;
+  if (i < size) {
+    if (mask[i] == 0) {
+      array[i] = -1.;
+    }
+  }
+}
+
+/* This function is the same as apply_mask except that it
+   periodically steps throug the mask thus applying the same
+   mask to multiple files. */
+__global__ void apply_single_mask(real * const array, const int *const mask, const int mask_size, const int size) {
+  int i = blockIdx.x*blockDim.x + threadIdx.x;
+  if (i < size) {
+    if (mask[i%mask_size] == 0) {
+      array[i] = -1.;
+    }
+  }
+}
+
+void cuda_apply_masks(real *const d_images, const int *const d_masks, const int N_2d, const int N_images) {
+  int nthreads = 256;
+  int nblocks = (N_2d*N_images - 1) / nthreads;
+  apply_mask<<<nblocks, nthreads>>>(d_images, d_masks, N_2d*N_images);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_apply_masks): %s\n",cudaGetErrorString(status));
+  }
+}
+
+void cuda_apply_single_mask(real *const d_images, const int *const d_mask, const int N_2d, const int N_images) {
+  int nthreads = 256;
+  int nblocks = (N_2d*N_images - 1) / nthreads;
+  apply_single_mask<<<nblocks, nthreads>>>(d_images, d_mask, N_2d, N_2d*N_images);
+}
 
 void cuda_allocate_coords(real ** d_x, real ** d_y, real ** d_z, sp_matrix * x,
 			  sp_matrix * y, sp_matrix * z){
   cudaMalloc(d_x,sizeof(real)*sp_matrix_size(x));
   cudaMalloc(d_y,sizeof(real)*sp_matrix_size(x));
   cudaMalloc(d_z,sizeof(real)*sp_matrix_size(x));
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_coords: malloc): %s\n",cudaGetErrorString(status));
+  }
+
   cudaMemcpy(*d_x,x->data,sizeof(real)*sp_matrix_size(x),cudaMemcpyHostToDevice);
   cudaMemcpy(*d_y,y->data,sizeof(real)*sp_matrix_size(x),cudaMemcpyHostToDevice);
   cudaMemcpy(*d_z,z->data,sizeof(real)*sp_matrix_size(x),cudaMemcpyHostToDevice);
+  status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_coords: copy): %s\n",cudaGetErrorString(status));
+  }
 }
 
 void cuda_reset_model(sp_3matrix * model, real * d_model){
@@ -1060,6 +1180,10 @@ void cuda_print_device_info() {
   int i_device = cuda_get_device();
   cudaDeviceProp properties;
   cudaGetDeviceProperties(&properties, i_device);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_print_device_info): %s\n",cudaGetErrorString(status));
+  }
   
   printf("Name: %s\n", properties.name);
   printf("Compute Capability: %d.%d\n", properties.major, properties.minor);
@@ -1112,6 +1236,10 @@ void cuda_choose_best_device() {
     device_priority[i_device] = (int) (core_count_pointers[i_device] - core_count);
   }
   cudaSetValidDevices(device_priority, N_devices);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_choose_best_device): %s\n",cudaGetErrorString(status));
+  }
   free(core_count_pointers);
   free(core_count);
   free(device_priority);
@@ -1120,27 +1248,61 @@ void cuda_choose_best_device() {
 int cuda_get_device() {
   int i_device;
   cudaGetDevice(&i_device);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_get_device): %s\n",cudaGetErrorString(status));
+  }
   return i_device;
 }
 
 void cuda_set_device(int i_device) {
   cudaSetDevice(i_device);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_set_device): %s\n",cudaGetErrorString(status));
+  }
+}
+
+int cuda_get_number_of_devices() {
+  int n_devices;
+  cudaGetDeviceCount(&n_devices);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_get_number_of_devices): %s\n",cudaGetErrorString(status));
+  }
+  return n_devices;
 }
 
 void cuda_allocate_real(real ** x, int n){
   cudaMalloc(x,n*sizeof(real));
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_real): %s\n",cudaGetErrorString(status));
+  }
 }
 
 void cuda_allocate_int(int ** x, int n){
   cudaMalloc(x,n*sizeof(real));
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_int): %s\n",cudaGetErrorString(status));
+  }
 }
 
 void cuda_set_to_zero(real * x, int n){
   cudaMemset(x,0.0,sizeof(real)*n);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_set_to_zero): %s\n",cudaGetErrorString(status));
+  }
 }
 
 void cuda_copy_real_to_device(real *x, real *d_x, int n){
   cudaMemcpy(d_x,x,n*sizeof(real),cudaMemcpyHostToDevice);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_copy_real_to_device): %s\n",cudaGetErrorString(status));
+  }
 }
 
 void cuda_copy_real_to_host(real *x, real *d_x, int n){
@@ -1153,20 +1315,36 @@ void cuda_copy_real_to_host(real *x, real *d_x, int n){
 
 void cuda_copy_int_to_device(int *x, int *d_x, int n){
   cudaMemcpy(d_x,x,n*sizeof(int),cudaMemcpyHostToDevice);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_copy_int_to_host): %s\n",cudaGetErrorString(status));
+  }
 }
 
 void cuda_copy_int_to_host(int *x, int *d_x, int n){
   cudaMemcpy(x,d_x,n*sizeof(int),cudaMemcpyDeviceToHost);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_copy_int_to_host): %s\n",cudaGetErrorString(status));
+  }
 }
 			  
 void cuda_allocate_scaling(real ** d_scaling, int N_images){
   cudaMalloc(d_scaling,N_images*sizeof(real));
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_scaling): %s\n",cudaGetErrorString(status));
+  }
   thrust::device_ptr<real> p(*d_scaling);
   thrust::fill(p, p+N_images, real(1));
 }
 
 void cuda_allocate_scaling_full(real **d_scaling, int N_images, int N_slices) {
   cudaMalloc(d_scaling, N_images*N_slices*sizeof(real));
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess){
+    printf("CUDA Error (cuda_allocate_scaling_full): %s\n",cudaGetErrorString(status));
+  }
   thrust::device_ptr<real> p(*d_scaling);
   thrust::fill(p, p+N_images*N_slices, real(1.));
 }
@@ -1198,22 +1376,6 @@ __global__ void cuda_normalize_responsabilities_single_kernel(real *respons, int
 
 __global__ void cuda_normalize_responsabilities_uniform_kernel(real * respons, int N_slices, int N_images){
   __shared__ real cache[256];
-  /*
-  int i_image = blockIdx.x;
-  int tid = threadIdx.x;
-  int step = blockDim.x;
-  cache[tid] = -1.0e10f;
-  for(int i_slice = tid;i_slice < N_slices;i_slice += step){
-    if(cache[tid] < respons[i_slice*N_images+i_image]){
-      cache[tid] = respons[i_slice*N_images+i_image];
-    }
-  }
-  inblock_maximum(cache);
-  real max_resp = cache[0];
-  for (int i_slice = tid; i_slice < N_slices; i_slice+= step) {
-    respons[i_slice*N_images+i_image] -= max_resp;
-  }
-  */
   /* enforce uniform orientations first */
   int i_slice = blockIdx.x;
   int tid = threadIdx.x;
@@ -1248,6 +1410,7 @@ __global__ void cuda_normalize_responsabilities_uniform_kernel(real * respons, i
   }
 
   /* nor normalize each images weight to one */
+  /*
   int i_image = blockIdx.x;
   cache[tid] = 0;
   for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
@@ -1263,6 +1426,25 @@ __global__ void cuda_normalize_responsabilities_uniform_kernel(real * respons, i
   sum = cache[0];
   for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
     respons[i_slice*N_images+i_image] /= sum;
+  }
+  */
+  /*
+  int i_image = blockIdx.x;
+  if (i_image < N_images) {
+    cache[tid] = 0;
+    for (int i_slice = tid; i_slice < N_slices; i_slice += step) {
+      cache[tid] =+ respons[i_slice*N_images+i_image];
+    }
+    inblock_reduce(cache);
+    sum = cache[0];
+    for (int i_slice = tid; i_slice < N_slices; i_slice += step) {
+      respons[i_slice*N_images+i_image] /= sum;
+    }
+  }
+  */
+  const real scaling_factor = ((float) N_images) / ((float) N_slices);
+  for (int i_image = tid; i_image < N_images; i_image += step) {
+    respons[i_slice*N_images+i_image] *= scaling_factor;
   }
 }
 
@@ -1296,7 +1478,6 @@ __global__ void cuda_normalize_responsabilities_kernel(real * respons, int N_sli
   }
   inblock_reduce(cache);
   real sum = cache[0];
-  //sum = cache[0];
   for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
     respons[i_slice*N_images+i_image] /= sum;
   }
@@ -1317,7 +1498,11 @@ void cuda_normalize_responsabilities(real * d_respons, int N_slices, int N_image
   int nblocks = N_images;
   int nthreads = 256;
   cuda_normalize_responsabilities_kernel<<<nblocks,nthreads>>>(d_respons, N_slices, N_images);
-  //cuda_normalize_responsabilities_uniform_kernel<<<nblocks,nthreads>>>(d_respons, N_slices, N_images);
+  /*
+  int nblocks = N_slices;
+  int nthreads = 256;
+  cuda_normalize_responsabilities_uniform_kernel<<<nblocks,nthreads>>>(d_respons, N_slices, N_images);
+  */
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess){
     printf("CUDA Error (norm resp): %s\n",cudaGetErrorString(status));
@@ -1530,15 +1715,6 @@ __global__ void get_mask_from_model(real *model, int *mask, int size) {
   }
 }
 
-__global__ void apply_mask(real *model, int *mask, int size) {
-  int i = blockIdx.x*blockDim.x + threadIdx.x;
-  if (i < size) {
-    if (mask[i] == 0) {
-      model[i] = -1.;
-    }
-  }
-}
-
 void cuda_blur_model(real *d_model, const int model_side, const real sigma) {
   cufftComplex *ft;
   cudaMalloc((void **)&ft, model_side*model_side*(model_side/2+1)*sizeof(cufftComplex));
@@ -1563,6 +1739,7 @@ void cuda_blur_model(real *d_model, const int model_side, const real sigma) {
 
 /* Allocates and sets all weights to 1. */
 void cuda_allocate_weight_map(real **d_weight_map, int image_side) {
+  printf("allocating %d\n", image_side*image_side*sizeof(real));
   cudaMalloc(d_weight_map, image_side*image_side*sizeof(real));
   cudaError_t status = cudaGetLastError();
   if(status != cudaSuccess){

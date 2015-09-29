@@ -33,17 +33,17 @@ int main(int argc, char **argv) {
     sprintf(filename, "rotations_%d.h5", n);
   }
 
-  Quaternion **rotations;
+  Quaternion *rotations;
   real *weights;
-  const int N_slices = generate_rotation_list(n,&rotations,&weights);
+  const int N_slices = generate_rotation_list(n, &rotations, &weights);
   
   //The output array will have N_slices rows of 5 elements: the quaternion followed by the weight.
   real *out_buffer = malloc(N_slices*5*sizeof(real));
 
   for (int i_slice = 0; i_slice < N_slices; i_slice++) {
-    memcpy(&out_buffer[i_slice*5], rotations[i_slice]->q, 4*sizeof(real));
+    memcpy(&out_buffer[i_slice*5], rotations[i_slice].q, 4*sizeof(real));
     out_buffer[i_slice*5+4] = weights[i_slice];
-    quaternion_free(rotations[i_slice]);
+    //quaternion_free(rotations[i_slice]);
   }
   free(rotations);
   free(weights);

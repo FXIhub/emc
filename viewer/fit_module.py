@@ -29,7 +29,7 @@ class FitData(module_template.Data):
         """Reload the data."""
         sucess = False
         try:
-            raw_data = numpy.loadtxt('output/fit.data')
+            raw_data = numpy.loadtxt("fit.data")
             if len(raw_data.shape) == 1:
                 raw_data = raw_data.reshape(1, len(raw_data))
             self._fit_data = raw_data.mean(axis=1)
@@ -38,9 +38,9 @@ class FitData(module_template.Data):
             print "ioerror"
             self.read_error.emit()
         try:
-            self._fit_data_best_rot = numpy.loadtxt('output/fit_best_rot.data').mean(axis=1)
+            self._fit_data_best_rot = numpy.loadtxt("fit_best_rot.data").mean(axis=1)
             sucess = True
-        except IOError:
+        except (IOError, IndexError):
             print "ioerror"
             self.read_error.emit()
         if sucess:

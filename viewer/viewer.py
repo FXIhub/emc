@@ -12,6 +12,7 @@ import convenient_widgets
 #state_variables = tools.enum(iteration=1)
 #state_variables = ["iteration", "number_of_images"]
 STATE_VARIABLES = ["iteration"]
+PROGRAM_NAME = "EMC Viewer"
 
 class State(QtCore.QObject):
     """Class used by the state watcher too  indicate the current state"""
@@ -40,7 +41,7 @@ class FileWatcher(QtCore.QThread):
     def __init__(self, file_name):
         super(FileWatcher, self).__init__()
         self._file_name = file_name
-        self._check_interval = 1. #seconds
+        self._check_interval = 5. #seconds
         self._last_mtime = os.stat(self._file_name).st_mtime
 
     def __del__(self):
@@ -52,6 +53,7 @@ class FileWatcher(QtCore.QThread):
             time.sleep(self._check_interval)
             mtime = os.stat(self._file_name).st_mtime
             if mtime != self._last_mtime:
+                self._last_mtime = mtime
                 self.fileChanged.emit()
 
     def set_file(self, new_file_name):
@@ -95,8 +97,8 @@ class StateWatcher(QtCore.QObject):
 
     def set_base_dir(self, new_dir):
         """Change the base dir being watched, assuming the file ends
-        with output/state.h5"""
-        self.set_file("%s/output/state.h5" % (new_dir))
+        with state.h5"""
+        self.set_file("%s/state.h5" % (new_dir))
 
     def _on_file_change(self):
         """Handles file changed calles from the watcher"""
@@ -234,14 +236,15 @@ class CommonControll(QtGui.QWidget):
 
     def _read_run_info(self):
         try:
-            with h5py.File("output/run_info.h5", "r") as file_handle:
+            with h5py.File("run_info.h5", "r") as file_handle:
                 self._run_info["compact_output"] = bool(file_handle["compact_output"][...])
                 self._run_info["number_of_images"] = int(file_handle["number_of_images"][...])
                 self._run_info["random_seed"] = int(file_handle["random_seed"][...])
         except IOError:
             self._run_info["compact_output"] = False
-            self._run_info["number_of_images"] = 100 #this is fine as long as this is not used.
-            self._run_info["random_seed"] = 0 #this is fine as long as this is not used.
+            with h5py.File("state.h5", "r") as file_handle:
+                self._run_info["number_of_images"] = file_handle["number_of_images"][...]
+            self._run_info["random_seed"] = 0
 
     def output_is_compact(self):
         return self._run_info["compact_output"]
@@ -266,6 +269,7 @@ class StartMain(QtGui.QMainWindow):
         self._controll_stack = None
         self._central_widget = None
 
+        self.setWindowTitle(PROGRAM_NAME)
         self._common_controll = CommonControll()
         self._plugins = []
         self._setup_gui()
@@ -273,7 +277,7 @@ class StartMain(QtGui.QMainWindow):
         self._setup_menus()
 
         #setup watcher of the description of the current rec.
-        self._state_watcher = StateWatcher("output/state.h5")
+        self._state_watcher = StateWatcher("state.h5")
         self._common_controll.set_max_iterations(self._state_watcher.get_value('iteration'))
         self._state_watcher.iterationChanged.connect(self._common_controll.set_max_iterations)
         self._common_controll.dirChanged.connect(self._state_watcher.set_base_dir)
@@ -301,6 +305,7 @@ class StartMain(QtGui.QMainWindow):
             print "Intializing module: {0}".format(plugin[0])
             plugin[1].initialize()
             #plugin[1].get_controll().draw()
+        self._select_module(self._active_module_index)
 
     def _setup_actions(self):
         """Setup actions to be used in menues etc."""
@@ -409,11 +414,18 @@ class StartMain(QtGui.QMainWindow):
 def main():
     """Launch program"""
     app = QtGui.QApplication(['Controll window'])
+    icon_path = os.path.join(os.path.split(os.path.realpath(__file__))[0], "resources/icon_slices.png")
+    app.setWindowIcon(QtGui.QIcon(icon_path))
+    app.setApplicationName(PROGRAM_NAME)
+
     #app = QtGui.QApplication.instance()
 
     program = StartMain()
     program.show()
     program.initialize()
+    #app.setActiveWindow(program)
+    program.raise_()
+
     sys.exit(app.exec_())
 
 if __name__ == "__main__":

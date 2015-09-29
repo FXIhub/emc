@@ -16,7 +16,7 @@ class ScalingData(module_template.Data):
         if max_iterations < 2:
             max_iterations = None
         try:
-            with h5py.File("output/best_scaling.h5", "r") as scaling_handle:
+            with h5py.File("best_scaling.h5", "r") as scaling_handle:
                 return scaling_handle["scaling"][:max_iterations, :]
         except IOError:
             #self.read_error.emit()

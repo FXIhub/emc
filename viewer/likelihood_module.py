@@ -21,7 +21,7 @@ class LikelihoodData(module_template.Data):
     def read_likelihood(self):
         """Reload the likelihood to make it up to date with lateset update."""
         try:
-            self._likelihood_data = numpy.loadtxt('output/likelihood.data')
+            self._likelihood_data = numpy.loadtxt("likelihood.data")
         except IOError:
             try:
                 self._likelihood_data = numpy.loadtxt('likelihood.data')
