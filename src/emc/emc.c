@@ -344,35 +344,40 @@ ImageArray *read_images_cxi(const char *filename, const int number_of_images) {
   return image_array;
 }
 */
-/*
-ImageArray *read_images_cxi(const char *filename, const char *image_identifier, const char *mask_identifier, const int number_of_images, const int image_side) {
+
+sp_matrix **read_images_cxi(const char *filename, const char *image_identifier, const char *mask_identifier,
+			    const int number_of_images, const int image_side, const int binning_factor,
+			    sp_imatrix **list_of_masks) {
   int status;
   hid_t file = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
-  if (file_id < 0) exit_with_message("Problem reading file %s", filename);
-  hid_t dataset = H5Dopen1(file, image_identifier, H5P_DEFAULT);
-  if (dataset < 0) exit_with_message("Problem reading dataset %s in file %s", image_identifier, filename);
+  if (file < 0) error_exit_with_message("Problem reading file %s", filename);
+  hid_t dataset = H5Dopen1(file, image_identifier);
+  if (dataset < 0) error_exit_with_message("Problem reading dataset %s in file %s", image_identifier, filename);
 
   hsize_t dims[3];
   hid_t file_dataspace = H5Dget_space(dataset);
   H5Sget_simple_extent_dims(file_dataspace, dims, NULL);
-  if (number_of_images > dims[0]) exit_with_message("Dataset in %s does not contain %d images", filename, number_of_images);
+  if (number_of_images > dims[0]) error_exit_with_message("Dataset in %s does not contain %d images", filename, number_of_images);
 
   hsize_t hyperslab_start[3] = {0, 0, 0};
   hsize_t read_dims[3] = {number_of_images, dims[1], dims[2]};
+  const int total_size = read_dims[0]*read_dims[1]*read_dims[2];
   status = H5Sselect_hyperslab(file_dataspace, H5S_SELECT_SET, hyperslab_start, NULL, read_dims, NULL);
-  if (status < 0) exit_with_message("error selecting hyperslab in file %s" filename);
+  if (status < 0) error_exit_with_message("error selecting hyperslab in file %s", filename);
 
   hid_t data_dataspace = H5Screate_simple(3, read_dims, NULL);
 
-  real *raw_image_data = malloc(read_dims[0]*read_dims[1]*read_dims[2]*sizeof(real));
+  printf("read images\n");
+  real *raw_image_data = malloc(total_size*sizeof(real));
   status = H5Dread(dataset, H5T_NATIVE_FLOAT, data_dataspace, file_dataspace, H5P_DEFAULT, raw_image_data);
-  if (status < 0) exit_with_message("error reading data in file %s", filename);
+  if (status < 0) error_exit_with_message("error reading data in file %s", filename);
   H5Dclose(dataset);
 
-  dataset = H5Dopen1(file, mask_identifier, H5P_DEFAULT);
-  if (dataset < 0) exit_with_message("Problem reading dataset %s in file %s", mask_identifier, filename);
+  dataset = H5Dopen1(file, mask_identifier);
+  if (dataset < 0) error_exit_with_message("Problem reading dataset %s in file %s", mask_identifier, filename);
 
-  int *raw_mask_data = malloc(read_dims[0]*read_dims[1]*read_dims[2]*sizeof(int));
+  printf("read mask\n");
+  int *raw_mask_data = malloc(total_size*sizeof(int));
   status = H5Dread(dataset, H5T_NATIVE_INT, data_dataspace, file_dataspace, H5P_DEFAULT, raw_mask_data);
   H5Dclose(dataset);
   
@@ -381,26 +386,68 @@ ImageArray *read_images_cxi(const char *filename, const char *image_identifier, 
 
   H5Fclose(file);
 
-  Image *container_image = sp_image_alloc(dims[1], dims[2], 1);
-  real *container_image_data = container_image->image->data;
-  int *container_image_mask = container_image->mask->data;
-  for (int image_index = 0; image_index < number_of_images; image_index++) {
-    container_image->image->data = &(raw_image_data[image_index*dims[1]*dims[1]]);
-    container_image->mask->data = &(raw_mask_data[image_index*dims[1]*dims[1]]);
-    
-    /* Allocate return arrays */
-    images[i] = sp_matrix_alloc(image_side, image_side);
-    masks[i] = sp_imatrix_alloc(image_side, image_side);
-
+  /* Any pixels with values below zero are set to zero */
+  for (int index = 0; index < total_size; index++) {
+    if (raw_image_data[index] < 0.) {
+      raw_image_data[index] = 0.;
+    }
   }
-  container_image->image->data = container_image_data;
-  container_image->mask->data = container_image_mask;
-  sp_image_free(container_image);
+
+  sp_matrix **list_of_images = malloc(number_of_images*sizeof(sp_matrix *));
+  real pixel_sum, pixel_this;
+  int mask_sum, mask_this;
+  int transformed_x, transformed_y;
+  int pixel_index;
+  for (int image_index = 0; image_index < number_of_images; image_index++) {
+    /* Allocate return arrays */
+    list_of_images[image_index] = sp_matrix_alloc(image_side, image_side);
+    list_of_masks[image_index] = sp_imatrix_alloc(image_side, image_side);
+
+    /* Downsample images and masks by nested loops of all
+       downsampled pixels and then all subpixels. */
+    for (int x = 0; x < image_side; x++) {
+      for (int y = 0; y < image_side; y++) {
+	pixel_sum = 0.0;
+	mask_sum = 0;
+	/* Step through all sub-pixels and add up values */
+	for (int xb = 0; xb < binning_factor; xb++) {
+	  for (int yb = 0; yb < binning_factor; yb++) {
+	    transformed_x = dims[2]/2 - (image_side/2)*binning_factor + x*binning_factor + xb;
+	    transformed_y = dims[1]/2 - (image_side/2)*binning_factor + y*binning_factor + yb;
+	    pixel_index = image_index*dims[1]*dims[2] + transformed_y*dims[2] + transformed_x;
+	    if (transformed_x >= 0 && transformed_x < dims[2] &&
+		transformed_y >= 0 && transformed_y < dims[1]) {
+	      pixel_this = raw_image_data[pixel_index];
+	      mask_this = raw_mask_data[pixel_index];
+	    } else {
+	      pixel_this = 0.;
+	      mask_this = 0;
+	    }
+	    if (mask_this > 0) {
+	      pixel_sum += pixel_this;
+	      mask_sum += 1;
+	    }
+	  }
+	}
+	/* As long as there were at least one subpixel contributin to the
+	   pixel (that is that was not masked out) we include the data and
+	   don't mask out the pixel. */
+	if (mask_sum > 0) {
+	  sp_matrix_set(list_of_images[image_index], x, y, pixel_sum/(real)mask_sum);
+	  sp_imatrix_set(list_of_masks[image_index], x, y, 1);
+	} else {
+	  sp_matrix_set(list_of_images[image_index], x, y, 0.);
+	  sp_imatrix_set(list_of_masks[image_index], x, y, 0);
+	}
+      }
+    }
+  }
+  return list_of_images;
 }
-*/
+
 
 /* Read images in spimage format and read the individual masks. The
-   masks pointer should not be allocated before calling, it is
+   masks pointer should be allocated before calling, it is not
    allocated by this function. */
 sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
 {
@@ -421,11 +468,13 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
     /* Blur input image if specified in the configuration file. This
        might might be useful for noisy data if the noise is not taken
        into account by the diff_type. */
+    /*
     if (conf.blur_image == 1) {
       Image *tmp = sp_gaussian_blur(img,conf.blur_image_sigma);
       sp_image_free(img);
       img = tmp;
     }
+    */
 
     /* Allocate return arrays */
     images[i] = sp_matrix_alloc(conf.model_side,conf.model_side);
@@ -680,6 +729,12 @@ void write_run_info(char *filename, Configuration conf, int random_seed) {
   H5Dclose(dataset_id);
   H5Sclose(space_id);
 
+  space_id = H5Screate(H5S_SCALAR);
+  dataset_id = H5Dcreate1(file_id, "/recover_scaling", H5T_NATIVE_INT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.recover_scaling);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+  
   H5Fclose(file_id);
 }
 
@@ -1038,6 +1093,11 @@ int main(int argc, char **argv)
   /* Read images and mask */
   sp_imatrix **masks = malloc(conf.number_of_images*sizeof(sp_imatrix *));
   sp_matrix **images = read_images(conf,masks);
+  /*
+  sp_matrix **images = read_images_cxi("/home/ekeberg/Data/LCLS_SPI/2015July/cxi/narrow_filter_normalized.cxi",
+				       "/entry_1/data", "/entry_1/mask", conf.number_of_images, conf.model_side,
+				       conf.image_binning, masks);
+  */
   sp_imatrix * mask = read_mask(conf);
 
   if (conf.normalize_images) {
