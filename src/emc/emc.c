@@ -1798,6 +1798,12 @@ int main(int argc, char **argv)
       cuda_normalize_model(model, d_model);
     }
 
+    /* < TEST > */
+    /* Blur the model */
+    if (conf.blur_model) {
+      cuda_blur_model(d_model, conf.model_side, conf.blur_model_sigma);
+    }
+    
     /* Copy the new compressed model to the CPU. */
     cuda_copy_model(model, d_model);
     cuda_copy_model(weight, d_weight);
