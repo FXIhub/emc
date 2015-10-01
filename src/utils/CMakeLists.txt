@@ -4,12 +4,12 @@ PROJECT (emc)
 
 #message("${LOCAL_SRC}/rotations.c")
 
-cuda_add_executable(generate_rotations generate_rotations.c ${LOCAL_SRC}/rotations.c)
-target_link_libraries(generate_rotations ${SPIMAGE_LIBRARIES} config gsl gslcblas hdf5)
+cuda_add_executable(emc_generate_rotations generate_rotations.c ${LOCAL_SRC}/rotations.c)
+target_link_libraries(emc_generate_rotations ${SPIMAGE_LIBRARIES} config gsl gslcblas hdf5)
 
-cuda_add_executable(modify_configuration modify_configuration.c)
-target_link_libraries(modify_configuration config)
+cuda_add_executable(emc_modify_configuration modify_configuration.c)
+target_link_libraries(emc_modify_configuration config)
 
 # add the install target
-install(TARGETS generate_rotations DESTINATION bin)
-install(TARGETS modify_configuration DESTINATION bin)
+install(TARGETS emc_generate_rotations DESTINATION bin)
+install(TARGETS emc_modify_configuration DESTINATION bin)
