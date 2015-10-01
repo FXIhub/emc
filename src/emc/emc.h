@@ -14,7 +14,6 @@ typedef struct{
   int side;
   real wavelength;
   real pixel_size;
-  int detector_size;
   real detector_distance;
 }Setup;
 
