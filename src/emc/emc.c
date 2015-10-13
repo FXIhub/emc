@@ -9,7 +9,6 @@
 #include <hdf5.h>
 #include <getopt.h>
 #include <time.h>
-#include <cxi.h>
 #include <stdarg.h>
 
 #define PATH_MAX 256
@@ -323,27 +322,6 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
     }
   }
 }
-
-/*
-ImageArray *read_images_cxi(const char *filename, const int number_of_images) {
-  CXI_File *file = cxi_open_file(filename, "r");
-  if (!file) error_exit_with_message("Unable to open file");
-  
-  CXI_Entry *entry_1 = cxi_open_entry(file->entries[0]);
-  if (!entry_1) error_exit_with_message("Unable to open entry in file %s", filename);
-  if (entry_1->instrument_count < 1) error_exit_with_message("No instrument in entry in file %s", filename);
-
-  CXI_Instrument *instrument_1 = cxi_open_instrument(entry_1->instrument[0]);
-  if (!instrument_1) error_exit_with_message("Unable to open instrument in file %s", filename);
-
-  CXI_Dataset *dataset = cxi_open_dataset(instrument_1->detectors[0]);
-
-  ImageArray *image_array = sp_array_alloc(cxi_dataset_length(dataset), 
-  
-  ImageArray *image_array = sp_array_alloc(2, 10, 10, 1);
-  return image_array;
-}
-*/
 
 sp_matrix **read_images_cxi(const char *filename, const char *image_identifier, const char *mask_identifier,
 			    const int number_of_images, const int image_side, const int binning_factor,
