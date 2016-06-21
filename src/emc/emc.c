@@ -11,7 +11,8 @@
 #include <time.h>
 #include <stdarg.h>
 
-#define PATH_MAX 256
+//#define PATH_MAX 256
+const int MAX_PATH_LENGTH = 256;
 
 static int quit_requested = 0;
 
@@ -433,7 +434,7 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
   //masks = malloc(conf.number_of_images*sizeof(sp_imatrix *));
   Image *img;
   real *intensities = malloc(conf.number_of_images*sizeof(real));
-  char filename_buffer[PATH_MAX];
+  char filename_buffer[MAX_PATH_LENGTH];
 
   for (int i = 0; i < conf.number_of_images; i++) {
     intensities[i] = 1.0;
@@ -793,7 +794,7 @@ int read_rotations_file(const char *filename, Quaternion **rotations, real **wei
    function also works if there are several levels of diretcories that does
    not exist. */
 static void mkdir_recursive(const char *dir, int permission) {
-  char tmp[PATH_MAX];
+  char tmp[MAX_PATH_LENGTH];
   char *p = NULL;
   size_t len;
   
@@ -946,7 +947,7 @@ static void create_initial_model_file(sp_3matrix *model, const char *model_file)
 int main(int argc, char **argv)
 {
   /* Parse command-line options */
-  char configuration_filename[PATH_MAX] = "emc.conf";
+  char configuration_filename[MAX_PATH_LENGTH] = "emc.conf";
   int chosen_device = -1; // negative numbers means the program chooses automatically
   char help_text[] =
     "Options:\n\
@@ -997,7 +998,7 @@ int main(int argc, char **argv)
     error_exit_with_message("Can't read configuration file %s\nRun emc -h for help.", configuration_filename);
   
   /* This buffer is used for names of all output files */
-  char filename_buffer[PATH_MAX];
+  char filename_buffer[MAX_PATH_LENGTH];
 
   /* Create the output directory if it does not exist. */
   mkdir_recursive(conf.output_dir, 0777);
