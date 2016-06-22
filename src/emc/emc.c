@@ -1071,7 +1071,7 @@ int main(int argc, char **argv)
 
   /* Read images and mask */
   sp_imatrix **masks = malloc(conf.number_of_images*sizeof(sp_imatrix *));
-  sp_matrix **images = read_images(conf,masks);
+  sp_matrix **images = read_images(conf, masks);
   /*
   sp_matrix **images = read_images_cxi("/home/ekeberg/Data/LCLS_SPI/2015July/cxi/narrow_filter_normalized.cxi",
 				       "/entry_1/data", "/entry_1/mask", conf.number_of_images, conf.model_side,
@@ -1079,6 +1079,37 @@ int main(int argc, char **argv)
   */
   sp_imatrix * mask = read_mask(conf);
 
+
+  /* Make the individual masks into the general one for testing */
+  /*
+  for (int i_image = 0; i_image < N_images; i_image++) {
+    for (int i = 0; i < N_2d; i++) {
+      masks[i_image]->data[i] = mask->data[i];
+    }
+  }
+  */
+  /* Debug check mask copy */
+  /*
+  int mask_count_0 = 0;
+  int not_mask_count_0 = 0;
+  int mask_count_1 = 0;
+  int not_mask_count_1 = 0;
+  for (int i = 0; i < N_2d; i++) {
+    if (masks[0]->data[i] == 0) {
+      mask_count_0 += 1;
+    } else if (masks[0]->data[i] == 1) {
+      not_mask_count_0 += 1;
+    }
+    if (masks[1]->data[i] == 0) {
+      mask_count_1 += 1;
+    } else if (masks[1]->data[i] == 1) {
+      not_mask_count_1 += 1;
+    }
+  }
+  printf("mask 0: %d, %d\n", mask_count_0, not_mask_count_0);
+  printf("mask 1: %d, %d\n", mask_count_1, not_mask_count_1);
+  */
+  
   if (conf.normalize_images) {
     if (!conf.recover_scaling) {
       normalize_images_preserve_scaling(images, mask, conf);
@@ -1094,7 +1125,7 @@ int main(int argc, char **argv)
   real image_max = 0.;
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i] == 1 && images[i_image]->data[i] > image_max) {
+      if (masks[i_image]->data[i] == 1 && images[i_image]->data[i] > image_max) {
 	image_max = images[i_image]->data[i];
       }
     }
@@ -1105,12 +1136,12 @@ int main(int argc, char **argv)
   Image *write_image = sp_image_alloc(conf.model_side, conf.model_side, 1);
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i]) {
+      if (masks[i_image]->data[i]) {
 	sp_real(write_image->image->data[i]) = images[i_image]->data[i];
       } else {
 	sp_real(write_image->image->data[i]) = 0.0;
       }
-      write_image->mask->data[i] = mask->data[i];
+      write_image->mask->data[i] = masks[i_image]->data[i];
     }
     sprintf(filename_buffer, "%s/image_%.4d.h5", conf.output_dir, i_image);
     sp_image_write(write_image, filename_buffer, 0);
@@ -1275,17 +1306,18 @@ int main(int argc, char **argv)
   int * d_mask;
   cuda_allocate_mask(&d_mask, mask);
 
+  /* Individual masks read from each diffraction pattern.
+     Only used for the last iteration (not anymore, try using everywhere). */
+  int * d_masks;
+  cuda_allocate_masks(&d_masks, masks, N_images);
+  
   /* Array of all diffraction patterns. */
   real * d_images;
   cuda_allocate_images(&d_images, images, N_images);
-  cuda_apply_single_mask(d_images, d_mask, N_2d, N_images);
+  //cuda_apply_single_mask(d_images, d_mask, N_2d, N_images);
+  cuda_apply_masks(d_images, d_masks, N_2d, N_images);
 
-  /* Individual masks read from each diffraction pattern.
-     Only used for the last iteration. */
-  int * d_masks;
-  cuda_allocate_masks(&d_masks, masks, N_images);
-
-  /* Array of all diffraction patterns with mask applied. */
+  /* Array of all diffraction patterns with mask applied. */ //(redundant)
   real * d_images_individual_mask;
   cuda_allocate_images(&d_images_individual_mask, images, N_images);
   cuda_apply_masks(d_images, d_masks, N_2d, N_images);
@@ -1449,15 +1481,15 @@ int main(int argc, char **argv)
 	 and the compressed model. There are two versions of this:
 	 one weighted average and one where only the best orientation
 	 of each pattern is considered. */
-      cuda_calculate_fit(d_slices, d_images, d_mask, d_scaling,
+      cuda_calculate_fit(d_slices, d_images, d_masks, d_scaling,
 			 d_respons, d_fit, sigma, N_2d, N_images,
 			 slice_start, current_chunk);
-      cuda_calculate_fit_best_rot(d_slices, d_images, d_mask, d_scaling,
+      cuda_calculate_fit_best_rot(d_slices, d_images, d_masks, d_scaling,
 				  d_best_rotation, d_fit_best_rot, N_2d, N_images,
 				  slice_start, current_chunk);
       /* Calculate a radially averaged version of the weightd "fit" */
       if (iteration % radial_fit_n == 0 && iteration != 0) {
-	cuda_calculate_radial_fit(d_slices, d_images, d_mask,
+	cuda_calculate_radial_fit(d_slices, d_images, d_masks,
 				  d_scaling, d_respons, d_radial_fit,
 				  d_radial_fit_weight, d_radius,
 				  N_2d, conf.model_side, N_images, slice_start,
@@ -1509,7 +1541,7 @@ int main(int argc, char **argv)
 	}
 	cuda_get_slices(model, d_model, d_slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
 			slice_start, current_chunk);
-	cuda_update_scaling_full(d_images, d_slices, d_mask, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
+	cuda_update_scaling_full(d_images, d_slices, d_masks, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
       }
 
       /* Output scaling */
@@ -1539,7 +1571,7 @@ int main(int argc, char **argv)
       
       cuda_get_slices(model,d_model,d_slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,slice_start,current_chunk);
 
-      cuda_calculate_responsabilities(d_slices, d_images, d_mask, d_weight_map,
+      cuda_calculate_responsabilities(d_slices, d_images, d_masks, d_weight_map,
 				      sigma, d_scaling, d_respons, d_weights, 
 				      N_2d, N_images, slice_start,
 				      current_chunk, conf.diff);
@@ -1735,7 +1767,7 @@ int main(int argc, char **argv)
 	cuda_get_slices(model, d_model, d_slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
 			slice_start, current_chunk);
 	
-	cuda_update_scaling_full(d_images, d_slices, d_mask, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
+	cuda_update_scaling_full(d_images, d_slices, d_masks, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
       }
     }
     /* End update scaling second time (test) */
@@ -1751,7 +1783,7 @@ int main(int argc, char **argv)
       /* This function does both recalculate part of the expanded model
 	 and compresses this part. The model needs to be divided with
 	 the weights outside this loop. */
-      cuda_update_slices(d_images, d_slices, d_mask,
+      cuda_update_slices(d_images, d_slices, d_masks,
 			 d_respons, d_scaling, d_active_images,
 			 N_images, slice_start, current_chunk, N_2d,
 			 model,d_model_updated, d_x_coord, d_y_coord,
@@ -1842,7 +1874,7 @@ int main(int argc, char **argv)
     /* This function is different from cuda_update_slices is that
        the individual masks provided as negative values in
        d_images_individual_mask is used instead of d_mask. */
-    cuda_update_slices_final(d_images_individual_mask, d_slices, d_mask,
+    cuda_update_slices_final(d_images_individual_mask, d_slices, d_masks,
 			     d_respons, d_scaling, d_active_images,
 			     N_images, slice_start, current_chunk, N_2d,
 			     model,d_model_updated, d_x_coord, d_y_coord,
