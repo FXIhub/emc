@@ -31,6 +31,14 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
 					   int slice_rows, int slice_cols,
 					   int model_x, int model_y, int model_z);
 
+__global__ void insert_slices_final_kernel(real * images, real * slices, int * mask, real * respons,
+					   real * scaling, int N_images, int N_2d,
+					   real * slices_total_respons, real * rot,
+					   real * x_coord, real * y_coord, real * z_coord,
+					   real * model, real * weight,
+					   int slice_rows, int slice_cols,
+					   int model_x, int model_y, int model_z);
+
 __global__ void calculate_fit_kernel(real *slices, real *images, int *mask,
 				     real *respons, real *fit, real sigma,
 				     real *scaling, int N_2d, int slice_start);
@@ -270,6 +278,7 @@ __global__ void get_slices_kernel(real * model, real * slices, real *rot, real *
 			     y_coordinates,z_coordinates,slice_rows,slice_cols,model_x,model_y,
 			     model_z,tid,step);
 
+
 }
 
 __global__ void cuda_test_interpolate_kernel(real *model, int side, real *return_value) {
@@ -406,6 +415,27 @@ __device__ void cuda_calculate_responsability_annealing_poisson(float *slice, fl
   count_cache[tid] = count;
 }
 */
+
+/*
+__device__ void cuda_calculate_responsability_adaptive(float *slice, float *image,
+						       int *mask, real sigma, real scaling, real *weight_map,
+						       int N_2d, int tid, int step,
+						       real *sum_cache, real *count_cache)
+{
+  real sum = 0.0;
+  const int i_max = N_2d;
+  real count = 0;
+  for (int i = tid; i < i_max; i+=step) {
+    if (mask[i] != 0 && slice[i] > 0.0f) {
+      sum += pow((slice[i] - image[i]/scaling) / sqrt(slice[i]), 2)*weight_map[i];
+      count += weight_map[i];
+    }
+  }
+  sum_cache[tid] = sum;
+  count_cache[tid] = count
+}
+*/
+
 /* Now takes a starting slice. Otherwise unchanged */
 __global__ void calculate_responsabilities_kernel(float * slices, float * images, int * mask, real *weight_map,
 						  real sigma, real * scaling, real * respons, real *weights, 
@@ -855,6 +885,7 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
 					     sp_matrix_rows(images[0]),sp_matrix_cols(images[0]),
 					     sp_3matrix_x(model),sp_3matrix_y(model),
 					     sp_3matrix_z(model));
+
   cudaEventRecord(k_end,0);
   cudaEventSynchronize(k_end);
   real k_ms;
@@ -865,6 +896,7 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
   if(status != cudaSuccess){
     printf("CUDA Error (update slices): %s\n",cudaGetErrorString(status));
   }
+
 }
 
 void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
@@ -900,7 +932,7 @@ void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
 
   cudaThreadSynchronize();
   //cudaMemcpy(h_slices,d_slices,N_2d*sizeof(real)*slice_chunk,cudaMemcpyDeviceToHost);
-  insert_slices_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_respons,
+  insert_slices_final_kernel<<<nblocks,nthreads>>>(d_images, d_slices, d_mask, d_respons,
 					     d_scaling, N_images, N_2d,
 					     d_slices_total_respons, d_rot,d_x_coordinates,
 					     d_y_coordinates,d_z_coordinates,d_model, d_weight,
@@ -1448,6 +1480,44 @@ __global__ void cuda_normalize_responsabilities_uniform_kernel(real * respons, i
   }
 }
 
+/* Before normalizing, take everything to the power needed to so that the normalization factor becomes x. Where x changes but typically I guess it should be about 3. This power might not be easy to calculate.*/
+/*
+__global__ void cuda_normalize_responsabilities_adaptive_kernel(real *respons, int N_slices, int *N_images)
+{
+  __shared__ real cache[256];
+
+  int i_image = blockIdx.x;
+  int tid = threadIdx.x;
+  int step = blockDim.x;
+  cache[tid] = -1.0e10f;
+  for(int i_slice = tid;i_slice < N_slices;i_slice += step){
+    if(cache[tid] < respons[i_slice*N_images+i_image]){
+      cache[tid] = respons[i_slice*N_images+i_image];
+    }
+  }
+  inblock_maximum(cache);
+  real max_resp = cache[0];
+  __syncthreads();
+  for (int i_slice = tid; i_slice < N_slices; i_slice+= step) {
+    respons[i_slice*N_images+i_image] -= max_resp;
+  }
+
+  cache[tid] = 0;
+  for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
+    if (respons[i_slice*N_images+i_image] > min_resp) {
+      respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
+      cache[tid] += respons[i_slice*N_images+i_image];
+    } else {
+      respons[i_slice*N_images+i_image] = 0.0f;
+    }
+  }
+  inblock_reduce(cache);
+  real sum = cache[0];
+  for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
+    respons[i_slice*N_images+i_image] /= sum;
+  }
+}
+*/
 __global__ void cuda_normalize_responsabilities_kernel(real * respons, int N_slices, int N_images){
   __shared__ real cache[256];
 

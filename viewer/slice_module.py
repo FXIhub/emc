@@ -15,6 +15,8 @@ from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from eke import rotations
 from eke import vtk_tools
 
+VTK_VERSION = vtk.vtkVersion().GetVTKMajorVersion()
+
 class SliceData(module_template.Data):
     """Provides the diffraction pattern data and the rotations."""
     def __init__(self):
@@ -291,7 +293,10 @@ class SliceGenerator(object):
         # it should be checked really.
         #input_poly_data = self._template_poly_data.
         #transform_filter.SetInputData(self._template_poly_data)
-        transform_filter.SetInputData(input_poly_data)
+        if VTK_VERSION < 6:
+            transform_filter.SetInput(input_poly_data)
+        else:
+            transform_filter.SetInputData(input_poly_data)
         transform_filter.SetTransform(transformation)
         transform_filter.Update()
         this_poly_data = transform_filter.GetOutput()
@@ -349,8 +354,11 @@ class SliceViewer(module_template.Viewer):
         self._renderer.SetDraw(int(state))
 
     def _draw(self):
-        if self._vtk_render_window.IsDrawable():
+        if VTK_VERSION < 6:
             self._vtk_render_window.Render()
+        else:
+            if self._vtk_render_window.IsDrawable():
+                self._vtk_render_window.Render()
 
     def _setup_slice_view(self):
         """Setup background, camera and LUT."""
@@ -384,7 +392,10 @@ class SliceViewer(module_template.Viewer):
             raise ValueError("Actor with identifier %d is already plotted" % identifier)
         mapper = vtk.vtkPolyDataMapper()
         #mapper.SetInput(this_poly_data)
-        mapper.SetInputData(this_poly_data)
+        if VTK_VERSION < 6:
+            mapper.SetInput(this_poly_data)
+        else:
+            mapper.SetInputData(this_poly_data)
         mapper.SetScalarModeToUsePointData()
         mapper.UseLookupTableScalarRangeOn()
         self._update_lut()

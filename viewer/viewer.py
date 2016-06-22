@@ -158,8 +158,8 @@ class CommonControll(QtGui.QWidget):
 
     def _setup_iteration_chooser(self):
         """Return an iteration cooser widget."""
-        self._iteration_chooser = convenient_widgets.IntegerControll(-2)
         self._iteration_chooser.valueChanged.connect(self.set_iteration)
+        self._iteration_chooser = convenient_widgets.IntegerControll(-1)
         return self._iteration_chooser
 
     def _setup_message_board(self):

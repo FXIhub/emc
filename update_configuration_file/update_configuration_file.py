@@ -51,7 +51,6 @@ value_updates = [
 
     ValueUpdate("wavelength"),
     ValueUpdate("pixel_size"),
-    ValueUpdate("detector_size"),
     ValueUpdate("detector_distance"),
 
     ValueUpdate("diff_type", default_value="poisson"),
