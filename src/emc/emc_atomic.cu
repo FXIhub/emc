@@ -179,6 +179,40 @@ __device__ void cuda_insert_slice_interpolate(real *model, real *weight, real *s
   }
 }
 
+__device__ void cuda_insert_slice_final_interpolate(real *model, real *weight, real *slice,
+						    int * mask, real w, real *rot, real *x_coordinates,
+						    real *y_coordinates, real *z_coordinates, int slice_rows,
+						    int slice_cols, int model_x, int model_y, int model_z,
+						    int tid, int step)
+{
+  const int x_max = slice_rows;
+  const int y_max = slice_cols;
+  //tabulate angle later
+  real new_x, new_y, new_z;
+  real m00 = rot[0]*rot[0] + rot[1]*rot[1] - rot[2]*rot[2] - rot[3]*rot[3];
+  real m01 = 2.0f*rot[1]*rot[2] - 2.0f*rot[0]*rot[3];
+  real m02 = 2.0f*rot[1]*rot[3] + 2.0f*rot[0]*rot[2];
+  real m10 = 2.0f*rot[1]*rot[2] + 2.0f*rot[0]*rot[3];
+  real m11 = rot[0]*rot[0] - rot[1]*rot[1] + rot[2]*rot[2] - rot[3]*rot[3];
+  real m12 = 2.0f*rot[2]*rot[3] - 2.0f*rot[0]*rot[1];
+  real m20 = 2.0f*rot[1]*rot[3] - 2.0f*rot[0]*rot[2];
+  real m21 = 2.0f*rot[2]*rot[3] + 2.0f*rot[0]*rot[1];
+  real m22 = rot[0]*rot[0] - rot[1]*rot[1] - rot[2]*rot[2] + rot[3]*rot[3];
+  for (int x = 0; x < x_max; x++) {
+    for (int y = tid; y < y_max; y+=step) {
+      //if (mask[y*x_max + x] == 1) {
+      if (slice[y*x_max + x] >= 0.0) {
+	/* This is just a matrix multiplication with rot */
+	new_x = m00*z_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*x_coordinates[y*x_max+x] + model_x/2.0 - 0.5;
+	new_y =	m10*z_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*x_coordinates[y*x_max+x] + model_y/2.0 - 0.5;
+	new_z = m20*z_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*x_coordinates[y*x_max+x] + model_z/2.0 - 0.5;
+	
+	interpolate_model_set(model, weight, model_x, model_y, model_z, new_x, new_y, new_z, slice[y*x_max + x], w);
+      }
+    }
+  }
+}
+
 __global__ void cuda_test_interpolate_set_kernel(real *model, real *weight, int side) {
   printf("enter kernel %d %d\n", blockIdx.x, threadIdx.x);
   for (int x = 0; x < side; x++) {
@@ -360,6 +394,33 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
     cuda_insert_slice_interpolate(model, weight, &slices[i_slice*N_2d], mask, total_respons,
 				  &rot[4*i_slice], x_coord, y_coord, z_coord,
 				  slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
+
+  }
+}
+
+
+__global__ void insert_slices_final_kernel(real * images, real * slices, int * mask, real * respons,
+					   real * scaling, int N_images, int N_2d,
+					   real * slices_total_respons, real * rot,
+					   real * x_coord, real * y_coord, real * z_coord,
+					   real * model, real * weight,
+					   int slice_rows, int slice_cols,
+					   int model_x, int model_y, int model_z){
+  /* each block takes care of 1 slice */
+  int i_slice = blockIdx.x;
+  int tid = threadIdx.x;
+  int step = blockDim.x;
+  real total_respons = slices_total_respons[i_slice];
+  if(total_respons > 1e-10f){
+    /*
+    cuda_insert_slice(model, weight, &slices[i_slice*N_2d], mask, total_respons,
+		      &rot[4*i_slice], x_coord, y_coord, z_coord,
+		      slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
+    */
+
+    cuda_insert_slice_final_interpolate(model, weight, &slices[i_slice*N_2d], mask, total_respons,
+					&rot[4*i_slice], x_coord, y_coord, z_coord,
+					slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
 
   }
 }

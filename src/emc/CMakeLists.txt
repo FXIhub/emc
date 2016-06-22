@@ -4,6 +4,8 @@ PROJECT (emc)
 
 #message("${LOCAL_SRC}/rotations.c")
 
+#include_directories(${INCLUDE_LIST} ${LOCAL_INCLUDE})
+
 cuda_add_executable(emc emc.c ${LOCAL_SRC}/rotations.c configuration.c emc_cuda.cu emc_atomic.cu)
 cuda_add_cufft_to_target(emc)
 target_link_libraries(emc ${SPIMAGE_LIBRARIES} ${CONFIG_LIBRARIES} ${GSL_LIBRARIES} ${GSLCBLAS_LIBRARIES} ${HDF5_LIBRARIES})

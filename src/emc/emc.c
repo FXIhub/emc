@@ -826,7 +826,8 @@ static void create_initial_model_uniform(sp_3matrix *model, gsl_rng *rng) {
    all the patterns. On each pixel, some randomness is added with
    the strengh of conf.initial_modle_noise.*[initial pixel value] */
 static void create_initial_model_radial_average(sp_3matrix *model, sp_matrix **images, const int N_images,
-						real initial_model_noise, gsl_rng *rng) {
+						sp_imatrix *mask, real initial_model_noise,
+						gsl_rng *rng) {
   const int model_side = sp_3matrix_x(model);
   /* Setup for calculating radial average */
   real *radavg = malloc(model_side/2*sizeof(real));
@@ -836,11 +837,13 @@ static void create_initial_model_radial_average(sp_3matrix *model, sp_matrix **i
     radavg[i] = 0.0;
     radavg_count[i] = 0;
   }
+  
   /* Calculate the radial average */
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int x = 0; x < model_side; x++) {
       for (int y = 0; y < model_side; y++) {
-	if (sp_matrix_get(images[i_image],x,y) >= 0.) {
+	if (sp_imatrix_get(mask, x, y) > 0 && sp_matrix_get(images[i_image], x, y) >= 0.) {
+	  //if (sp_matrix_get(images[i_image], x, y) >= 0.) {
 	  r = (int)sqrt(pow((real)x - model_side/2.0 + 0.5,2) +
 			pow((real)y - model_side/2.0 + 0.5,2));
 	  if (r < model_side/2.0) {
@@ -855,7 +858,7 @@ static void create_initial_model_radial_average(sp_3matrix *model, sp_matrix **i
     if (radavg_count[i] > 0) {
       radavg[i] /= (real) radavg_count[i];
     } else {
-      radavg[i] = 0.0;
+      radavg[i] = -1.0;
     }
   }
   /* Fill the model and apply noise */
@@ -867,13 +870,16 @@ static void create_initial_model_radial_average(sp_3matrix *model, sp_matrix **i
 		   pow((real)y - model_side/2.0 + 0.5,2) +
 		   pow((real)z - model_side/2.0 + 0.5,2));
 	r = (int)rad;
-	if (r < model_side/2-1) {
+
+	if (radavg[r] == -1) {
+	  sp_3matrix_set(model, x, y, z, -1.0);
+	} else if (r < model_side/2-1) {
 	  sp_3matrix_set(model, x, y, z, (radavg[r]*(1.0 - (rad - (real)r)) +
 					  radavg[r+1]*(rad - (real)r)) * (1. + initial_model_noise*gsl_rng_uniform(rng)));
 	} else if (r < model_side/2){
 	  sp_3matrix_set(model, x, y, z, radavg[r] * (1. + initial_model_noise*gsl_rng_uniform(rng)));
 	} else {
-	  sp_3matrix_set(model,x,y,z,-1.0);
+	  sp_3matrix_set(model, x, y, z, -1.0);
 	}
       }
     }
@@ -1183,7 +1189,7 @@ int main(int argc, char **argv)
     /* The model falls off raially in the same way as the average of
      all the patterns. On each pixel, some randomness is added with
      the strengh of conf.initial_modle_noise.*[initial pixel value] */
-      create_initial_model_radial_average(model, images, N_images, conf.initial_model_noise, rng);
+    create_initial_model_radial_average(model, images, N_images, mask, conf.initial_model_noise, rng);
   } else if (conf.initial_model == initial_model_random_orientations) {
     /* Assemble the model from the given diffraction patterns
        with a random orientation assigned to each. */
@@ -1203,10 +1209,12 @@ int main(int argc, char **argv)
   /* Allocate spimage object used for outputting the model.*/
   Image *model_out = sp_image_alloc(conf.model_side,conf.model_side,conf.model_side);
   for (int i = 0; i < N_model; i++) {
-    model_out->image->data[i] = sp_cinit(model->data[i],0.0);
-    if (weight->data[i] > 0.0) {
+    //if (weight->data[i] > 0.0) {
+    if (model->data[i] >= 0.0) {
+      model_out->image->data[i] = sp_cinit(model->data[i],0.0);
       model_out->mask->data[i] = 1;
     } else {
+      model_out->image->data[i] = sp_cinit(0., 0.);
       model_out->mask->data[i] = 0;
     }
   }
@@ -1320,7 +1328,8 @@ int main(int argc, char **argv)
   /* Array of all diffraction patterns with mask applied. */ //(redundant)
   real * d_images_individual_mask;
   cuda_allocate_images(&d_images_individual_mask, images, N_images);
-  cuda_apply_masks(d_images, d_masks, N_2d, N_images);
+  //cuda_apply_masks(d_images, d_masks, N_2d, N_images);
+  cuda_apply_masks(d_images_individual_mask, d_masks, N_2d, N_images);  
 
   /* Responsability matrix */
   real * d_respons;
@@ -1417,8 +1426,11 @@ int main(int argc, char **argv)
   real sigma;
   int current_chunk;
   
+  clock_t start_time, end_time;
+
   /* Start the main EMC loop */
   for (int iteration = 0; iteration < conf.number_of_iterations; iteration++) {
+    start_time = clock();
     /* If ctrl-c was pressed execution stops but the final
        iteration using individual masks and cleenup still runs. */
     if (quit_requested == 1) {
@@ -1441,9 +1453,13 @@ int main(int argc, char **argv)
 
     /* Reset the fit parameters */
     int radial_fit_n = 1; // Allow less frequent output of the fit by changing this output period
+    printf("set_to_zero d_fit\n");
     cuda_set_to_zero(d_fit,N_images);
+    printf("set_to_zero d_radial_fit\n");
     cuda_set_to_zero(d_radial_fit,conf.model_side/2);
+    printf("set_to_zero d_radial_fit_weight\n");
     cuda_set_to_zero(d_radial_fit_weight,conf.model_side/2);
+    printf("no more set_to_zero\n");
 
     /* Find and output the best orientation for each diffraction pattern,
        i.e. the one with the highest responsability. */
@@ -1469,6 +1485,10 @@ int main(int argc, char **argv)
     fclose(best_quat_file);
 	
     /* In this loop through the chunks the "fit" is calculated */
+    /*
+    printf("allocate slices\n");
+    real *slices = malloc(N_slices*N_2d*sizeof(real)); // <debug>
+    */
     for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
       if (slice_start + slice_chunk >= N_slices) {
 	current_chunk = N_slices - slice_start;
@@ -1477,6 +1497,10 @@ int main(int argc, char **argv)
       }
       cuda_get_slices(model, d_model, d_slices, d_rotations, d_x_coord, d_y_coord, d_z_coord, slice_start, current_chunk);
 
+      /*
+      printf("copy slices ot array (%d / %d)\n", 1+slice_start/slice_chunk, N_slices/slice_chunk);
+      cuda_copy_real_to_host(&(slices[slice_start*N_2d]), d_slices, current_chunk*N_2d); // <debug>
+      */
       /* Calculate the "fit" between the diffraction patterns
 	 and the compressed model. There are two versions of this:
 	 one weighted average and one where only the best orientation
@@ -1496,7 +1520,12 @@ int main(int argc, char **argv)
 				  current_chunk);
       }
     }
-
+    /*
+    printf("print file\n");
+    sprintf(filename_buffer, "%s/debug_slices_%.4d.h5", conf.output_dir, iteration);
+    write_3d_array_hdf5(filename_buffer, slices, N_slices, conf.model_side, conf.model_side);
+    free(slices);
+    */
     /* Output the fits */
     cuda_copy_real_to_host(fit, d_fit, N_images);
     cuda_copy_real_to_host(fit_best_rot, d_fit_best_rot, N_images);
@@ -1789,6 +1818,7 @@ int main(int argc, char **argv)
 			 model,d_model_updated, d_x_coord, d_y_coord,
 			 d_z_coord, &d_rotations[slice_start*4],
 			 d_weight,images);
+      continue;
     }
     /* cuda_update_slices above needs access to the old and text model
        at the same time. Therefore two models are keept simultaneously.
@@ -1844,6 +1874,8 @@ int main(int argc, char **argv)
        read by the viewer to keep track of the progress of a
        running analysis. */
     write_state_file_iteration(state_file, iteration);
+    end_time = clock();
+    printf("iteration took %g s\n", (real) (end_time - start_time) / CLOCKS_PER_SEC);
   }
 
   /* This is the end of the main loop. After this there will be

@@ -12,6 +12,8 @@ from functools import partial
 
 INIT_SURFACE_LEVEL = 0.5
 
+VTK_VERSION = vtk.vtkVersion().GetVTKMajorVersion()
+
 def enum(*enums):
     """Gives enumerate functionality."""
     return type('Enum', (), dict(zip(enums, range(len(enums)))))
@@ -157,7 +159,10 @@ class ModelmapViewer(module_template.Viewer):
         """Create the isosurface object, mapper and actor"""
         self._surface_level = INIT_SURFACE_LEVEL
         self._surface_algorithm = vtk.vtkMarchingCubes()
-        self._surface_algorithm.SetInputData(self._volume)
+        if VTK_VERSION < 6:
+            self._surface_algorithm.SetInput(self._volume)
+        else:
+            self._surface_algorithm.SetInputData(self._volume)
         self._surface_algorithm.ComputeNormalsOn()
         self._surface_algorithm.SetValue(0, self._surface_level)
 
@@ -180,7 +185,10 @@ class ModelmapViewer(module_template.Viewer):
         if len(self._planes) != 0:
             raise RuntimeError("planes initialized twice")
         self._planes.append(vtk.vtkImagePlaneWidget())
-        self._planes[0].SetInputData(self._volume)
+        if VTK_VERSION < 6:
+            self._planes[0].SetInput(self._volume)
+        else:
+            self._planes[0].SetInputData(self._volume)
         self._planes[0].UserControlledLookupTableOn()
         self._planes[0].SetLookupTable(self._lut)
         self._planes[0].SetPlaneOrientationToXAxes()
@@ -195,7 +203,10 @@ class ModelmapViewer(module_template.Viewer):
         # self._planes[0].On()
 
         self._planes.append(vtk.vtkImagePlaneWidget())
-        self._planes[1].SetInputData(self._volume)
+        if VTK_VERSION < 6:
+            self._planes[1].SetInput(self._volume)
+        else:
+            self._planes[1].SetInputData(self._volume)
         self._planes[1].UserControlledLookupTableOn()
         self._planes[1].SetLookupTable(self._lut)
         self._planes[1].SetPlaneOrientationToZAxes()
