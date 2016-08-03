@@ -11,7 +11,8 @@
 #include <time.h>
 #include <stdarg.h>
 
-#define PATH_MAX 256
+#define MAX_PATH_LENGTH 256
+//const int MAX_PATH_LENGTH = 256;
 
 static int quit_requested = 0;
 
@@ -1083,7 +1084,6 @@ int main(int argc, char **argv)
 				       conf.image_binning, masks);
   */
   sp_imatrix * mask = read_mask(conf);
-
   if (conf.normalize_images) {
     if (!conf.recover_scaling) {
       normalize_images_preserve_scaling(images, mask, conf);

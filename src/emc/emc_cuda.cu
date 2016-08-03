@@ -896,7 +896,7 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
   if(status != cudaSuccess){
     printf("CUDA Error (update slices): %s\n",cudaGetErrorString(status));
   }
-
+  cudaFree(d_slices_total_respons);
 }
 
 void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
@@ -1804,6 +1804,10 @@ void cuda_blur_model(real *d_model, const int model_side, const real sigma) {
   cufftPlan3d(&plan, model_side, model_side, model_side, CUFFT_C2R);
   cufftExecC2R(plan, ft, d_model);//, CUFFT_INVERSE);
   apply_mask<<<(pow((double) model_side,3)/256+1),256>>>(d_model, d_mask, pow((double) model_side,3));
+  
+  cudaFree(d_mask);
+  cudaFree(ft);
+ 
 
 }
 
