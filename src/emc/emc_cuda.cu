@@ -3,6 +3,7 @@
 #include <thrust/host_vector.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/fill.h>
+#include <thrust/transform_reduce.h>
 #include <cufft.h>
 
 
