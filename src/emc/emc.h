@@ -21,14 +21,14 @@ typedef struct{
 		    sp_imatrix * mask, real w, Quaternion rot, sp_matrix *x_coordinates,
 		    sp_matrix *y_coordinates, sp_matrix *z_coordinates);
 
-  void cuda_update_slices(real * d_images, real * slices, int * d_mask,
+  void cuda_update_slices(real * d_images, real * slices, int * d_masks,
 			  real * d_respons, real * d_scaling, int * d_active_images, int N_images,
 			  int slice_start, int slice_chunk, int N_2d,
 			  sp_3matrix * model, real * d_model, 
 			  real  *x_coordinates, real *y_coordinates,
 			  real *z_coordinates, real *d_rotations,
 			  real * d_weight, sp_matrix ** images);
-  void cuda_update_slices_final(real * d_images, real * d_slices, int * d_mask,
+  void cuda_update_slices_final(real * d_images, real * d_slices, int * d_masks,
 			  real * d_respons, real * d_scaling, int * d_active_images, int N_images,
 			  int slice_start, int slice_chunk, int N_2d,
 			  sp_3matrix * model, real * d_model, 
@@ -36,22 +36,22 @@ typedef struct{
 			  real *z_coordinates, real *d_rotations,
 			  real * d_weight,sp_matrix ** images);
 
-  void cuda_update_weighted_power(real * d_images, real * d_slices, int * d_mask,
+  void cuda_update_weighted_power(real * d_images, real * d_slices, int * d_masks,
 				  real * d_respons, real * d_weighted_power, int N_images,
 				  int slice_start, int slice_chunk, int N_2d);
 
-  void cuda_update_scaling(real * d_images, int * d_mask,
+  void cuda_update_scaling(real * d_images, int * d_masks,
 			   real * d_scaling, real * d_weighted_power,
 			   int N_images, int N_slices, int N_2d, real * scaling);
-  void cuda_update_scaling_best(real *d_images, int *d_mask,
+  void cuda_update_scaling_best(real *d_images, int *d_masks,
 				real *d_model, real *d_scaling, real *d_weight_map, real *d_respons, real *d_rotations,
 				real *x_coordinates, real *y_coordinates, real *z_coordinates,
 				int N_images, int N_slices, int side, real *scaling);
-  void cuda_update_scaling_full(real *d_images, real *d_slices, int *d_mask, real *d_scaling, real *d_weight_map,
+  void cuda_update_scaling_full(real *d_images, real *d_slices, int *d_masks, real *d_scaling, real *d_weight_map,
 				int N_2d, int N_images, int slice_start, int slice_chunk, enum diff_type diff);
 
 
-  void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_mask, real *d_weight_map,
+  void cuda_calculate_responsabilities(real * d_slices, real * d_images, int * d_masks, real *d_weight_map,
 				       real sigma, real * d_scaling, real * d_respons, real *d_weights, 
 				       int N_2d, int N_images, int slice_start, int slice_chunk,
 				       enum diff_type diff);
@@ -76,7 +76,8 @@ typedef struct{
   void cuda_normalize_model(sp_3matrix * model, real * d_model);
   void cuda_allocate_rotations(real ** d_rotations, Quaternion * rotations, int N_slices);
   void cuda_allocate_images(real ** d_images, sp_matrix ** images, int N_images);
-  void cuda_allocate_masks(int ** d_images, sp_imatrix ** images,  int N_images);
+  void cuda_allocate_individual_masks(int ** d_masks, sp_imatrix ** masks,  int N_images);
+  void cuda_allocate_common_masks(int ** d_masks, sp_imatrix * mask,  int N_images);
   void cuda_allocate_coords(real ** d_x, real ** d_y, real ** d_z, sp_matrix * x,
 			  sp_matrix * y, sp_matrix * z);
   void cuda_set_device(int i_device);
@@ -100,13 +101,13 @@ typedef struct{
   void cuda_copy_int_to_host(int *x, int *d_x, int n);
   void cuda_copy_slice_chunk_to_host(real * slices, real * d_slices, int slice_start, int slice_chunk, int N_2d);
   void cuda_copy_slice_chunk_to_device(real * slices, real * d_slices, int slice_start, int slice_chunk, int N_2d);
-  void cuda_calculate_fit(real * slices, real * d_images, int * d_mask,
+  void cuda_calculate_fit(real * slices, real * d_images, int * d_masks,
 			  real * d_scaling, real * d_respons, real * d_fit, real sigma,
 			  int N_2d, int N_images, int slice_start, int slice_chunk);
-  void cuda_calculate_fit_best_rot(real *slices, real * d_images, int *d_mask,
+  void cuda_calculate_fit_best_rot(real *slices, real * d_images, int *d_masks,
 				   real *d_scaling, int *d_best_rot, real *d_fit,
 				   int N_2d, int N_images, int slice_start, int slice_chunk);
-  void cuda_calculate_radial_fit(real *slices, real *d_images, int *d_mask,
+  void cuda_calculate_radial_fit(real *slices, real *d_images, int *d_masks,
 				 real *d_scaling, real *d_respons, real *d_radial_fit,
 				 real *d_radial_fit_weight, real *d_radius,
 				 int N_2d, int side, int N_images, int slice_start,

@@ -26,6 +26,7 @@ int read_configuration_file(const char *filename, Configuration *config_out)
   config_lookup_int(&config,"chunk_size",&(config_out->chunk_size));
   config_lookup_int(&config,"number_of_images",&(config_out->number_of_images));
   config_lookup_int(&config,"number_of_iterations",&(config_out->number_of_iterations));
+  config_lookup_bool(&config,"individual_masks",&(config_out->individual_masks));
   config_lookup_string(&config,"mask_file",&(config_out->mask_file));
   config_lookup_string(&config,"image_prefix",&(config_out->image_prefix));
   config_lookup_bool(&config,"normalize_images",&(config_out->normalize_images));

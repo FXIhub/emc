@@ -434,7 +434,7 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
   //masks = malloc(conf.number_of_images*sizeof(sp_imatrix *));
   Image *img;
   real *intensities = malloc(conf.number_of_images*sizeof(real));
-  char filename_buffer[PATH_MAX];
+  char filename_buffer[MAX_PATH_LENGTH];
 
   for (int i = 0; i < conf.number_of_images; i++) {
     intensities[i] = 1.0;
@@ -593,6 +593,7 @@ void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
    each patterns in a circle of the specified radius is 0. An input radius
    of 0 means that the full image is used. */
 void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix * const mask, real radius, const Configuration conf) {
+  printf("TOMAS: normalize_images_central_part\n");
   const int x_max = conf.model_side;
   const int y_max = conf.model_side;
   /* If the radius is 0 we use the full image by setting the
@@ -601,6 +602,8 @@ void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix *
     radius = sqrt(pow(x_max, 2) + pow(y_max, 2))/2. + 2;
   }
 
+  real *all_normalizations = malloc(conf.number_of_images*sizeof(real));
+  
   /* Create a mask that marks the area to use. */
   sp_imatrix * central_mask = sp_imatrix_alloc(x_max, y_max);
   real r;
@@ -628,10 +631,15 @@ void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix *
       }
     }
     sum = (real) count / sum;
+    all_normalizations[i_image] = sum;
     for (int i = 0; i < N_2d; i++) {
       images[i_image]->data[i] *= sum;
     }
   }
+  char filename_buffer[MAX_PATH_LENGTH];
+  sprintf(filename_buffer, "%s/normalization_factors.h5", conf.output_dir);
+  write_1d_real_array_hdf5(filename_buffer, all_normalizations, conf.number_of_images);
+  printf("TOMAS: output normalizations\n");
 }
 
 /* Normalize all diffraction patterns so that the average pixel
@@ -794,7 +802,7 @@ int read_rotations_file(const char *filename, Quaternion **rotations, real **wei
    function also works if there are several levels of diretcories that does
    not exist. */
 static void mkdir_recursive(const char *dir, int permission) {
-  char tmp[PATH_MAX];
+  char tmp[MAX_PATH_LENGTH];
   char *p = NULL;
   size_t len;
   
@@ -952,8 +960,9 @@ static void create_initial_model_file(sp_3matrix *model, const char *model_file)
 
 int main(int argc, char **argv)
 {
+  printf("TOMAS: correct version of EMC\n");
   /* Parse command-line options */
-  char configuration_filename[PATH_MAX] = "emc.conf";
+  char configuration_filename[MAX_PATH_LENGTH] = "emc.conf";
   int chosen_device = -1; // negative numbers means the program chooses automatically
   char help_text[] =
     "Options:\n\
@@ -1004,7 +1013,7 @@ int main(int argc, char **argv)
     error_exit_with_message("Can't read configuration file %s\nRun emc -h for help.", configuration_filename);
   
   /* This buffer is used for names of all output files */
-  char filename_buffer[PATH_MAX];
+  char filename_buffer[MAX_PATH_LENGTH];
 
   /* Create the output directory if it does not exist. */
   mkdir_recursive(conf.output_dir, 0777);
@@ -1110,12 +1119,21 @@ int main(int argc, char **argv)
   Image *write_image = sp_image_alloc(conf.model_side, conf.model_side, 1);
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i]) {
-	sp_real(write_image->image->data[i]) = images[i_image]->data[i];
+      if (conf.individual_masks == 1) {
+	if (masks[i_image]->data[i]) {
+	  sp_real(write_image->image->data[i]) = images[i_image]->data[i];
+	} else {
+	  sp_real(write_image->image->data[i]) = 0.0;
+	}
+	write_image->mask->data[i] = mask->data[i];
       } else {
-	sp_real(write_image->image->data[i]) = 0.0;
+	if (mask->data[i]) {
+	  sp_real(write_image->image->data[i]) = images[i_image]->data[i];
+	} else {
+	  sp_real(write_image->image->data[i]) = 0.0;
+	}
+	write_image->mask->data[i] = mask->data[i];
       }
-      write_image->mask->data[i] = mask->data[i];
     }
     sprintf(filename_buffer, "%s/image_%.4d.h5", conf.output_dir, i_image);
     sp_image_write(write_image, filename_buffer, 0);
@@ -1283,21 +1301,32 @@ int main(int argc, char **argv)
   cuda_allocate_mask(&d_mask, mask);
 
   /* Array of all diffraction patterns. */
-  real * d_images;
-  cuda_allocate_images(&d_images, images, N_images);
-  cuda_apply_single_mask(d_images, d_mask, N_2d, N_images);
+  real * d_images_common_mask;
+  cuda_allocate_images(&d_images_common_mask, images, N_images);
+  cuda_apply_single_mask(d_images_common_mask, d_mask, N_2d, N_images);
 
   /* Individual masks read from each diffraction pattern.
      Only used for the last iteration. */
   int * d_masks;
-  cuda_allocate_masks(&d_masks, masks, N_images);
+  if (conf.individual_masks) {
+    cuda_allocate_individual_masks(&d_masks, masks, N_images);
+  } else {
+    cuda_allocate_common_masks(&d_masks, mask, N_images);
+  }
 
   /* Array of all diffraction patterns with mask applied. */
   real * d_images_individual_mask;
   cuda_allocate_images(&d_images_individual_mask, images, N_images);
   //cuda_apply_masks(d_images, d_masks, N_2d, N_images);
-  cuda_apply_masks(d_images_individual_mask, d_masks, N_2d, N_images);  
+  cuda_apply_masks(d_images_individual_mask, d_masks, N_2d, N_images);
 
+  real *d_images;
+  if (conf.individual_masks) {
+    d_images = d_images_individual_mask;
+  } else {
+    d_images = d_images_common_mask;
+  }
+  
   /* Responsability matrix */
   real * d_respons;
   cuda_allocate_real(&d_respons, N_slices*N_images);
@@ -1407,7 +1436,12 @@ int main(int argc, char **argv)
 
     /* Sigma is a variable that describes the noise that is
        typically either constant or decreasing on every iteration. */
-    sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
+    //sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
+    if (iteration <= conf.sigma_half_life) {
+      sigma = conf.sigma_start;
+    } else {
+      sigma = conf.sigma_final;
+    }
     printf("sigma = %g\n", sigma);
 
     /* Calculate the weightmap radius for this particular iteration. */
@@ -1472,15 +1506,15 @@ int main(int argc, char **argv)
 	 and the compressed model. There are two versions of this:
 	 one weighted average and one where only the best orientation
 	 of each pattern is considered. */
-      cuda_calculate_fit(d_slices, d_images, d_mask, d_scaling,
+      cuda_calculate_fit(d_slices, d_images, d_masks, d_scaling,
 			 d_respons, d_fit, sigma, N_2d, N_images,
 			 slice_start, current_chunk);
-      cuda_calculate_fit_best_rot(d_slices, d_images, d_mask, d_scaling,
+      cuda_calculate_fit_best_rot(d_slices, d_images, d_masks, d_scaling,
 				  d_best_rotation, d_fit_best_rot, N_2d, N_images,
 				  slice_start, current_chunk);
       /* Calculate a radially averaged version of the weightd "fit" */
       if (iteration % radial_fit_n == 0 && iteration != 0) {
-	cuda_calculate_radial_fit(d_slices, d_images, d_mask,
+	cuda_calculate_radial_fit(d_slices, d_images, d_masks,
 				  d_scaling, d_respons, d_radial_fit,
 				  d_radial_fit_weight, d_radius,
 				  N_2d, conf.model_side, N_images, slice_start,
@@ -1537,7 +1571,7 @@ int main(int argc, char **argv)
 	}
 	cuda_get_slices(model, d_model, d_slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
 			slice_start, current_chunk);
-	cuda_update_scaling_full(d_images, d_slices, d_mask, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
+	cuda_update_scaling_full(d_images, d_slices, d_masks, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
       }
 
       /* Output scaling */
@@ -1567,7 +1601,7 @@ int main(int argc, char **argv)
       
       cuda_get_slices(model,d_model,d_slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,slice_start,current_chunk);
 
-      cuda_calculate_responsabilities(d_slices, d_images, d_mask, d_weight_map,
+      cuda_calculate_responsabilities(d_slices, d_images, d_masks, d_weight_map,
 				      sigma, d_scaling, d_respons, d_weights, 
 				      N_2d, N_images, slice_start,
 				      current_chunk, conf.diff);
@@ -1763,7 +1797,7 @@ int main(int argc, char **argv)
 	cuda_get_slices(model, d_model, d_slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
 			slice_start, current_chunk);
 	
-	cuda_update_scaling_full(d_images, d_slices, d_mask, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
+	cuda_update_scaling_full(d_images, d_slices, d_masks, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
       }
     }
     /* End update scaling second time (test) */
@@ -1780,13 +1814,12 @@ int main(int argc, char **argv)
 	 and compresses this part. The model needs to be divided with
 	 the weights outside this loop. */
       
-      cuda_update_slices(d_images, d_slices, d_mask,
+      cuda_update_slices(d_images, d_slices, d_masks,
 			 d_respons, d_scaling, d_active_images,
 			 N_images, slice_start, current_chunk, N_2d,
 			 model,d_model_updated, d_x_coord, d_y_coord,
 			 d_z_coord, &d_rotations[slice_start*4],
 			 d_weight,images);
-      continue;
     }
     /* cuda_update_slices above needs access to the old and text model
        at the same time. Therefore two models are keept simultaneously.
@@ -1809,9 +1842,9 @@ int main(int argc, char **argv)
 
     /* < TEST > */
     /* Blur the model */
-    if (conf.blur_model) {
-      cuda_blur_model(d_model, conf.model_side, conf.blur_model_sigma);
-    }
+    /* if (conf.blur_model) { */
+    /*   cuda_blur_model(d_model, conf.model_side, conf.blur_model_sigma); */
+    /* } */
     
     /* Copy the new compressed model to the CPU. */
     cuda_copy_model(model, d_model);
@@ -1874,7 +1907,7 @@ int main(int argc, char **argv)
     /* This function is different from cuda_update_slices is that
        the individual masks provided as negative values in
        d_images_individual_mask is used instead of d_mask. */
-    cuda_update_slices_final(d_images_individual_mask, d_slices, d_mask,
+    cuda_update_slices_final(d_images_individual_mask, d_slices, d_masks,
 			     d_respons, d_scaling, d_active_images,
 			     N_images, slice_start, current_chunk, N_2d,
 			     model,d_model_updated, d_x_coord, d_y_coord,

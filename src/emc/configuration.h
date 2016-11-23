@@ -32,6 +32,7 @@ extern "C"{
     int chunk_size;
     int number_of_images;
     int number_of_iterations;
+    int individual_masks;
     const char *mask_file;
     const char *image_prefix;
     int normalize_images;
