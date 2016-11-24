@@ -252,7 +252,7 @@ void calculate_coordinates(int side, real pixel_size, real detector_distance, re
       radius_real = radius_in_pixels*pixel_size;
       radius_angle = atan2(radius_real, detector_distance);
       radius_fourier = sin(radius_angle)/wavelength;
-      z_liftoff_fourier = (1. - cos(radius_angle))/wavelength;
+      z_liftoff_fourier = -(1. - cos(radius_angle))/wavelength;
 
       x_in_pixels = (real)(x-x_max/2)+0.5;
       y_in_pixels = (real)(y-y_max/2)+0.5;
@@ -284,25 +284,25 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
 	   rotation matrix of the rotation rot. */
 	new_x =
 	  (rot.q[0]*rot.q[0] + rot.q[1]*rot.q[1] -
-	   rot.q[2]*rot.q[2] - rot.q[3]*rot.q[3])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
+	   rot.q[2]*rot.q[2] - rot.q[3]*rot.q[3])*sp_matrix_get(x_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
 	  (2.0*rot.q[1]*rot.q[2] -
 	   2.0*rot.q[0]*rot.q[3])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
 	  (2.0*rot.q[1]*rot.q[3] +
-	   2.0*rot.q[0]*rot.q[2])*sp_matrix_get(x_coordinates,x,y);
+	   2.0*rot.q[0]*rot.q[2])*sp_matrix_get(z_coordinates,x,y);
 	new_y =
 	  (2.0*rot.q[1]*rot.q[2] +
-	   2.0*rot.q[0]*rot.q[3])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
+	   2.0*rot.q[0]*rot.q[3])*sp_matrix_get(x_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
 	  (rot.q[0]*rot.q[0] - rot.q[1]*rot.q[1] +
 	   rot.q[2]*rot.q[2] - rot.q[3]*rot.q[3])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
 	  (2.0*rot.q[2]*rot.q[3] -
-	   2.0*rot.q[0]*rot.q[1])*sp_matrix_get(x_coordinates,x,y);
+	   2.0*rot.q[0]*rot.q[1])*sp_matrix_get(z_coordinates,x,y);
 	new_z =
 	  (2.0*rot.q[1]*rot.q[3] -
-	   2.0*rot.q[0]*rot.q[2])*sp_matrix_get(z_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
+	   2.0*rot.q[0]*rot.q[2])*sp_matrix_get(x_coordinates,x,y) +/*((real)(x-x_max/2)+0.5)+*/
 	  (2.0*rot.q[2]*rot.q[3] +
 	   2.0*rot.q[0]*rot.q[1])*sp_matrix_get(y_coordinates,x,y) +/*((real)(y-y_max/2)+0.5)+*/
 	  (rot.q[0]*rot.q[0] - rot.q[1]*rot.q[1] -
-	   rot.q[2]*rot.q[2] + rot.q[3]*rot.q[3])*sp_matrix_get(x_coordinates,x,y);
+	   rot.q[2]*rot.q[2] + rot.q[3]*rot.q[3])*sp_matrix_get(z_coordinates,x,y);
 
 	/* Round of the values nearest pixel. This function uses nearest
 	   neighbour interpolation as oposed to the linear interpolation
@@ -593,7 +593,6 @@ void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
    each patterns in a circle of the specified radius is 0. An input radius
    of 0 means that the full image is used. */
 void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix * const mask, real radius, const Configuration conf) {
-  printf("TOMAS: normalize_images_central_part\n");
   const int x_max = conf.model_side;
   const int y_max = conf.model_side;
   /* If the radius is 0 we use the full image by setting the
@@ -639,7 +638,6 @@ void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix *
   char filename_buffer[MAX_PATH_LENGTH];
   sprintf(filename_buffer, "%s/normalization_factors.h5", conf.output_dir);
   write_1d_real_array_hdf5(filename_buffer, all_normalizations, conf.number_of_images);
-  printf("TOMAS: output normalizations\n");
 }
 
 /* Normalize all diffraction patterns so that the average pixel
@@ -960,7 +958,6 @@ static void create_initial_model_file(sp_3matrix *model, const char *model_file)
 
 int main(int argc, char **argv)
 {
-  printf("TOMAS: correct version of EMC\n");
   /* Parse command-line options */
   char configuration_filename[MAX_PATH_LENGTH] = "emc.conf";
   int chosen_device = -1; // negative numbers means the program chooses automatically
@@ -1154,6 +1151,13 @@ int main(int argc, char **argv)
   sp_matrix *z_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
   calculate_coordinates(conf.model_side, conf.pixel_size, conf.detector_distance, conf.wavelength,
 			x_coordinates, y_coordinates, z_coordinates);
+
+  /* sprintf(filename_buffer, "%s/coordinates_x.h5", conf.output_dir); */
+  /* write_2d_real_array_hdf5(filename_buffer, x_coordinates->data, conf.model_side, conf.model_side); */
+  /* sprintf(filename_buffer, "%s/coordinates_y.h5", conf.output_dir); */
+  /* write_2d_real_array_hdf5(filename_buffer, y_coordinates->data, conf.model_side, conf.model_side); */
+  /* sprintf(filename_buffer, "%s/coordinates_z.h5", conf.output_dir); */
+  /* write_2d_real_array_hdf5(filename_buffer, z_coordinates->data, conf.model_side, conf.model_side); */
 
 
   /* Create the compressed model: model and the model

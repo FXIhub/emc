@@ -39,9 +39,9 @@ __device__ void cuda_insert_slice(real *model, real *weight, real *slice,
       //if (mask[y*x_max + x] == 1) {
       if (mask[y*x_max + x] == 1 && slice[y*x_max + x] >= 0.0) {
 	/* This is just a matrix multiplication with rot */
-	new_x = m00*z_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*x_coordinates[y*x_max+x];
-	new_y =	m10*z_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*x_coordinates[y*x_max+x];
-	new_z = m20*z_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*x_coordinates[y*x_max+x];
+	new_x = m00*x_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*z_coordinates[y*x_max+x];
+	new_y =	m10*x_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*z_coordinates[y*x_max+x];
+	new_z = m20*x_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*z_coordinates[y*x_max+x];
 	/* changed the next lines +0.5 -> -0.5 (11 dec 2012)*/
 	round_x = lroundf(model_x/2.0f - 0.5f + new_x);
 	round_y = lroundf(model_y/2.0f - 0.5f + new_y);
@@ -168,9 +168,9 @@ __device__ void cuda_insert_slice_interpolate(real *model, real *weight, real *s
     for (int y = tid; y < y_max; y+=step) {
       if (slice[y*x_max + x] >= 0.0) {
 	/* This is just a matrix multiplication with rot */
-	new_x = m00*z_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*x_coordinates[y*x_max+x] + model_x/2.0 - 0.5;
-	new_y =	m10*z_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*x_coordinates[y*x_max+x] + model_y/2.0 - 0.5;
-	new_z = m20*z_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*x_coordinates[y*x_max+x] + model_z/2.0 - 0.5;
+	new_x = m00*x_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*z_coordinates[y*x_max+x] + model_x/2.0 - 0.5;
+	new_y =	m10*x_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*z_coordinates[y*x_max+x] + model_y/2.0 - 0.5;
+	new_z = m20*x_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*z_coordinates[y*x_max+x] + model_z/2.0 - 0.5;
 	
 	interpolate_model_set(model, weight, model_x, model_y, model_z, new_x, new_y, new_z, slice[y*x_max + x], w);
       }
@@ -202,9 +202,9 @@ __device__ void cuda_insert_slice_final_interpolate(real *model, real *weight, r
       //if (mask[y*x_max + x] == 1) {
       if (slice[y*x_max + x] >= 0.0) {
 	/* This is just a matrix multiplication with rot */
-	new_x = m00*z_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*x_coordinates[y*x_max+x] + model_x/2.0 - 0.5;
-	new_y =	m10*z_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*x_coordinates[y*x_max+x] + model_y/2.0 - 0.5;
-	new_z = m20*z_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*x_coordinates[y*x_max+x] + model_z/2.0 - 0.5;
+	new_x = m00*x_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*z_coordinates[y*x_max+x] + model_x/2.0 - 0.5;
+	new_y =	m10*x_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*z_coordinates[y*x_max+x] + model_y/2.0 - 0.5;
+	new_z = m20*x_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*z_coordinates[y*x_max+x] + model_z/2.0 - 0.5;
 	
 	interpolate_model_set(model, weight, model_x, model_y, model_z, new_x, new_y, new_z, slice[y*x_max + x], w);
       }
