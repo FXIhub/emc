@@ -569,7 +569,7 @@ sp_imatrix *read_mask(Configuration conf)
 /* Normalize all diffraction patterns so that the average pixel
    value is 1.0 in each pattern. Use the common mask for the
    normalization. */
-void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
+void normalize_images(sp_matrix **images, sp_imatrix **masks, Configuration conf)
 {
   real sum, count;
   int N_2d = conf.model_side*conf.model_side;
@@ -577,7 +577,7 @@ void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
     sum = 0.;
     count = 0.;
     for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i] == 1) {
+      if (masks[i_image]->data[i] == 1) {
 	sum += images[i_image]->data[i];
 	count += 1.;
       }
@@ -592,7 +592,7 @@ void normalize_images(sp_matrix **images, sp_imatrix *mask, Configuration conf)
 /* Normalize all diffraction patterns so that the average pixel value in
    each patterns in a circle of the specified radius is 0. An input radius
    of 0 means that the full image is used. */
-void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix * const mask, real radius, const Configuration conf) {
+void normalize_images_central_part(sp_matrix ** const images, sp_imatrix ** const masks, real radius, const Configuration conf) {
   const int x_max = conf.model_side;
   const int y_max = conf.model_side;
   /* If the radius is 0 we use the full image by setting the
@@ -624,7 +624,7 @@ void normalize_images_central_part(sp_matrix ** const images, const sp_imatrix *
     sum = 0.;
     count = 0.;
     for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i] == 1 && central_mask->data[i] == 1) {
+      if (masks[i_image]->data[i] == 1 && central_mask->data[i] == 1) {
 	sum += images[i_image]->data[i];
 	count += 1.;
       }
@@ -668,22 +668,28 @@ void normalize_images_individual_mask(sp_matrix **images, sp_imatrix **masks,
    among all diffraction patterns is 1. This normalization is intended
    for when intensities are known and therefore the relative scaling
    must be preserved. */
-void normalize_images_preserve_scaling(sp_matrix ** images, sp_imatrix *mask, Configuration conf) {
+void normalize_images_preserve_scaling(sp_matrix ** images, sp_imatrix **masks, Configuration conf) {
   int N_2d = conf.model_side*conf.model_side;
-  real sum = 0.;
-  real count = 0.;
-  for (int i_image = 0; i_image < conf.number_of_images; i_image++) {
-    for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i] == 1) {
-	sum += images[i_image]->data[i];
-	count += 1.;
+  real inner_sum = 0.;
+  real outer_sum = 0.;
+  real inner_count = 0.;
+  real outer_count = 0.;
+  for (int i = 0; i < N_2d; i++) {
+    for (int i_image = 0; i_image < conf.number_of_images; i_image++) {
+      if (masks[i_image]->data[i] == 1) {
+	inner_sum += images[i_image]->data[i];
+	inner_count += 1.;
       }
     }
+    if (inner_count > 0.) {
+      outer_sum += inner_sum / inner_count;
+      outer_count += 1.;
+    }
   }
-  sum = (count*(real)conf.number_of_images) / sum;
+  real normalization_factor = (outer_count*(real)conf.number_of_images) / outer_sum;
   for (int i_image = 0; i_image < conf.number_of_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
-      images[i_image]->data[i] *= sum;
+      images[i_image]->data[i] *= normalization_factor;
     }
   }
 }
@@ -832,7 +838,7 @@ static void create_initial_model_uniform(sp_3matrix *model, gsl_rng *rng) {
    all the patterns. On each pixel, some randomness is added with
    the strengh of conf.initial_modle_noise.*[initial pixel value] */
 static void create_initial_model_radial_average(sp_3matrix *model, sp_matrix **images, const int N_images,
-						sp_imatrix *mask, real initial_model_noise,
+						sp_imatrix **masks, real initial_model_noise,
 						gsl_rng *rng) {
   const int model_side = sp_3matrix_x(model);
   /* Setup for calculating radial average */
@@ -848,7 +854,7 @@ static void create_initial_model_radial_average(sp_3matrix *model, sp_matrix **i
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int x = 0; x < model_side; x++) {
       for (int y = 0; y < model_side; y++) {
-	if (sp_imatrix_get(mask, x, y) > 0 && sp_matrix_get(images[i_image], x, y) >= 0.) {
+	if (sp_imatrix_get(masks[i_image], x, y) > 0 && sp_matrix_get(images[i_image], x, y) >= 0.) {
 	  //if (sp_matrix_get(images[i_image], x, y) >= 0.) {
 	  r = (int)sqrt(pow((real)x - model_side/2.0 + 0.5,2) +
 			pow((real)y - model_side/2.0 + 0.5,2));
@@ -895,13 +901,13 @@ static void create_initial_model_radial_average(sp_3matrix *model, sp_matrix **i
 /* Assemble the model from the given diffraction patterns
    with a random orientation assigned to each. */
 static void create_initial_model_random_orientations(sp_3matrix *model, sp_3matrix *weight, sp_matrix **images,
-						     const int N_images, sp_imatrix *mask, sp_matrix *x_coordinates,
+						     const int N_images, sp_imatrix **masks, sp_matrix *x_coordinates,
 						     sp_matrix *y_coordinates, sp_matrix *z_coordinates, gsl_rng *rng) {
   const int N_model = sp_3matrix_size(model);
   Quaternion random_rot;
-  for (int i = 0; i < N_images; i++) {
+  for (int i_image = 0; i_image < N_images; i_image++) {
     random_rot = quaternion_random(rng);
-    insert_slice(model, weight, images[i], mask, 1.0, random_rot,
+    insert_slice(model, weight, images[i_image], masks[i_image], 1.0, random_rot,
 		 x_coordinates, y_coordinates, z_coordinates);
     //free(random_rot);
   }
@@ -918,7 +924,7 @@ static void create_initial_model_random_orientations(sp_3matrix *model, sp_3matr
    with a rotation assigned from the file provided in
    conf.initial_rotations_file. */
 static void create_initial_model_given_orientations(sp_3matrix *model, sp_3matrix *weight, sp_matrix **images, const int N_images, 
-						    sp_imatrix *mask, sp_matrix *x_coordinates, sp_matrix *y_coordinates,
+						    sp_imatrix **masks, sp_matrix *x_coordinates, sp_matrix *y_coordinates,
 						    sp_matrix *z_coordinates, const char *init_rotations_file) {
   const int N_model = sp_3matrix_size(model);
   FILE *given_rotations_file = fopen(init_rotations_file, "r");
@@ -926,7 +932,7 @@ static void create_initial_model_given_orientations(sp_3matrix *model, sp_3matri
   Quaternion this_rotation;
   for (int i_image = 0; i_image < N_images; i_image++) {
     fscanf(given_rotations_file, "%g %g %g %g\n", &(this_rotation.q[0]), &(this_rotation.q[1]), &(this_rotation.q[2]), &(this_rotation.q[3]));
-    insert_slice(model, weight, images[i_image], mask, 1., this_rotation,
+    insert_slice(model, weight, images[i_image], masks[i_image], 1., this_rotation,
 		 x_coordinates, y_coordinates, z_coordinates);
   }
   //free(this_rotation);
@@ -1082,21 +1088,36 @@ int main(int argc, char **argv)
   hid_t state_file = open_state_file(filename_buffer);
 
   /* Read images and mask */
-  sp_imatrix **masks = malloc(conf.number_of_images*sizeof(sp_imatrix *));
-  sp_matrix **images = read_images(conf,masks);
+  sp_imatrix **individual_masks = malloc(conf.number_of_images*sizeof(sp_imatrix *));
+  sp_matrix **images = read_images(conf, individual_masks);
   /*
   sp_matrix **images = read_images_cxi("/home/ekeberg/Data/LCLS_SPI/2015July/cxi/narrow_filter_normalized.cxi",
 				       "/entry_1/data", "/entry_1/mask", conf.number_of_images, conf.model_side,
 				       conf.image_binning, masks);
   */
-  sp_imatrix * mask = read_mask(conf);
+
+  sp_imatrix ** masks;
+  sp_imatrix *common_mask;
+  sp_imatrix **common_masks;
+  if (conf.individual_masks == 0) {
+    common_mask = read_mask(conf);
+    common_masks = malloc(N_images*sizeof(sp_imatrix));
+    for (int i_image = 0; i_image < N_images; i_image++) {
+      common_masks[i_image] = sp_imatrix_alloc(conf.model_side, conf.model_side);
+      sp_imatrix_memcpy(common_masks[i_image], common_mask);
+    }
+    masks = common_masks;
+  } else {
+    masks = individual_masks;
+  }
+  
   if (conf.normalize_images) {
     if (!conf.recover_scaling) {
-      normalize_images_preserve_scaling(images, mask, conf);
+      normalize_images_preserve_scaling(images, masks, conf);
     } else {
       //real central_part_radius = 0.; // Zero here means that the entire image is used.
       real central_part_radius = 10.; // Zero here means that the entire image is used.
-      normalize_images_central_part(images, mask, central_part_radius, conf);
+      normalize_images_central_part(images, masks, central_part_radius, conf);
     }
   }
 
@@ -1105,7 +1126,7 @@ int main(int argc, char **argv)
   real image_max = 0.;
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
-      if (mask->data[i] == 1 && images[i_image]->data[i] > image_max) {
+      if (masks[i_image]->data[i] == 1 && images[i_image]->data[i] > image_max) {
 	image_max = images[i_image]->data[i];
       }
     }
@@ -1116,21 +1137,12 @@ int main(int argc, char **argv)
   Image *write_image = sp_image_alloc(conf.model_side, conf.model_side, 1);
   for (int i_image = 0; i_image < N_images; i_image++) {
     for (int i = 0; i < N_2d; i++) {
-      if (conf.individual_masks == 1) {
-	if (masks[i_image]->data[i]) {
-	  sp_real(write_image->image->data[i]) = images[i_image]->data[i];
-	} else {
-	  sp_real(write_image->image->data[i]) = 0.0;
-	}
-	write_image->mask->data[i] = mask->data[i];
+      if (masks[i_image]->data[i]) {
+	sp_real(write_image->image->data[i]) = images[i_image]->data[i];
       } else {
-	if (mask->data[i]) {
-	  sp_real(write_image->image->data[i]) = images[i_image]->data[i];
-	} else {
-	  sp_real(write_image->image->data[i]) = 0.0;
-	}
-	write_image->mask->data[i] = mask->data[i];
+	sp_real(write_image->image->data[i]) = 0.0;
       }
+      write_image->mask->data[i] = masks[i_image]->data[i];
     }
     sprintf(filename_buffer, "%s/image_%.4d.h5", conf.output_dir, i_image);
     sp_image_write(write_image, filename_buffer, 0);
@@ -1179,11 +1191,11 @@ int main(int argc, char **argv)
     /* The model falls off raially in the same way as the average of
      all the patterns. On each pixel, some randomness is added with
      the strengh of conf.initial_modle_noise.*[initial pixel value] */
-    create_initial_model_radial_average(model, images, N_images, mask, conf.initial_model_noise, rng);
+    create_initial_model_radial_average(model, images, N_images, masks, conf.initial_model_noise, rng);
   } else if (conf.initial_model == initial_model_random_orientations) {
     /* Assemble the model from the given diffraction patterns
        with a random orientation assigned to each. */
-    create_initial_model_random_orientations(model, weight, images, N_images, mask, x_coordinates,
+    create_initial_model_random_orientations(model, weight, images, N_images, masks, x_coordinates,
 					     y_coordinates, z_coordinates, rng);
   }else if (conf.initial_model == initial_model_file) {
     /* Read the initial model from file.*/
@@ -1192,7 +1204,7 @@ int main(int argc, char **argv)
     /* Assemble the model from the given diffraction patterns
        with a rotation assigned from the file provided in
        conf.initial_rotations_file. */
-    create_initial_model_given_orientations(model, weight, images, N_images, mask, x_coordinates,
+    create_initial_model_given_orientations(model, weight, images, N_images, masks, x_coordinates,
 					    y_coordinates, z_coordinates, conf.initial_rotations_file);
   }
 
@@ -1301,35 +1313,37 @@ int main(int argc, char **argv)
 		       z_coordinates);
 
   /* The 2D mask used for all diffraction patterns */
-  int * d_mask;
-  cuda_allocate_mask(&d_mask, mask);
+  /* int * d_mask; */
+  /* cuda_allocate_mask(&d_mask, mask); */
 
   /* Array of all diffraction patterns. */
-  real * d_images_common_mask;
-  cuda_allocate_images(&d_images_common_mask, images, N_images);
-  cuda_apply_single_mask(d_images_common_mask, d_mask, N_2d, N_images);
+  real *d_images;
+  cuda_allocate_images(&d_images, images, N_images);
+  /* real * d_images_common_mask; */
+  /* cuda_allocate_images(&d_images_common_mask, images, N_images); */
+  /* cuda_apply_single_mask(d_images_common_mask, d_mask, N_2d, N_images); */
 
   /* Individual masks read from each diffraction pattern.
      Only used for the last iteration. */
   int * d_masks;
-  if (conf.individual_masks) {
-    cuda_allocate_individual_masks(&d_masks, masks, N_images);
-  } else {
-    cuda_allocate_common_masks(&d_masks, mask, N_images);
-  }
+  cuda_allocate_individual_masks(&d_masks, masks, N_images);
+  int * d_individual_masks;
+  cuda_allocate_individual_masks(&d_individual_masks, individual_masks, N_images);
 
   /* Array of all diffraction patterns with mask applied. */
   real * d_images_individual_mask;
-  cuda_allocate_images(&d_images_individual_mask, images, N_images);
-  //cuda_apply_masks(d_images, d_masks, N_2d, N_images);
-  cuda_apply_masks(d_images_individual_mask, d_masks, N_2d, N_images);
+  cuda_allocate_images(&d_images, images, N_images);
+  cuda_apply_masks(d_images, d_masks, N_2d, N_images);
 
-  real *d_images;
-  if (conf.individual_masks) {
-    d_images = d_images_individual_mask;
-  } else {
-    d_images = d_images_common_mask;
-  }
+  cuda_allocate_images(&d_images_individual_mask, images, N_images);
+  cuda_apply_masks(d_images_individual_mask, d_individual_masks, N_2d, N_images);
+
+  /* real *d_images; */
+  /* if (conf.individual_masks) { */
+  /*   d_images = d_images_individual_mask; */
+  /* } else { */
+  /*   d_images = d_images_common_mask; */
+  /* } */
   
   /* Responsability matrix */
   real * d_respons;
