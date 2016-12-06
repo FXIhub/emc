@@ -72,7 +72,7 @@ class StateWatcher(QtCore.QObject):
         # self._watcher = QtCore.QFileSystemWatcher(self)
         # self._watcher.addPath(file_name)
         self._watcher = FileWatcher(file_name)
-        self._file_handle = h5py.File(file_name)
+        self._file_handle = h5py.File(file_name, "r")
         if not self._file_handle:
             print "Error reading state file. Make sure you are in an EMC output dir."
             exit(1)
@@ -93,7 +93,7 @@ class StateWatcher(QtCore.QObject):
         if os.path.isfile(new_file_name):
             self._watcher.set_file(new_file_name)
             self._file_handle.close()
-            self._file_handle = h5py.File(new_file_name)
+            self._file_handle = h5py.File(new_file_name, "r")
 
     def set_base_dir(self, new_dir):
         """Change the base dir being watched, assuming the file ends
