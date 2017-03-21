@@ -7,6 +7,8 @@
 extern "C"{
 #endif
 
+#define MAX_STRING_LENGTH 3000
+  
   enum diff_type {absolute=0,
 		  poisson,
 		  relative,
@@ -17,7 +19,7 @@ extern "C"{
 			   initial_model_file,
 			   initial_model_given_orientations};
 
-   typedef struct{
+  typedef struct{
     int model_side;
     int image_binning;
     double wavelength;
@@ -52,9 +54,10 @@ extern "C"{
     int compact_output;
   }Configuration;
 
+  void init_configuration(Configuration *config);
   int read_configuration_file(const char *filename, Configuration *config_out);
-
-  int write_configuration_file(const char *filename, const Configuration config);
+  void create_default_config(Configuration *config);
+  int write_configuration_file(const char *filename, const Configuration *config_in);
 
 #ifdef __cplusplus
   }

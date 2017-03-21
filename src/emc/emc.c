@@ -725,7 +725,25 @@ void write_run_info(char *filename, Configuration conf, int random_seed) {
   H5Dwrite(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.recover_scaling);
   H5Dclose(dataset_id);
   H5Sclose(space_id);
-  
+
+  space_id = H5Screate(H5S_SCALAR);
+  dataset_id = H5Dcreate1(file_id, "/wavelength", H5T_NATIVE_FLOAT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.wavelength);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+
+  space_id = H5Screate(H5S_SCALAR);
+  dataset_id = H5Dcreate1(file_id, "/pixel_size", H5T_NATIVE_FLOAT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.pixel_size);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+
+  space_id = H5Screate(H5S_SCALAR);
+  dataset_id = H5Dcreate1(file_id, "/detector_distance", H5T_NATIVE_FLOAT, space_id, H5P_DEFAULT);
+  H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &conf.detector_distance);
+  H5Dclose(dataset_id);
+  H5Sclose(space_id);
+
   H5Fclose(file_id);
 }
 
@@ -1009,14 +1027,18 @@ int main(int argc, char **argv)
   }
   cuda_print_device_info();
 
+  /* This buffer is used for names of all output files */
+  char filename_buffer[MAX_PATH_LENGTH];
+  
   /* Read the configuration file */
   Configuration conf;
+  init_configuration(&conf);
+  create_default_config(&conf);
   int conf_return = read_configuration_file(configuration_filename, &conf);
   if (conf_return == 0)
     error_exit_with_message("Can't read configuration file %s\nRun emc -h for help.", configuration_filename);
-  
-  /* This buffer is used for names of all output files */
-  char filename_buffer[MAX_PATH_LENGTH];
+  sprintf(filename_buffer, "%sout", configuration_filename);
+  write_configuration_file(filename_buffer, &conf);
 
   /* Create the output directory if it does not exist. */
   mkdir_recursive(conf.output_dir, 0777);
