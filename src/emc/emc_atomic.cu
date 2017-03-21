@@ -179,7 +179,7 @@ __device__ void cuda_insert_slice_interpolate(real *model, real *weight, real *s
 }
 
 __device__ void cuda_insert_slice_final_interpolate(real *model, real *weight, real *slice,
-						    int * mask, real w, real *rot, real *x_coordinates,
+						    real w, real *rot, real *x_coordinates,
 						    real *y_coordinates, real *z_coordinates, int slice_rows,
 						    int slice_cols, int model_x, int model_y, int model_z,
 						    int tid, int step)
@@ -382,7 +382,7 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * masks, 
   real total_respons = slices_total_respons[i_slice];
   if(total_respons > 1e-10f){
     /*
-    cuda_insert_slice(model, weight, &slices[i_slice*N_2d], &masks[N_2d*i_slice], total_respons,
+    cuda_insert_slice(model, weight, &slices[i_slice*N_2d], total_respons,
 		      &rot[4*i_slice], x_coord, y_coord, z_coord,
 		      slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
     */
@@ -409,12 +409,12 @@ __global__ void insert_slices_final_kernel(real * images, real * slices, int * m
   real total_respons = slices_total_respons[i_slice];
   if(total_respons > 1e-10f){
     /*
-    cuda_insert_slice(model, weight, &slices[i_slice*N_2d], &masks[N_2d*i_slice], total_respons,
+    cuda_insert_slice(model, weight, &slices[i_slice*N_2d], total_respons,
 		      &rot[4*i_slice], x_coord, y_coord, z_coord,
 		      slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
     */
 
-    cuda_insert_slice_final_interpolate(model, weight, &slices[i_slice*N_2d], &masks[N_2d*i_slice], total_respons,
+    cuda_insert_slice_final_interpolate(model, weight, &slices[i_slice*N_2d], total_respons,
 					&rot[4*i_slice], x_coord, y_coord, z_coord,
 					slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
 
@@ -711,7 +711,7 @@ __global__ void calculate_radial_fit_kernel(real * slices , real * images, int *
   //printf("%g\n", this_resp);
   //if (this_resp > 1.0e-10) {
   for (int i = tid; i < N_2d; i += step) {
-    if (masks[i_slice*N_2d+i] != 0 && slices[i_slice*N_2d+i] > 0.0f) {
+    if (masks[i_image*N_2d+i] != 0 && slices[i_slice*N_2d+i] > 0.0f) {
       error = fabs((slices[i_slice*N_2d+i] - images[i_image*N_2d+i]/scaling[(slice_start+i_slice)*N_images+i_image]) / 
 		   (slices[i_slice*N_2d+i] + images[i_image*N_2d+i]/scaling[(slice_start+i_slice)*N_images+i_image]));
       /*

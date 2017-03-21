@@ -253,6 +253,7 @@ void calculate_coordinates(int side, real pixel_size, real detector_distance, re
       radius_angle = atan2(radius_real, detector_distance);
       radius_fourier = sin(radius_angle)/wavelength;
       z_liftoff_fourier = -(1. - cos(radius_angle))/wavelength;
+      //z_liftoff_fourier = (1. - cos(radius_angle))/wavelength;
 
       x_in_pixels = (real)(x-x_max/2)+0.5;
       y_in_pixels = (real)(y-y_max/2)+0.5;
@@ -260,8 +261,13 @@ void calculate_coordinates(int side, real pixel_size, real detector_distance, re
       sp_matrix_set(x_coordinates, x, y, x_in_pixels);
       sp_matrix_set(y_coordinates, x, y, y_in_pixels);
       sp_matrix_set(z_coordinates, x, y, z_in_pixels);
+      /* sp_matrix_set(x_coordinates, x, y, y_in_pixels); */
+      /* sp_matrix_set(y_coordinates, x, y, x_in_pixels); */
+      /* sp_matrix_set(z_coordinates, x, y, z_in_pixels); */
+
     }
   }
+  printf("liftoff: %f\n", sp_matrix_get(z_coordinates, 0, 0));
 }
 
 /* Like the compression step but only insert one slice into the model. This
@@ -1526,10 +1532,11 @@ int main(int argc, char **argv)
     fclose(best_quat_file);
 	
     /* In this loop through the chunks the "fit" is calculated */
-    /*
-    printf("allocate slices\n");
-    real *slices = malloc(N_slices*N_2d*sizeof(real)); // <debug>
-    */
+
+    /* DEBUG */
+    /* printf("allocate slices\n"); */
+    /* real *slices = malloc(N_slices*N_2d*sizeof(real)); // <debug> */
+    /* DEBUG END */
     for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
       if (slice_start + slice_chunk >= N_slices) {
 	current_chunk = N_slices - slice_start;
@@ -1560,6 +1567,7 @@ int main(int argc, char **argv)
 				  N_2d, conf.model_side, N_images, slice_start,
 				  current_chunk);
       }
+      
     }
     /*
     printf("print file\n");
@@ -1711,6 +1719,11 @@ int main(int argc, char **argv)
 
     /* Normalize responsabilities. */
     cuda_calculate_responsabilities_sum(respons, d_respons, N_slices, N_images);
+    /* DEBUG */
+    /* cuda_copy_real_to_host(respons, d_respons, N_slices*N_images); */
+    /* sprintf(filename_buffer, "%s/responsabilities_before_norm_%.4d.h5", conf.output_dir, iteration); */
+    /* write_2d_real_array_hdf5_transpose(filename_buffer, respons, N_slices, N_images); */
+    /* END DEBUG */
     cuda_normalize_responsabilities(d_respons, N_slices, N_images);
     cuda_copy_real_to_host(respons, d_respons, N_slices*N_images);
 
@@ -1740,7 +1753,7 @@ int main(int argc, char **argv)
     fprintf(likelihood,"%g\n",total_respons);
     fflush(likelihood);
 
-    /* Reset the compressed model */    
+    /* Reset the compressed model */
     cuda_reset_model(model,d_model_updated);
     cuda_reset_model(weight,d_weight);
 

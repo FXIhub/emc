@@ -8,7 +8,8 @@
 extern "C"{
 #endif
 
-  const real min_resp = -7.;
+  //const real min_resp = -23.;
+  const real min_resp = -100.;
 
 typedef struct{
   int side;

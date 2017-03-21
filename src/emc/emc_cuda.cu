@@ -5,7 +5,7 @@
 #include <thrust/fill.h>
 #include <thrust/transform_reduce.h>
 #include <cufft.h>
-
+#include <math.h>
 
 __global__ void update_slices_kernel(real * images, real * slices, int * mask, real * respons,
 				     real * scaling, int * active_images, int N_images,
@@ -450,16 +450,16 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
   int N_images = gridDim.x;
 
   if (diff == relative) {
-    cuda_calculate_responsability_relative(&slices[i_slice*N_2d], &images[i_image*N_2d], &masks[N_2d*i_slice], weight_map,
+    cuda_calculate_responsability_relative(&slices[i_slice*N_2d], &images[i_image*N_2d], &masks[N_2d*i_image], weight_map,
 					   sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step,
 					   sum_cache, count_cache);
   } else if (diff == poisson) {
-    cuda_calculate_responsability_poisson(&slices[i_slice*N_2d], &images[i_image*N_2d], &masks[N_2d*i_slice], weight_map,
+    cuda_calculate_responsability_poisson(&slices[i_slice*N_2d], &images[i_image*N_2d], &masks[N_2d*i_image], weight_map,
 					  sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step,
 					  sum_cache, count_cache);
   } else if (diff == absolute) {
     /* This one was used for best result so far.*/
-    cuda_calculate_responsability_absolute(&slices[i_slice*N_2d], &images[i_image*N_2d], &masks[N_2d*i_slice], weight_map,
+    cuda_calculate_responsability_absolute(&slices[i_slice*N_2d], &images[i_image*N_2d], &masks[N_2d*i_image], weight_map,
 					   sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step,
 					   sum_cache, count_cache);
   } else if (diff == annealing_poisson) {
@@ -474,13 +474,18 @@ __global__ void calculate_responsabilities_kernel(float * slices, float * images
 
   inblock_reduce(sum_cache);
   inblock_reduce(count_cache);
+  
   __syncthreads(); //probably not needed
   if(tid == 0){
     //respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/(real)count_cache[0]/pow(sigma,2);
     /* This weight buiseniss is fishy. It seems wee are getting responsabilities that are lower close to vertices. */
     //respons[(slice_start+i_slice)*N_images+i_image] = log(weights[slice_start+i_slice]) - sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
     /* I therefore try to remove it altogether */
-    respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
+    if (count_cache[0] > 0) {
+      respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
+    } else {
+      respons[(slice_start+i_slice)*N_images+i_image] = 10.;
+    }
   }
 }
 
@@ -517,7 +522,9 @@ void cuda_calculate_responsabilities_sum(real * respons, real * d_respons, int N
   cudaMemcpy(respons,d_respons,sizeof(real)*N_slices*N_images,cudaMemcpyDeviceToHost);
   real respons_sum = 0;
   for(int i = 0;i<N_slices*N_images;i++){
-    respons_sum += respons[i];
+    if (respons[i] < 0.) { // Positive values signals invalid responsability
+      respons_sum += respons[i];
+    }
   }
   printf("respons_sum = %f\n",respons_sum);
   cudaError_t status = cudaGetLastError();
@@ -794,11 +801,11 @@ __global__ void update_scaling_full_kernel(real *images, real *slices, int *mask
   */
 
   if (diff == poisson) {
-    this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], &slices[N_2d*i_slice], &masks[N_2d*i_slice], weight_map, N_2d, tid, step);
+    this_scaling = calculate_scaling_poisson(&images[N_2d*i_image], &slices[N_2d*i_slice], &masks[N_2d*i_image], weight_map, N_2d, tid, step);
   } else if (diff == absolute) {
-    this_scaling = calculate_scaling_absolute(&images[N_2d*i_image], &slices[N_2d*i_slice], &masks[N_2d*i_slice], weight_map, N_2d, tid, step);
+    this_scaling = calculate_scaling_absolute(&images[N_2d*i_image], &slices[N_2d*i_slice], &masks[N_2d*i_image], weight_map, N_2d, tid, step);
   } else if (diff == relative) {
-    this_scaling = calculate_scaling_relative(&images[N_2d*i_image], &slices[N_2d*i_slice], &masks[N_2d*i_slice], weight_map, N_2d, tid, step);
+    this_scaling = calculate_scaling_relative(&images[N_2d*i_image], &slices[N_2d*i_slice], &masks[N_2d*i_image], weight_map, N_2d, tid, step);
   }
 
   //this_scaling *= 0.5;
@@ -1542,7 +1549,7 @@ __global__ void cuda_normalize_responsabilities_kernel(real * respons, int N_sli
   int step = blockDim.x;
   cache[tid] = -1.0e10f;
   for(int i_slice = tid;i_slice < N_slices;i_slice += step){
-    if(cache[tid] < respons[i_slice*N_images+i_image]){
+    if(respons[i_slice*N_images+i_image] < 0. && cache[tid] < respons[i_slice*N_images+i_image]){
       cache[tid] = respons[i_slice*N_images+i_image];
     }
   }
@@ -1550,22 +1557,30 @@ __global__ void cuda_normalize_responsabilities_kernel(real * respons, int N_sli
   real max_resp = cache[0];
   __syncthreads();
   for (int i_slice = tid; i_slice < N_slices; i_slice+= step) {
-    respons[i_slice*N_images+i_image] -= max_resp;
+    if (respons[i_slice*N_images+i_image] < 0.) { 
+      respons[i_slice*N_images+i_image] -= max_resp;
+    }
   }
 
   cache[tid] = 0;
   for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
-    if (respons[i_slice*N_images+i_image] > min_resp) {
-      respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
-      cache[tid] += respons[i_slice*N_images+i_image];
+    if (respons[i_slice*N_images+i_image] < 0.) {
+      if (respons[i_slice*N_images+i_image] > min_resp) {
+	respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
+	cache[tid] += respons[i_slice*N_images+i_image];
+      } else {
+	respons[i_slice*N_images+i_image] = 0.0f;
+      }
     } else {
-      respons[i_slice*N_images+i_image] = 0.0f;
+      respons[i_slice*N_images+i_image] = 0.; // Set invalid responsabilities to 0. (no weight) since -1. (invalid) is not implemented.
     }
   }
   inblock_reduce(cache);
   real sum = cache[0];
   for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
-    respons[i_slice*N_images+i_image] /= sum;
+    if (respons[i_slice*N_images+i_image] > 0.) {
+      respons[i_slice*N_images+i_image] /= sum;
+    }
   }
 }
 
