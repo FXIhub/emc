@@ -1222,13 +1222,30 @@ void cuda_divide_model_by_weight(sp_3matrix * model, real * d_model, real * d_we
 }
 
 void cuda_normalize_model(sp_3matrix *model, real *d_model) {
-  int n = sp_3matrix_size(model);
+  printf("Using new normalization!\n");
+  cudaMemcpy(model->data, d_model, sp_3matrix_size(model)*sizeof(real), cudaMemcpyDeviceToHost);
+  const int model_size = sp_3matrix_size(model);
+  real model_average = 0.;
+  real model_count = 0.;
+  for (int index = 0; index < model_size; index++) {
+    if (model->data[index] >= 0.) {
+      model_average += model->data[index];
+      model_count += 1.;
+    }
+  }
+  if (model_count > 0.) {
+    model_average /= model_count;
+  } else {
+    model_average = 1.;
+  }
+  
   thrust::device_ptr<real> p(d_model);
-  real model_average = cuda_model_average(d_model, sp_3matrix_size(model));
+  //real model_average = cuda_model_average(d_model, sp_3matrix_size(model));
+    
   printf("model average before normalization = %g\n", model_average);
   //real model_sum = thrust::reduce(p, p+n, real(0), thrust::plus<real>());
   //model_sum /= (real) n;
-  thrust::transform(p, p+n,thrust::make_constant_iterator(1.0f/model_average), p, thrust::multiplies<real>());
+  thrust::transform(p, p+model_size,thrust::make_constant_iterator(1.0f/model_average), p, thrust::multiplies<real>());
 }
 
 void cuda_print_device_info() {
