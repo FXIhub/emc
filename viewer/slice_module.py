@@ -210,7 +210,7 @@ class SliceGenerator(object):
         if numpy.isinf(radius):
             self._z_array = numpy.zeros(self._x_array.shape)
         else:
-            self._z_array = self._radius - numpy.sqrt(self._radius**2 - self._x_array**2 - self._y_array**2)
+            self._z_array = -(self._radius - numpy.sqrt(self._radius**2 - self._x_array**2 - self._y_array**2))
 
         self._image_values = vtk.vtkFloatArray()
         self._image_values.SetNumberOfComponents(1)
