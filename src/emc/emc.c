@@ -1785,9 +1785,6 @@ int main(int argc, char **argv)
     fprintf(likelihood,"%g\n",total_respons);
     fflush(likelihood);
 
-    /* Reset the compressed model */
-    cuda_reset_model(model,d_model_updated);
-    cuda_reset_model(weight,d_weight);
 
     /* Exclude images. Use the assumption that the diffraction patterns
        with the lowest maximum responsability does not belong in the data.
@@ -1872,6 +1869,7 @@ int main(int argc, char **argv)
     cuda_copy_int_to_device(active_images, d_active_images, N_images);
 
     /* Start update scaling second time (test) */
+    /*
     if (conf.recover_scaling) {
       for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
 	if (slice_start + slice_chunk >= N_slices) {
@@ -1885,9 +1883,14 @@ int main(int argc, char **argv)
 	cuda_update_scaling_full(d_images, d_slices, d_masks, d_scaling, d_weight_map, N_2d, N_images, slice_start, current_chunk, conf.diff);
       }
     }
+    */
     /* End update scaling second time (test) */
 
-    /* This loop through the slice chunks updates compresses the model. */
+    /* Reset the compressed model */
+    cuda_reset_model(model,d_model_updated);
+    cuda_reset_model(weight,d_weight);
+
+    /* This loop through the slice chunks updates compressed the model. */
     for (int slice_start = 0; slice_start < N_slices; slice_start += slice_chunk) {
       if (slice_start + slice_chunk >= N_slices) {
 	current_chunk = N_slices - slice_start;
