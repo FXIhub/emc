@@ -1,0 +1,45 @@
+#ifndef FILE_HELPER_H
+#define FILE_HELPER_H
+#include <iostream>
+#include <fstream>
+#include <spimage.h>
+#include <rotations.h>
+#include <configuration.h>
+class FILEhelper
+{
+public:
+    FILEhelper();
+    FILE* weights_file;
+    FILE* rotaion_file;
+    FILE* image_file;
+    FILE* likelihood_file;
+    FILE* fit_file;
+    FILE* scaling_file;
+    FILE* radial_fit_file;
+    FILE* total_res_file;
+    FILE* model_file;
+    FILE* time_file;
+    void Init_Debug_Files();
+    void Init_Output_Files();
+    void Init_Time_file();
+    void write_file(char* , FILE* );
+    void write_model(sp_3matrix * model, sp_3matrix * weight, int, Configuration);
+    void write_time(int iteration, int rank, double time);
+    void write_weight( sp_3matrix * weight, int iteration);
+    void close_time();
+    void write_respons(real* res, int N_slices, int N_images, int iteration );
+    void write_respons(real** res, int* N_slices, int N_images, int iteration,int ntasks );
+    void write_model_by_name(sp_3matrix * model, sp_3matrix * weight, int iterations, std::string filename);
+    //void write_2d_array_trans_hdf5(char *filename, real *array, int index1_max, int index2_max) ;
+    void write_variance_model( sp_3matrix * weight, int iteration);
+    void write_model(sp_3matrix * model, sp_3matrix * weight, int iteration, int validation);
+    void write_splikelihood(real* lik, int len);
+    int *  read_index(const char* filename, int N_images);
+    bool * boollist(int* orilist, int N_remove, int N_images);
+    void write_respons(real *pading_respons,int max_slices ,int *len,
+                       int N_2d, int ntasks,int iteration, char* name);
+    real*  read_respons(const char* filename, Quaternion **rot,
+                        int slice_start,int N_slices,int N_images,real* respons);
+};
+
+#endif // FILE_HELLPER_H

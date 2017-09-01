@@ -1,0 +1,224 @@
+/*
+ *File : FILEhelper.cpp
+ *Author: Jing Liu @ TDB & Biophysics, Uppsala University, 2013
+ *Description: File common operators for emc algorithm
+*/
+#include "FILEhelper.h"
+FILEhelper::FILEhelper()
+{
+}
+
+//write_respons to debug/resopns_XXXX.data Mdata*Mrot
+void FILEhelper::write_respons(real* res, int N_slices, int N_images, int iteration){
+    char buffer[256];
+    int len = N_slices*N_images;
+    sprintf(buffer,"debug/respons_%.4d.data", iteration);
+    FILE* respons_file = fopen(buffer,"wb+");
+    fwrite(res, sizeof(real), N_slices * N_images,respons_file);
+    fclose(respons_file);
+}
+
+//write_respons to debug/respons_XXXX.data Mdata* Mrot. for Multi-GPUs version
+void FILEhelper::write_respons(real** res, int* N_slices, int N_images, int iteration,int ntasks ){
+    char buffer[256];
+    sprintf(buffer,"debug/respons_%.4d.data", iteration);
+    FILE* respons_file = fopen(buffer,"wb+");
+    for(int i = 0; i<ntasks; i++)
+        fwrite(res[i],sizeof(real),N_slices[i]*N_images,respons_file);
+    fclose(respons_file);
+}
+
+//write 3d intensity model to output/model_XXXX.h5. model is filtered by weight.
+void FILEhelper::write_model(sp_3matrix * model, sp_3matrix * weight, int iteration, Configuration conf){
+    int N_model = model->x *model->y*model->z;
+    char buffer[256];
+    Image *model_out = sp_image_alloc(model->x ,model->y,model->z);
+    model_out->scaled = 0;
+    model_out->shifted = 0;
+    model_out->phased = 0;
+    model_out->detector->detector_distance = conf.detector_distance;
+    model_out->detector->image_center[0] = conf.model_side/2. + 0.5;
+    model_out->detector->image_center[1] = conf.model_side/2. + 0.5;
+    model_out->detector->image_center[2] = conf.model_side/2. + 0.5;
+    model_out->detector->pixel_size[0] = conf.pixel_size;
+    model_out->detector->pixel_size[1] = conf.pixel_size;
+    model_out->detector->pixel_size[2] = conf.pixel_size;
+    model_out->detector->wavelength = conf.wavelength;
+
+    for (int i = 0; i < N_model; i++) {
+        if (weight->data[i] > 0.0 && model->data[i] > 0.) {
+            model_out->mask->data[i] = 1;
+            model_out->image->data[i] = sp_cinit(model->data[i],0.0);
+        } else {
+            model_out->mask->data[i] = 0;
+            model_out->image->data[i] = sp_cinit(0., 0.);
+        }
+    }
+    sprintf(buffer,"%s/model_%.4d.h5",conf.output_dir, iteration);
+    sp_image_write(model_out,buffer,0);
+}
+
+//write weight to output/weight_XXXX.h5
+void FILEhelper::write_variance_model( sp_3matrix * weight, int iteration){
+    printf("write_variance_model...");
+    int N_model = weight->x *weight->y*weight->z;
+    char buffer[256];
+    Image *model_out = sp_image_alloc(weight->x ,weight->y,weight->z);
+    /* write weight */
+    for (int i = 0; i < N_model; i++) {
+        model_out->image->data[i] = sp_cinit(weight->data[i], 0.);
+        model_out->mask->data[i] = 1;
+    }
+    sprintf(buffer, "output/variance_%.4d.h5", iteration);
+    sp_image_write(model_out, buffer, 0);
+}
+
+void FILEhelper::write_model(sp_3matrix * model, sp_3matrix * weight, int iteration, int validation){
+    int N_model = model->x *model->y*model->z;
+    char buffer[256];
+    Image *model_out = sp_image_alloc(model->x ,model->y,model->z);
+    for (int i = 0; i < N_model; i++) {
+        if (weight->data[i] > 0.0 && model->data[i] > 0.) {
+            model_out->mask->data[i] = 1;
+            model_out->image->data[i] = sp_cinit(model->data[i],0.0);
+        } else {
+            model_out->mask->data[i] = 0;
+            model_out->image->data[i] = sp_cinit(0., 0.);
+        }
+    }
+    sprintf(buffer,"/scratch/fhgfs/jing.liu/validation/output_acc/model_%.4d_%.4d.h5", iteration,validation);
+    sp_image_write(model_out,buffer,0);
+}
+
+//debug function. write model to a specified name.
+void write_model_by_name(sp_3matrix * model, sp_3matrix * weight, int iteration, std::string filename){
+    int N_model = model->x *model->y*model->z;
+    //printf("N is %d", N_model);
+    char buffer[256];
+    Image *model_out = sp_image_alloc(model->x ,model->y,model->z);
+    for (int i = 0; i < N_model; i++) {
+        if (weight->data[i] > 0.0 && model->data[i] > 0.) {
+            model_out->mask->data[i] = 1;
+            model_out->image->data[i] = sp_cinit(model->data[i],0.0);
+        } else {
+            model_out->mask->data[i] = 0;
+            model_out->image->data[i] = sp_cinit(0., 0.);
+        }
+    }
+    sprintf(buffer,"output/model_%.4d_%s.h5", iteration, filename.c_str());
+    sp_image_write(model_out,buffer,0);
+}
+
+//write weight to output/weight_XXXX.h5
+void FILEhelper::write_weight( sp_3matrix * weight, int iteration){
+    printf("writing model...");
+    int N_model = weight->x *weight->y*weight->z;
+    char buffer[256];
+    Image *model_out = sp_image_alloc(weight->x ,weight->y,weight->z);
+    /* write weight */
+    for (int i = 0; i < N_model; i++) {
+        model_out->image->data[i] = sp_cinit(weight->data[i], 0.);
+        model_out->mask->data[i] = 1;
+    }
+    sprintf(buffer, "output/weight_%.4d.h5", iteration);
+    sp_image_write(model_out, buffer, 0);
+}
+
+//open file ExeTime.data to store execution time
+void FILEhelper::Init_Time_file(){
+    time_file = fopen("ExeTime.data","wb");
+}
+
+//write execution time by iteration rank time
+void FILEhelper::write_time( int iteration, int rank, double time){
+    fprintf(time_file,"%d %d   %e \n", iteration, rank,  time);
+}
+
+//close ExeTime.data file
+void FILEhelper::close_time(){
+    fclose(time_file);
+}
+
+void FILEhelper::write_splikelihood(real* lik, int len){
+    char buffer[1000];
+    sprintf(buffer, "output/likelihoodsp_%.4d.h5");
+    likelihood_file = fopen(buffer,"wb");
+    for(int i =0; i<len; i++)
+        fprintf(likelihood_file,"%f \n", lik[i]);
+    fclose(likelihood_file);
+}
+
+int * FILEhelper :: read_index(const char* filename, int N_images){
+    FILE* infile = fopen(filename,"r");
+    int index = 0;
+    int* likelihood_list = new int[N_images];
+    int i =0;
+    while(!feof(infile)){
+        fscanf(infile,"%d\n", &index);
+        likelihood_list[i] = index;
+        i++;
+    }
+    return likelihood_list;
+}
+
+bool * FILEhelper :: boollist(int* orilist, int N_remove, int N_images){
+    bool* list = new bool[N_images];
+    for(int i =0; i<N_images; i++)
+        list[i] = true;
+    for(int i  =0; i<N_remove; i++)
+        list[orilist[i]-1] = false;
+    return list;
+}
+
+
+void FILEhelper ::write_respons(real *pading_respons,int max_slices ,int *len,int N_2d, int ntasks,int iteration, char* name){
+    char buffer[1000];
+    sprintf(buffer, "output/%s_%.4d.data",name, iteration);
+    FILE * outputfile = fopen(buffer,"ab+");
+    for(int i  = 0; i<ntasks; i++){
+        real* tmp = new real[N_2d*len[i]];
+        memcpy((void*)tmp,(void*)&pading_respons[N_2d*max_slices*i], max_slices*N_2d*sizeof(real));
+        fwrite(tmp, sizeof(real), N_2d*len[i],outputfile);
+    }
+    printf("Write respons based on different malloc len end!\n");
+}
+
+real* FILEhelper::read_respons(const char* filename, Quaternion **rot,
+                               int slice_start,int N_slices,int N_images,real* respons){
+
+    try{
+        FILE* infile = fopen(filename,"r");
+        if (infile == NULL)
+        {
+            printf("file open fail %s\n",filename);
+        }
+        real q0,q1,q2,q3;
+        printf("reading rotation file... ");
+        for (int u =0; u < N_images; u++){
+            fscanf(infile,"%f %f %f %f\n", &q0,&q1,&q2,&q3);
+            rot[u]->q[0] = q0;
+            rot[u]->q[1] = q1;
+            rot[u]->q[2] = q2;
+            rot[u]->q[3] = q3;
+            //printf("file count %f %f %f %f\n",rot[u]->q[0],rot[u]->q[1],rot[u]->q[2],rot[u]->q[3]);
+        }
+        fclose(infile);
+        for(int j=0; j<N_slices; j++){
+            for(int i =0; i<N_images; i++){
+                if (i == j){
+                    respons[j*N_images + i] = 1;
+                    //printf("respons %f\n",respons[j*N_images + i]);
+                }
+                else{
+                    //only for smearing rotation
+                    respons[j*N_images +i] = 0;
+                }
+            }
+        }
+        printf("end\n");
+    }
+    catch(const std::exception& ex ){
+        printf("exception %s\n",ex.what());
+    }
+    return respons;
+}

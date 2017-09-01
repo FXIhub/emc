@@ -1,3 +1,5 @@
+#ifndef ROTATIONS_H
+#define ROTATIONS_H
 #include <spimage.h>
 #include <gsl/gsl_rng.h>
 
@@ -54,3 +56,4 @@ int generate_rotation_list(const int n, Quaternion **return_list, real **return_
   Convert quaternion to euler angles a,b,c.
  */
 void quaternion_to_euler(Quaternion q, real *a, real *b, real *c);
+#endif
