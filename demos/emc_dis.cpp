@@ -1,4 +1,3 @@
-
 /*
  * Author : Jing Liu@ Biophysics and TDB
  * Modified to collective reduce, to C version
@@ -9,10 +8,10 @@
 #include <time.h>
 #include <iostream>
 #include <stdio.h>
-#ifdef IN_PLACE
-#undef IN_PLACE
-#undef BOTTOM
-#endif
+//#ifdef IN_PLACE
+//#undef IN_PLACE
+//#undef BOTTOM
+//#endif
 #include <emc.h>
 #include <mpi.h>
 #include <MPIhelper.h>
@@ -23,7 +22,7 @@ using namespace std;
 
 #include <string.h>
 
-#define MPI_EMC_PRECISION MPI_FLOAT
+#define  MPI_EMC_PRECISION MPI_FLOAT
 
 int main(int argc, char *argv[]){
     Configuration conf;
