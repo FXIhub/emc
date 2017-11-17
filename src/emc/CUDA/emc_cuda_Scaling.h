@@ -21,6 +21,9 @@ __device__ real calculate_scaling_absolute(real *image, real *slice, int *mask,
 
 __device__ real calculate_scaling_relative(real *image, real *slice, int *mask,
                                 real *weight_map, int N_2d, int tid, int step);
+__device__ real calculate_scaling_true_poisson(real *image, real *slice, int *mask,
+                                real *weight_map, int N_2d, int tid, int step);
+
 
 // global functions
 __global__ void slice_weighting_kernel(real * images,int * mask, real * scaling,

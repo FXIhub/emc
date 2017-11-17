@@ -88,6 +88,9 @@ void update_scaling_full_kernel(real *images, real *slices, int *mask,
     } else if (diff == relative) {
         this_scaling = calculate_scaling_relative(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
     }
+    else if(diff==true_poisson)
+        this_scaling = calculate_scaling_true_poisson(&images[N_2d*i_image], &slices[N_2d*i_slice], mask, weight_map, N_2d, tid, step);
+
     __syncthreads();
     if (tid == 0) {
         scaling[(slice_start+i_slice)*N_images+i_image] = this_scaling;
