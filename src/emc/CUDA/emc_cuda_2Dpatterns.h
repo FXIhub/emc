@@ -11,6 +11,8 @@
 
 __global__ void apply_mask(real *const array, const int *const mask, const int size);
 __global__ void apply_single_mask(real * const array, const int *const mask, const int mask_size, const int size) ;
+__global__ void apply_single_mask_zeros(real * const array, const int *const mask, const int mask_size, const int size) ;
+
 //#ifdef __cplusplus 
 //}
 //#endif

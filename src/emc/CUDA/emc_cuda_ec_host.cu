@@ -92,6 +92,23 @@ void cuda_test_interpolate_set() {
     }
     printf("test interpolation end\n");
 }
+
+
+
+void cuda_replace_slices(real*d_slices, real* d_average_slice,int *d_msk, int slice_chunk, int N_2d){
+    int nthreads = 1024 ;
+    int nblocks =(int) ceil( slice_chunk * N_2d / nthreads);
+
+    replace_slices_kernel<<<nblocks,nthreads>>>( d_slices, d_average_slice,d_msk,slice_chunk, N_2d);
+    cudaError_t status = cudaGetLastError();
+    if(status != cudaSuccess){
+        printf("CUDA Error (replace slices): %s\n",cudaGetErrorString(status));
+    }
+
+}
+
+
+
 /*
 #ifdef __cplusplus
 }

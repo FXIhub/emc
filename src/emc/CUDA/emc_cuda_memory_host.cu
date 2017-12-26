@@ -76,6 +76,22 @@ void cuda_allocate_rotations_chunk(real ** d_rotations, Quaternion * rotations, 
     }
 }
 
+void cuda_copy_rotations_chunk(real ** d_rotations, Quaternion * rotations, int start, int end){
+    cudaError_t status = cudaGetLastError();
+    if(status != cudaSuccess){
+        printf("CUDA Error (cuda_allocate_rotations_chunk: malloc): %s\n",cudaGetErrorString(status));
+    }
+
+    printf("debug %d %f %f %f %f \n\n",start,  (rotations[start]),
+           (rotations[start+1]), (rotations[start+2]), (rotations[start+3]));
+
+    cudaMemcpy(*d_rotations,&(rotations[start]),sizeof(real)*4 *(end-start),cudaMemcpyHostToDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess){
+        printf("CUDA Error (cuda_allocate_rotations_chunk: copy): %s\n",cudaGetErrorString(status));
+    }
+}
+
 
 
 void cuda_allocate_images(real ** d_images, sp_matrix ** images,  int N_images){
@@ -295,6 +311,8 @@ void cuda_reset_real(real *d_real, int len){
         printf("CUDA Error (cuda_reset_real): %s\n",cudaGetErrorString(status));
     }
 }
+
+
 void cuda_mem_free(real * d){
     cudaError_t status = cudaFree(d);
     if(status != cudaSuccess){
@@ -308,4 +326,5 @@ void cuda_copy_model_2_device (real ** d_model, sp_3matrix * model){
         printf("CUDA Error (cuda_copy_model_2_device): %s\n",cudaGetErrorString(status));
     }
 }
+
 

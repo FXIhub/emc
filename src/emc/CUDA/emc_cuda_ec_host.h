@@ -14,6 +14,8 @@ void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real *
                      real * d_x_coordinates, real * d_y_coordinates,
                      real * d_z_coordinates, int start_slice, int slice_chunk);
 void cuda_test_interpolate_set();
+void cuda_replace_slices(real*d_slices, real* d_average_slice,int*d_msk, int slice_chunk, int N_2d);
+
 /*
 #ifdef __cplusplus
 }

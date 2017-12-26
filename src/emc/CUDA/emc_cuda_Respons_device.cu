@@ -64,27 +64,28 @@ void cuda_calculate_responsability_poisson(float *slice, float *image, int *mask
         }
     }
     sum_cache[tid] = sum;
-    count_cache[tid] = count;
+    count_cache[tid] = 1;//count;
     //  return -sum/2.0/(real)count/pow(sigma,2); //return in log scale.
 }
 
 __device__
 void cuda_calculate_responsability_true_poisson (float *slice, float *image, int *mask, real *weight_map,
-                                           real sigma, real scaling, int N_2d, int tid, int step,
-                                           real * sum_cache, real * count_cache)
+                                                 real sigma, real scaling, int N_2d, int tid, int step,
+                                                 real * sum_cache, real * count_cache)
 {
     real sum = 0.0;
     const int i_max = N_2d;
     real count = 0;
     for (int i = tid; i < i_max; i+=step) {
-        if (mask[i] != 0 && slice[i] > 0.0f) {
-            sum += (image[i]*logf(slice[i]) +logf(scaling) - scaling*slice[i]) * weight_map[i];
+      if ( slice[i]>0&&mask[i] != 0){ //should have the condition on
+            real low =slice[i]>0? logf(slice[i]) :0;
+            real lop = scaling>0?logf(scaling):0;
+            sum +=  image[i]*low +  image[i]*lop - scaling*slice[i];//*weight_map[i];
             count += weight_map[i];
-        }
+      }
     }
     sum_cache[tid] = sum;
-    count_cache[tid] = count;
-    //  return -sum/2.0/(real)count/pow(sigma,2); //return in log scale.
+    count_cache[tid] =1;// count;
 }
 
 
@@ -154,7 +155,7 @@ void cuda_calculate_responsability_true_poisson_atomic(float *slice, float *imag
     int count = 0;
     for (int i = tid; i < i_max; i+=step) {
         if (mask[i] != 0 && slice[i] >= 0.0f) {
-            sum += image[i]*logf(slice[i]) +logf(scaling) - scaling*slice[i];
+            sum += image[i]*logf(slice[i]) +image[i]*logf(scaling) - scaling*slice[i];
             count++;
         }
     }
@@ -188,25 +189,23 @@ void calculate_responsabilities_kernel(float * slices, float * images, int * mas
                 sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step,
                 sum_cache, count_cache);
     } else if (diff == annealing_poisson) {
-    cuda_calculate_responsability_annealing_poisson(&slices[i_slice*N_2d], &images[i_image*N_2d], mask, weight_map,
-                            sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,
-                            step, sum_cache, count_cache);
+        cuda_calculate_responsability_annealing_poisson(&slices[i_slice*N_2d], &images[i_image*N_2d], mask, weight_map,
+                sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid,
+                step, sum_cache, count_cache);
     } else if (diff == true_poisson){
         cuda_calculate_responsability_true_poisson(&slices[i_slice*N_2d], &images[i_image*N_2d], mask, weight_map,
                 sigma,scaling[(slice_start+i_slice)*N_images+i_image], N_2d, tid, step,
                 sum_cache, count_cache);
     }
     else{
-        printf("Undefined noise model, please choose from relative, poisson, true_poisson.\n");
+        printf("Undefined noise model, please choose from relative, poisson, absolute, annealing_poisson, and true_poisson.\n");
         return;
     }
-
     inblock_reduce(sum_cache);
     inblock_reduce(count_cache);
-    __syncthreads(); //probably not needed
     if(tid == 0 ){
         if ( diff == true_poisson)
-            respons[(slice_start+i_slice)*N_images+i_image] =sum_cache[0]/count_cache[0];
+            respons[(slice_start+i_slice)*N_images+i_image] =sum_cache[0];///count_cache[0];
         else
             respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
     }
@@ -230,9 +229,9 @@ __global__ void calculate_best_rotation_kernel(real *respons,real* best_respons,
             max_index[tid] = i_slice;
         }
     }
-//__syncthreads();
+    //__syncthreads();
     inblock_maximum_index(max_resp, max_index);
-__syncthreads();
+    __syncthreads();
     if (tid == 0) {
         best_rotation[i_image] = max_index[0];
         best_respons[i_image] = max_resp[0];
@@ -399,7 +398,7 @@ __global__ void cuda_norm_respons_sumexpf_kernel(real * respons,  real* d_sum, r
         //if(tmp > -1.0e10f)
         respons [i_slice*N_images + i_image] =  respons [i_slice*N_images + i_image] / d_sum[i_image];
         //else
-            //respons [i_slice*N_images + i_image] =0;
+        //respons [i_slice*N_images + i_image] =0;
     }
 }
 

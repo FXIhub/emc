@@ -1,0 +1,8 @@
+include
+src/emc
+src/emc/Common
+src/emc/Configurations
+src/emc/CPU
+src/emc/CUDA
+src/emc/IOs
+src/emc/MPIs

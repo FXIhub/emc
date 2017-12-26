@@ -5,7 +5,11 @@
 #include <emc_common.h>
 #include <errors.h>
 #include <sys/stat.h>
+#include <list>
+#include <stdio.h>
+#include <spimage.h>
 
+typedef std::list <int> imageInd;
 
 void write_1d_real_array_hdf5(char *filename, real *array, int index1_max);
 void write_1d_int_array_hdf5(char *filename, int *array, int index1_max);
@@ -31,5 +35,13 @@ void close_state_file(hid_t file_id);
 int read_rotations_file(const char *filename, Quaternion **rotations, real **weights);
 void mkdir_recursive(const char *dir, int permission);
 
+int load_selected_images_by_log (Configuration conf, FILE * logF,  sp_matrix **images, sp_imatrix ** masks,
+				 imageInd list, const char* log_format = "%.8d %ld %.4d %.1d %.4f",
+                                     const char* file_path_format ="%s%.8d",
+                                     real error_lim=0.5, long int current_time =0,
+                                      int imax = 500);
 
+int read_single_image(Configuration conf, sp_matrix * im, sp_imatrix* msk, const char* file_path_format, long int file_index);
 #endif
+
+

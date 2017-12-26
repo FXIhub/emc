@@ -324,3 +324,4 @@ __device__ void cuda_insert_slice(real *model, real *weight, real *slice,
         }
     }
 }
+

@@ -38,7 +38,7 @@ void cuda_normalize_model(sp_3matrix *model, real *d_model) {
     printf("model average before normalization = %g\n", model_average);
     //real model_sum = thrust::reduce(p, p+n, real(0), thrust::plus<real>());
     //model_sum /= (real) n;
-    thrust::transform(p, p+n,thrust::make_constant_iterator(1.0f/model_average), p, thrust::multiplies<real>());
+    thrust::transform(p, p+n,thrust::make_constant_iterator(10.0/model_average), p, thrust::multiplies<real>());
 }
 
 void cuda_output_device_model(real *d_model, char *filename, int side) {

@@ -10,6 +10,7 @@ extern "C"{
 #endif
 */
 void cuda_apply_masks(real *const d_images, const int *const d_masks, const int N_2d, const int N_images);
+void cuda_apply_single_mask_zeros(real *const d_images, const int *const d_masks, const int N_2d, const int N_images);
 
 void cuda_apply_single_mask(real *const d_images, const int *const d_mask, const int N_2d, const int N_images);
 /*

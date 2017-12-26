@@ -21,10 +21,21 @@ void apply_single_mask(real * const array, const int *const mask, const int mask
     int i = blockIdx.x*blockDim.x + threadIdx.x;
     if (i < size) {
         if (mask[i%mask_size] == 0) {
-            array[i] = -1.;
+            array[i] = -1;
         }
     }
 }
+
+__global__
+void apply_single_mask_zeros(real * const array, const int *const mask, const int mask_size, const int size) {
+    int i = blockIdx.x*blockDim.x + threadIdx.x;
+    if (i < size) {
+        if (mask[i%mask_size] == 0) {
+            array[i] =0;
+        }
+    }
+}
+
 
 //#ifdef __cplusplus 
 //}

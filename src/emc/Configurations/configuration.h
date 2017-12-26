@@ -7,11 +7,12 @@
 
 //the diffraction model. true _poisson: observed pattern K~Poissrnd(\phi*W),
 // where \phi is fluence and W is 2d slices
-enum diff_type {absolute=0,
-                poisson,
-                relative,
-                annealing_poisson,
-                true_poisson};
+enum diff_type {true_poisson=0,
+                absolute=1,
+                poisson=2,
+                relative=3,
+                annealing_poisson=4,
+                };
 
 // 3d model initial method.
 enum initial_model_type {initial_model_uniform=0,
@@ -22,48 +23,57 @@ enum initial_model_type {initial_model_uniform=0,
 
 // Structure for reading configuration file.
 typedef struct{
-    // for detect configuration
-    double wavelength;
-    double pixel_size;
-    double detector_distance;
+
+    int chunk_size;
+    int random_seed;
 
     // for emc input & output
     int model_side; // 3d model size
     int image_binning; //average of image_binning*image_binning pixels
-    const char *rotations_file;
     int number_of_images;
-    const char *mask_file;
-    const char *image_prefix;
-    enum initial_model_type initial_model;
-    double initial_model_noise;
-    const char *initial_model_file;
-    const char *initial_rotations_file;
-    const char *output_dir;
     int compact_output;
 
     //for EMC computations:General
-    enum diff_type diff;
-    int chunk_size;
-    int number_of_iterations;
     int normalize_images;
     int recover_scaling;
     int exclude_images;
-    double exclude_images_ratio;
     int blur_model;
-    double blur_model_sigma;
-    int random_seed;
     int calculate_r_free;
-    double r_free_ratio;
 
     //for EMC computations: Gaussian model
     //int rotations_n;
-    double sigma_start;
-    double sigma_final;
+    int number_of_iterations;
     int sigma_half_life;
 
     //Added 2016-10-24 by Jing Liu
     int isDebug;
     int calculate_fit;
+
+    int isSochasticEMCon;
+    double rotation_sample_ratio;
+    // for detect configuration
+    double wavelength;
+    double pixel_size;
+    double detector_distance;
+    double initial_model_noise;
+    double exclude_images_ratio;
+    double blur_model_sigma;
+    double r_free_ratio;
+    double sigma_start;
+    double sigma_final;
+
+
+
+    const char *rotations_file;
+    const char *mask_file;
+    const char *image_prefix;
+    const char *initial_model_file;
+    const char *initial_rotations_file;
+    const char *output_dir;
+
+    diff_type diff;
+    initial_model_type initial_model;
+
 
 }Configuration;
 

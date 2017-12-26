@@ -21,7 +21,8 @@ extern "C" {
 
 #define TNUM 256
 
-const real min_resp = -7.;
+const real min_resp = -30.;
+const real min_tol =0;// 1e-10;
 /*
 #ifdef __cplusplus 
 }

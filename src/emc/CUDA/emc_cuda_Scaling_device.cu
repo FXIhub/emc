@@ -67,15 +67,12 @@ __device__ real calculate_scaling_true_poisson(real *image, real *slice, int *ma
     __shared__ real weight_cache[256];
     sum_cache[tid] = 0.;
     weight_cache[tid] = 0.;
-
     for (int i = tid; i < N_2d; i+=step) {
-        if (mask[i] > 0 && slice[i] > 1.e-10) {
-            sum_cache[tid] += image[i]/slice[i]*weight_map[i];
-            weight_cache[tid] += weight_map[i];
-        }
+            sum_cache[tid] += image[i];//*weight_map[i];
+            weight_cache[tid] += slice[i]; 
     }
     inblock_reduce(sum_cache);
     inblock_reduce(weight_cache);
-    __syncthreads();
-    return sum_cache[0]/weight_cache[0];
+
+    return weight_cache[0] >0? sum_cache[0]/weight_cache[0]:0;
 }

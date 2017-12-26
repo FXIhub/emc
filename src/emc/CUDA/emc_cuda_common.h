@@ -30,6 +30,7 @@ __device__ void inblock_reduce(T * data){
     }
 }
 
+
 template<typename T>
 __device__ void inblock_reduce_y(T * data){
     __syncthreads();
@@ -42,38 +43,38 @@ __device__ void inblock_reduce_y(T * data){
 }
 
 template<typename T> __device__ void inblock_maximum(T * data){
-  __syncthreads();
-  for(unsigned int s=blockDim.x/2; s>0; s>>=1){
-    if (threadIdx.x < s){
-      if(data[threadIdx.x] < data[threadIdx.x + s]){
-    data[threadIdx.x] = data[threadIdx.x + s];
-      }
-    }
     __syncthreads();
-  }
+    for(unsigned int s=blockDim.x/2; s>0; s>>=1){
+        if (threadIdx.x < s){
+            if(data[threadIdx.x] < data[threadIdx.x + s]){
+                data[threadIdx.x] = data[threadIdx.x + s];
+            }
+        }
+        __syncthreads();
+    }
 }
 
 template<typename T> __device__ void inblock_maximum_index(T * data, int *index) {
-  __syncthreads();
-  for (unsigned int s=blockDim.x/2; s>0; s/=2){
-    if (threadIdx.x < s && data[threadIdx.x] < data[threadIdx.x + s]) {
-          data[threadIdx.x] = data[threadIdx.x + s];
-          index[threadIdx.x] = index[threadIdx.x + s];
-      }
     __syncthreads();
-  }
+    for (unsigned int s=blockDim.x/2; s>0; s/=2){
+        if (threadIdx.x < s && data[threadIdx.x] < data[threadIdx.x + s]) {
+            data[threadIdx.x] = data[threadIdx.x + s];
+            index[threadIdx.x] = index[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
 }
 
 __device__ inline void atomicFloatAdd(float *address, float val)
 {
-  int i_val = __float_as_int(val);
-  int tmp0 = 0;
-  int tmp1;
+    int i_val = __float_as_int(val);
+    int tmp0 = 0;
+    int tmp1;
 
-  while( (tmp1 = atomicCAS((int *)address, tmp0, i_val)) != tmp0)
+    while( (tmp1 = atomicCAS((int *)address, tmp0, i_val)) != tmp0)
     {
-      tmp0 = tmp1;
-      i_val = __float_as_int(val + __int_as_float(tmp1));
+        tmp0 = tmp1;
+        i_val = __float_as_int(val + __int_as_float(tmp1));
     }
 }
 

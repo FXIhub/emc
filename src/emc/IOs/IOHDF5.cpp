@@ -343,7 +343,7 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
                         transformed_y = sp_image_y(img)/2 - (conf.model_side/2)*conf.image_binning + y*conf.image_binning + yb;
                         if (transformed_x >= 0 && transformed_x < sp_image_x(img) &&
                                 transformed_y >= 0 && transformed_y < sp_image_y(img)) {
-                            pixel_this = sp_cabs(sp_image_get(img, transformed_x, transformed_y, 0));
+                            pixel_this = sp_cabs(sp_image_get(img, transformed_x, transformed_y, 0)) ;
                             mask_this = sp_image_mask_get(img,  transformed_x, transformed_y, 0);
                         } else {
                             pixel_this = 0.;
@@ -359,7 +359,8 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
                  pixel (that is that was not masked out) we include the data and
                  don't mask out the pixel. */
                 if (mask_sum > 0) {
-                    sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
+                 //for tmp use
+                    sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum*20);
                     sp_imatrix_set(masks[i],x,y,1);
                 } else {
                     sp_matrix_set(images[i],x,y,0.);
@@ -557,4 +558,110 @@ void mkdir_recursive(const char *dir, int permission) {
     }
     mkdir(tmp, permission);
 }
+
+
+int load_selected_images_by_log (Configuration conf, FILE * logF,  sp_matrix **images, sp_imatrix ** masks,
+                                 imageInd list, const char* log_format, const char* file_path_format, real error_lim, long int current_time,
+                                 int imax){
+    // log format FILEindex, time_stamp, categrade, classification error, others.
+
+    long int classification_time = 0;
+    int categrade = -1 ;
+    real error = -1;
+    long int file_index = -1 ;
+    int rot = -1;
+    int rerr =   fscanf (logF, log_format, &file_index,&classification_time,&rot,&categrade, &error );
+    printf("%d\n\n",rerr);
+    sp_matrix* image = (sp_matrix*) sp_matrix_alloc(conf.model_side,conf.model_side);
+    sp_imatrix* mask = (sp_imatrix*) sp_imatrix_alloc(conf.model_side,conf.model_side);
+    int N_load = 0;
+    imageInd::iterator plist = list.begin();
+    
+    while (rerr != EOF || rerr > 8){
+            /*printf("Debug load_selected_images_by_log log_format=%s file_path_format=%s error_lim=%g current_time=%ld imax=%d classification_time=%ld categrade=%d error=%g file_index=%ld rerr=%d", log_format,file_path_format,error_lim, current_time, imax, classification_time, categrade,error,
+               file_index, rerr);*/
+        
+        if (N_load > imax)
+            break;
+    
+        if (classification_time < current_time ){
+            if ( error < error_lim && categrade == 1){
+                // read images
+                read_single_image( conf,  image, mask,file_path_format, file_index);
+                images[*plist] = image;
+                masks[*plist] = mask;
+                plist++;
+                N_load ++;
+            }
+            rerr =   fscanf (logF, log_format, &file_index,&classification_time,&rot,&categrade, &error );
+        }
+        else break;
+        }
+        return N_load;
+}
+
+
+int read_single_image(Configuration conf, sp_matrix * im, sp_imatrix* msk, const char* file_path_format, long int file_index){
+    Image *img;
+    char filename_buffer[PATH_MAX];
+    printf("Debug...in read_single_image\n\n");
+    printf("%s\n\n\n\n",filename_buffer);
+
+    sprintf(filename_buffer,"%s%.4d.h5", conf.image_prefix,file_index);
+    img = sp_image_read(filename_buffer,0);
+    if (img ==NULL)
+        return -1;
+
+    /* The algorithm can't handle negative data so if we have negative
+         values they are simply set to 0. */
+    for (int pixel_i = 0; pixel_i < sp_image_size(img); pixel_i++) {
+        if (sp_real(img->image->data[pixel_i]) < 0.) {
+            sp_real(img->image->data[pixel_i]) = 0.;
+        }
+    }
+
+    /* Downsample images and masks by nested loops of all
+         downsampled pixels and then all subpixels. */
+    real pixel_sum, pixel_this;
+    int mask_sum, mask_this;
+    int transformed_x, transformed_y;
+    for (int x = 0; x < conf.model_side; x++) {
+        for (int y = 0; y < conf.model_side; y++) {
+            pixel_sum = 0.0;
+            mask_sum = 0;
+            /* Step through all sub-pixels and add up values */
+            for (int xb = 0; xb < conf.image_binning; xb++) {
+                for (int yb = 0; yb < conf.image_binning; yb++) {
+                    transformed_x = sp_image_x(img)/2 - (conf.model_side/2)*conf.image_binning + x*conf.image_binning + xb;
+                    transformed_y = sp_image_y(img)/2 - (conf.model_side/2)*conf.image_binning + y*conf.image_binning + yb;
+                    if (transformed_x >= 0 && transformed_x < sp_image_x(img) &&
+                            transformed_y >= 0 && transformed_y < sp_image_y(img)) {
+                        pixel_this = sp_cabs(sp_image_get(img, transformed_x, transformed_y, 0));
+                        mask_this = sp_image_mask_get(img,  transformed_x, transformed_y, 0);
+                    } else {
+                        pixel_this = 0.;
+                        mask_this = 0;
+                    }
+                    if (mask_this > 0) {
+                        pixel_sum += pixel_this;
+                        mask_sum += 1;
+                    }
+                }
+            }
+            /* As long as there were at least one subpixel contributin to the
+                 pixel (that is that was not masked out) we include the data and
+                 don't mask out the pixel. */
+            if (mask_sum > 0) {
+                sp_matrix_set(im,x,y,pixel_sum/(real)mask_sum);
+                sp_imatrix_set(msk,x,y,1);
+            } else {
+                sp_matrix_set(im,x,y,0.);
+                sp_imatrix_set(msk,x,y,0);
+            }
+        }
+    }
+    sp_image_free(img);
+    return 0;
+}
+
 

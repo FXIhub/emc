@@ -16,7 +16,7 @@ static int quit_requested = 0;
 int main(int argc, char **argv)
 {
     /* Parse command-line options */
-    char configuration_filename[PATH_MAX] = "./emc_1GPU.conf";
+    char configuration_filename[PATH_MAX] = "./emc.conf";
     int chosen_device = -1; // negative numbers means the program chooses automatically
     char help_text[] =
             "Options:\n\
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
     char filename_buffer[PATH_MAX];
 
     /* Create the output directory if it does not exist. */
-    mkdir_recursive(conf.output_dir, 0777);
+    //mkdir_recursive(conf.output_dir, 0777);
 
     /* Create constant versions of some of the commonly used
      variables from the configuration file. Also create some

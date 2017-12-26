@@ -60,6 +60,8 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
                           real * model, real * weight,
                           int slice_rows, int slice_cols,
                           int model_x, int model_y, int model_z);
+__global__ void    replace_slices_kernel(real* d_slices, real* d_average_slice,int* d_msk,int slice_chunk, int N_2d);
+
 
 //host functions
 /*

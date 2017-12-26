@@ -12,9 +12,9 @@ extern "C" {
 /* updated to use rotations with an offset start. */
 __global__
 void get_slices_kernel(real * model, real * slices, real *rot, real *x_coordinates,
-                                  real *y_coordinates, real *z_coordinates, int slice_rows,
-                                  int slice_cols, int model_x, int model_y, int model_z,
-                                  int start_slice){
+                       real *y_coordinates, real *z_coordinates, int slice_rows,
+                       int slice_cols, int model_x, int model_y, int model_z,
+                       int start_slice){
     int bid = blockIdx.x;
     int i_slice = bid;
     int tid = threadIdx.x;
@@ -24,7 +24,7 @@ void get_slices_kernel(real * model, real * slices, real *rot, real *x_coordinat
     cuda_get_slice_interpolate(model,&slices[N_2d*i_slice],&rot[4*(start_slice+i_slice)],x_coordinates,
             y_coordinates,z_coordinates,slice_rows,slice_cols,model_x,model_y,
             model_z,tid,step);
-    __syncthreads();
+
 
 }
 
@@ -86,6 +86,18 @@ void insert_slices_kernel(real * images, real * slices, int * mask, real * respo
 
     }
 }
+
+
+__global__
+void     replace_slices_kernel(real* d_slices, real* d_average_slice,int* d_msk,int slice_chunk, int N_2d){
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < slice_chunk*N_2d) {
+        //d_slices[i] = d_slices[i]>0?d_slices[i]:d_average_slice[i%N_2d];
+        d_slices[i] = d_msk[i%N_2d] ==0?-1:d_slices[i];
+
+    }
+}
+
 /*
 #ifdef __cplusplus 
 }
