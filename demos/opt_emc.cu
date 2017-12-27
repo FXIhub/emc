@@ -54,15 +54,7 @@ struct INV2: public thrust::unary_function<real, real>
 {
     __host__ __device__  real  operator()(real x)
     {
-     	return x>min_tol1? 1/x :1;
-    }
-};
-
-struct INV3: public thrust::unary_function<real, real>
-{
-    __host__ __device__  real  operator()(real x)
-    {
-     	return x>min_tol1? 1/x :0;
+        return x>min_tol1? 1/x :1;
     }
 };
 
@@ -88,6 +80,7 @@ int main(int argc, char *argv[]){
     int taskid, ntasks;
     int master = 0;
     unsigned long int timeB = 0;
+    unsigned long int timeS = 0;
     MPI_Comm_rank(MPI_COMM_WORLD,&taskid);
     MPI_Comm_size(MPI_COMM_WORLD,&ntasks);
     printf("%d of total %d MPI processes started!\n", taskid,ntasks);
@@ -122,7 +115,7 @@ int main(int argc, char *argv[]){
     Quaternion *rotations;
     real *weights_rotation;
     const int N_slices = read_rotations_file(conf.rotations_file, &rotations, &weights_rotation);
-    cout << "N_slices is " << N_slices <<endl;
+    //cout << "N_slices is " << N_slices <<endl;
     //const int N_slices = generate_rotation_list(8,&rotations,&weights_rotation);
     /*------------------------------task devision respons MPI BUFFER------------------------------------*/
     int *lens = (int *)malloc(sizeof(int)*ntasks);
@@ -330,6 +323,8 @@ int main(int argc, char *argv[]){
     sprintf(filename_buffer, "%s/state.h5", conf.output_dir);
     hid_t state_file = open_state_file(filename_buffer);
     FILE *timeFile = create_file_descriptor(conf, "/exeTime.data", "wp");
+    FILE *timeFileStep = create_file_descriptor(conf, "/exeTimeByStep.data", "wp");
+
     FILE *likelihood = create_file_descriptor(conf, "/likelihood.data", "wp");
     FILE *best_rot_file = create_file_descriptor(conf,"/best_rot.data", "wp");
     FILE *best_quat_file;
@@ -417,15 +412,19 @@ int main(int argc, char *argv[]){
     const real zero = 0;
     cublasStatus_t st;
 
-    
+    double exeTimeStep =0;
+
     /*------------------------------for cublas optimized kernel------------------------------------*/
     
     /*------------------------------------ EMC Iterations start ----------------------------------------------------------*/
     for (int iteration = start_iteration; iteration < conf.number_of_iterations; iteration++) {
+
         /*---------------------- reset local variable-------------------------------*/
         if(taskid == master){
-            if (iteration == start_iteration )
+            if (iteration == start_iteration ){
                 timeB = gettimenow();
+                timeS = timeB;
+            }
             else{
                 double exeTime =  update_time(timeB, gettimenow());
                 write_time(timeFile,  exeTime,  iteration-1);
@@ -443,7 +442,7 @@ int main(int argc, char *argv[]){
          typically either constant or decreasing on every iteration. */
         sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
         real sum = cuda_model_average(d_model,N_model);
-        cout <<conf.diff<<endl<<endl;
+        //cout <<conf.diff<<endl<<endl;
         if(taskid == master){
             printf("\niteration %d\n", iteration);
             printf("model average is %f \n ", sum);
@@ -464,13 +463,15 @@ int main(int argc, char *argv[]){
         //printf(" cal scaling! \n\n");
         // only poissonion case is considered
         //sum_i K_ik
+        timeS = gettimenow();
+
         if(conf.isDebug==1){
             //cuda_apply_single_mask(d_images,d_mask,N_2d,N_images);//mask!=0
             cuda_reset_real(d_sum_pix_of_image, N_images);
             //y = α op ( A ) x + β y
             st = cublasSgemv(hd,CUBLAS_OP_T, N_2d, N_images,
                              &one,d_images, N_2d, d_onesN2d, 1, &zero,d_sum_pix_of_image, 1);
-            cout << "Scaling  sum_i K_ij'" <<thrust_sum_pix_of_image[0] <<" "<< thrust_sum_pix_of_image[100]<<endl;
+            // cout << "Scaling  sum_i K_ij'" <<thrust_sum_pix_of_image[0] <<" "<< thrust_sum_pix_of_image[100]<<endl;
 
         }
 
@@ -494,7 +495,7 @@ int main(int argc, char *argv[]){
                     //sum_i W_ij'
                     st = cublasSgemv(hd,CUBLAS_OP_T,  N_2d, slice_chunk,
                                      &one,d_slices, N_2d, d_onesN2d , 1, &zero,d_sum_pix_of_slices, 1);
-                    cout << "cublasSgemv in sum_i Wij" <<st<<endl;
+                    //cout << "cublasSgemv in sum_i Wij" <<st<<endl;
 
                     thrust::transform(thrust_sum_pix_of_slices.begin(), thrust_sum_pix_of_slices.end(),
                                       thrust_sum_pix_of_slices.begin(), INV());
@@ -502,12 +503,16 @@ int main(int argc, char *argv[]){
                     //where A is a m × n matrix stored in column-major format, x and y are vectors, and α is a scalar.
                     st = cublasSger(hd, N_images,  slice_chunk, &one, d_sum_pix_of_image ,
                                     1,  d_sum_pix_of_slices , 1,  &d_scaling[current_start*N_images], N_images);
-                    cout << "cublasSger in sum_i Kik / sum_i W_ij" <<st<<endl;
+                    //cout << "cublasSger in sum_i Kik / sum_i W_ij" <<st<<endl;
                 }
                 else{
                     cuda_update_scaling_full(d_images, d_slices, d_mask, d_scaling, d_weight_map,
                                              N_2d, N_images, current_start, current_chunk,diff_type(conf.diff));
                 }
+            }
+            if(taskid ==master){
+                exeTimeStep=  update_time(timeS, gettimenow());
+                write_time_by_step(timeFileStep,  exeTimeStep,  iteration,"Scaling");
             }
             
             //printf(" write scaling! \n\n");
@@ -542,6 +547,8 @@ int main(int argc, char *argv[]){
         
         cuda_set_to_zero(d_respons,N_images*allocate_slice);
         cuda_set_to_zero(d_respons_tmp,N_images*allocate_slice);
+        if(taskid ==master)
+            timeS = gettimenow();
 
         /* In this loop through the chunks the responsabilities are updated. */
         if(conf.isDebug==1 ){
@@ -553,7 +560,7 @@ int main(int argc, char *argv[]){
                                  , N_images, allocate_slice,d_log_phi, N_images,
                                  d_sum_pix_of_image, 1, &d_respons_tmp[0], N_images);
             }
-            cout << "cublasSdgmm in  log(phi_kj') *sum_i K_ik of Respons" <<st<<endl;
+            //cout << "cublasSdgmm in  log(phi_kj') *sum_i K_ik of Respons" <<st<<endl;
 
         }
         for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
@@ -563,7 +570,7 @@ int main(int argc, char *argv[]){
                 current_chunk = slice_chunk;
             }
             int current_start = slice_start- slice_backup;
-            cout<<current_start<<endl<<endl;
+            //cout<<current_start<<endl<<endl;
             cuda_reset_real(d_slices, N_2d*slice_chunk);
             cuda_get_slices(model,d_model,d_slices,d_rotations, d_x_coord, d_y_coord, d_z_coord,
                             current_start,current_chunk);
@@ -587,7 +594,7 @@ int main(int argc, char *argv[]){
                 cuda_reset_real(d_sum_pix_of_slices,slice_chunk);
                 st = cublasSgemv(hd,CUBLAS_OP_T,  N_2d, slice_chunk,
                                  &one,d_slices, N_2d, d_onesN2d , 1, &zero,d_sum_pix_of_slices, 1);
-                cout << "cublasSgemv in sum_i W_ij of Respons" <<st <<endl;
+                // cout << "cublasSgemv in sum_i W_ij of Respons" <<st <<endl;
                 //cublasSdgmm(cublasHandle_t handle, cublasSideMode_t mode, int m, int n, const real *A, int lda,
                 //const real *x, int incx, real *C, int ldc)
                 // phi_kj' * sum_i W_ij'
@@ -596,7 +603,7 @@ int main(int argc, char *argv[]){
                                  N_images,slice_chunk, &d_scaling[current_start*N_images],N_images,
                         d_sum_pix_of_slices, 1, &d_respons[current_start*N_images], N_images);
 
-                cout << "cublasSdgmm in  phi_j'k * sum_ij' of Respons checked right" <<st<<endl;
+                //cout << "cublasSdgmm in  phi_j'k * sum_ij' of Respons checked right" <<st<<endl;
                 // log(W_ij')
                 thrust::transform(d_slice_begin, d_slice_end, d_slice_begin, LOG());
                 //cublasStatus_t cublasSgemm(cublasHandle_t handle,  transa,  transb, int m, int n, int k,  *alpha,
@@ -607,7 +614,7 @@ int main(int argc, char *argv[]){
                 st = cublasSgemm(hd,  CUBLAS_OP_T,  CUBLAS_OP_N, N_images,slice_chunk, N_2d,  &one,
                                  d_images,N_2d, d_slices, N_2d, &mone,
                                  &d_respons[current_start*N_images] , N_images);
-                cout << "cublasSgemm in  log(W_ij'') *K_ik of Respons" <<st<<endl;
+                //cout << "cublasSgemm in  log(W_ij'') *K_ik of Respons" <<st<<endl;
             }
             else{
                 cuda_calculate_responsabilities(d_slices, d_images, d_mask, d_weight_map,
@@ -648,6 +655,10 @@ int main(int argc, char *argv[]){
         Global_Allreduce(sum_vector,tmpbuf_images_ptr,N_images,MPI_EMC_PRECISION, MPI_SUM, MPI_COMM_WORLD);
         cuda_copy_real_to_device(tmpbuf_images_ptr,d_sum,N_images);
         cuda_norm_respons_sumexpf(d_respons,d_sum,maxr,N_images,allocate_slice);
+        if(taskid ==master){
+            exeTimeStep =  update_time(timeS, gettimenow());
+            write_time_by_step(timeFileStep,  exeTimeStep,  iteration,"Respons");
+        }
         total_respons = cuda_total_respons(d_respons,respons,N_images*allocate_slice);
         cuda_copy_real_to_host(respons,d_respons,allocate_slice*N_images);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -655,7 +666,6 @@ int main(int argc, char *argv[]){
                        MPI_EMC_PRECISION, (void*) full_respons,
                        recvcounts,  dispal, master, MPI_COMM_WORLD);
         Global_Allreduce(&total_respons, &total_respons,1, MPI_EMC_PRECISION, MPI_SUM, MPI_COMM_WORLD);
-
         if(taskid ==master){
             sprintf(filename_buffer, "%s/responsabilities_%.4d.h5", conf.output_dir, iteration);
             write_2d_real_array_hdf5_transpose(filename_buffer, full_respons, N_slices, N_images);
@@ -665,30 +675,34 @@ int main(int argc, char *argv[]){
         printf("DEBUG... TOT_RESP after normalization %g %g at taskid %d\n", total_respons, total_respons,taskid);
         MPI_Barrier(MPI_COMM_WORLD);
         /*-----------------------------end respons normalization (distribution ) done-------------------------------*/
-        
+
+        /*-----------------------------start update slice and insert slice -------------------------------*/
+
         /* start update model */
         cuda_reset_model(model,d_model_updated);
         cuda_reset_model(model_weight,d_model_weight);
         //cout <<"UPDATE MODEL!" <<endl;
-        //P_jk ./phi_jk
+        if(taskid ==master)
+            timeS = gettimenow();
         if(conf.recover_scaling){
-
             //sum_k P_jk
+            cuda_copy_real(d_respons_tmp,d_respons, allocate_slice*N_images);
+
             cuda_reset_real(d_sum_img_of_respons,N_images);
             st = cublasSgemv(hd,CUBLAS_OP_T,  N_images, allocate_slice,
-                             &one,&d_respons[0], N_images, d_onesNimages ,
-                    1, &zero,d_sum_img_of_respons, 1);
+                             &one,d_respons, N_images, d_onesNimages ,
+                             1, &zero,d_sum_img_of_respons, 1);
 
+            //1/total_respons
             thrust::transform(thrust_sum_img_of_respons.begin(), thrust_sum_img_of_respons.end(),
                               thrust_sum_img_of_respons_inv.begin(),INV2());
-
-	    thrust::transform(thrust_sum_img_of_respons.begin(), thrust_sum_img_of_respons.end(),
-                              thrust_sum_img_of_respons.begin(),INV3());
-            // tmp = res./scaling
+            // 1/total_respons
+            //thrust::transform(thrust_sum_img_of_respons.begin(), thrust_sum_img_of_respons.end(),
+            //                  thrust_sum_img_of_respons.begin(),INV3());
+            //P_jk ./phi_jk
             thrust::transform( d_Respons_begin, d_Respons_end,
-                               d_scaling_begin,d_Respons_begin,divs());
+                               d_scaling_begin,thrust_responstmp.begin(),divs());
         }
-//        else cuda_copy_real(d_respons_tmp,d_respons, allocate_slice*N_images);
 
         for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
             if (slice_start + slice_chunk >= slice_end) {
@@ -706,7 +720,7 @@ int main(int argc, char *argv[]){
                 cuda_reset_real(d_slices, N_2d*slice_chunk);
 
                 st = cublasSgemm(hd,  CUBLAS_OP_N,  CUBLAS_OP_N, N_2d,slice_chunk, N_images,  &one,
-                                 d_images,N_2d,&d_respons[current_start*N_images], N_images, &zero,
+                                 d_images,N_2d,&d_respons_tmp[current_start*N_images], N_images, &zero,
                         d_slices, N_2d);
                 cuda_apply_single_mask_zeros(d_slices,d_mask,N_2d,slice_chunk);
                 
@@ -715,9 +729,9 @@ int main(int argc, char *argv[]){
                 //const real *x, int incx, real *C, int ldc)
 
 
-  //              st = cublasSdgmm(hd, CUBLAS_SIDE_RIGHT,
-  //                               N_2d,slice_chunk, d_slices,slice_chunk,
-  //                               &d_sum_img_of_respons_inv[current_start], 1, &d_slices[0], N_2d);
+                st = cublasSdgmm(hd, CUBLAS_SIDE_RIGHT,
+                                 N_2d,slice_chunk, d_slices,N_2d,
+                                 &d_sum_img_of_respons_inv[current_start], 1, d_slices, N_2d);
 
                 cuda_insert_slices(d_images, d_slices, d_mask,
                                    d_respons, d_scaling, &d_sum_img_of_respons[current_start],d_active_images,
@@ -739,6 +753,13 @@ int main(int argc, char *argv[]){
         d_model_tmp = d_model_updated;
         d_model_updated = d_model;
         d_model = d_model_tmp;
+
+        if(taskid ==master){
+            exeTimeStep =  update_time(timeS, gettimenow());
+            write_time_by_step(timeFileStep,  exeTimeStep,  iteration,"slices");
+        }
+        /*-----------------------------end update slice and insert slice -------------------------------*/
+
         
         // collect model and model_weight back to the master node
         cuda_copy_model(model,d_model);
@@ -851,3 +872,4 @@ int main(int argc, char *argv[]){
 
 
 //
+
