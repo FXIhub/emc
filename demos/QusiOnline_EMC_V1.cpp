@@ -1,6 +1,8 @@
 /*
  * Author : Jing Liu@ Biophysics and TDB
- * Modified to collective reduce, to C version
+ * QusiOline EMC Version 1 for the forwarding EMC
+ * first load 'N_init_frames' images whose classification error is less than the 'error_lim', run EMC
+ * for every 'N_step' iteration, EMC reload 'N_reload' frames by replacing the first 'N_reload' images, or the worst 'N_reload' fits images
  */
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
@@ -66,6 +68,7 @@ int main(int argc, char *argv[]){
     //init rea first N_init frames from logged files
     int N_acc =0;
     
+    long int current_shift = gettimenow();
     long int current_time =50;
     int reloaded =0;
         //for debug
@@ -86,8 +89,10 @@ int main(int argc, char *argv[]){
                                               N_max-N_acc);
         printf("%d", reloaded);
             if (reloaded ==0) sleep(5);
-            
+
         N_acc += reloaded;
+        current_time += gettimenow() - current_shift ;
+        current_shift = gettimenow();
         }
     }
 
@@ -325,6 +330,13 @@ int main(int argc, char *argv[]){
         reset_to_zero(tmpbuf_images,N_images, sizeof(real));
         reset_to_zero(maxr, N_images, sizeof(real));
         reset_to_zero(sum_vector,N_images, sizeof(real));
+
+        //for every N_step iterations reload images
+        if(iteration % N_step == 0 && iteration!= start_iteration)
+        {
+            /// todo reload images
+
+        }
 
         /*---------------------- reset local variable done-------------------------*/
 
