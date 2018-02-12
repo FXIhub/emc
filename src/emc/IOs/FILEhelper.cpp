@@ -90,7 +90,7 @@ void write_time(FILE* file, double exeTime, int iteration){
 void write_time_by_step(FILE* file, double exeTime, int iteration,const char* step){
     fprintf(file, "%d %f %s\n", iteration, exeTime,step);
     fflush(file);
-    fflush(file);
+
 }
 
 void write_final_model(Configuration conf, int N_model, sp_3matrix *model,sp_3matrix *weight){
