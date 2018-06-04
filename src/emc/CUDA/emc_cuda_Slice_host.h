@@ -30,13 +30,6 @@ void cuda_update_slices(real * d_images, real * d_slices, int * d_mask,
                         real *d_x_coordinates, real *d_y_coordinates,
                         real *d_z_coordinates, real *d_rot,
                         real * d_weight, sp_matrix ** images);
-void cuda_update_slices_poisson(real * d_images, real * d_slices, int * d_mask,
-                        real * d_respons, real * d_scaling, int * d_active_images,
-                        int N_images, int slice_start, int slice_chunk, int N_2d,
-                        sp_3matrix * model, real * d_model,
-                        real *d_x_coordinates, real *d_y_coordinates,
-                        real *d_z_coordinates, real *d_rot,
-                        real * d_weight, sp_matrix ** images);
 /*
 #ifdef __cplusplus
 }
