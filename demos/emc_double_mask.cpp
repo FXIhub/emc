@@ -23,9 +23,12 @@ using namespace std;
 #include <string.h>
 
 #define  MPI_EMC_PRECISION MPI_FLOAT
+#define  phi_msk "/scratch/fhgfs/jing.liu/PR772_single/simulated/mask_ring_small.h5"
 
 int main(int argc, char *argv[]){
     Configuration conf;
+    Configuration conf_copy;
+
     /*-----------------------------------------------------------Do Master Node Initial Job start------------------------------------------------*/
     cout<<"Init MPI...";
     MPI_Init(&argc, &argv);
@@ -38,8 +41,11 @@ int main(int argc, char *argv[]){
     if(taskid == master) cuda_print_device_info();
     if (argc > 1) {
         read_configuration_file(argv[1],&conf);
+        read_configuration_file(argv[1],&conf_copy);
+
     } else {
         read_configuration_file("./emc.conf",&conf);
+        read_configuration_file("./emc.conf",&conf_copy);
     }
     const int N_images = conf.number_of_images;
     int slice_chunk = conf.chunk_size;
@@ -52,13 +58,16 @@ int main(int argc, char *argv[]){
     sp_imatrix **masks = (sp_imatrix **)  malloc(N_images*sizeof(sp_imatrix *));
     sp_matrix **images = read_images(conf,masks);
     sp_imatrix * mask = read_mask(conf);
+    conf_copy.mask_file = phi_msk;
+    sp_imatrix * mask_scaling = read_mask(conf_copy);
+
     sp_matrix *x_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
     sp_matrix *y_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
     sp_matrix *z_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
     real central_part_radius = 10;
     sp_3matrix *model = sp_3matrix_alloc(conf.model_side,conf.model_side,conf.model_side);
     sp_3matrix *model_weight = sp_3matrix_alloc(conf.model_side,conf.model_side,conf.model_side);
-        
+
     //normalize_images(images, mask, conf, central_part_radius);
     real image_max = calcualte_image_max( mask,  images, N_images, N_2d);
     calculate_coordinates(conf.model_side, conf.pixel_size, conf.detector_distance, conf.wavelength, x_coordinates, y_coordinates, z_coordinates);
@@ -66,7 +75,7 @@ int main(int argc, char *argv[]){
     Quaternion *rotations;
     real *weights_rotation;
     const int N_slices = read_rotations_file(conf.rotations_file, &rotations, &weights_rotation);
-    
+
     /*------------------------------task devision respons MPI BUFFER------------------------------------*/
     int *lens = (int *)malloc(sizeof(int)*ntasks);
     int slice_start = taskid* N_slices/ntasks;
@@ -84,35 +93,35 @@ int main(int argc, char *argv[]){
     }
     lens[ntasks-1] =  get_allocate_len(ntasks,N_slices,ntasks-1);
     recvcounts[ntasks-1] = lens[ntasks-1]*N_images;
-    
+
     real* d_sum;
     cuda_allocate_real(&d_sum,N_images);
-    
+
     real h_sum_vector[N_images];
     real* sum_vector = &h_sum_vector[0];
-    
+
     real h_maxr[N_images];
     real* maxr = &h_maxr[0];
     real tmpbuf_images[N_images];//MPI recv buff
     real* tmpbuf_images_ptr = &tmpbuf_images[0];
     int index[N_images];//MPI recv buff
     int* index_ptr = &index[0];
-    
+
     real* d_maxr;
     cuda_allocate_real(&d_maxr,N_images);
-    
+
     /*------------------------------task devision of respons  MPI BUFFER------------------------------------*/
-    
+
     /* Get a random seed from /dev/random or from the
      configuration file if provided. */
     gsl_rng *rng = gsl_rng_alloc(gsl_rng_taus);
     unsigned long int seed = get_seed(conf);
     srand(seed);
     gsl_rng_set(rng, rand());
-    
+
     int N_images_included=calculate_image_included(conf, N_images);
-    
-    
+
+
     /* Allocate spimage object used for outputting the model.*/
     Image *model_out = sp_image_alloc(conf.model_side,conf.model_side,conf.model_side);
     for (int i = 0; i < N_model; i++) {
@@ -123,7 +132,7 @@ int main(int argc, char *argv[]){
             model_out->mask->data[i] = 0;
         }
     }
-    
+
     char filename_buffer[PATH_MAX];
     sprintf(filename_buffer,"%s/model_init.h5", conf.output_dir);
     sp_image_write(model_out,filename_buffer,0);
@@ -132,7 +141,7 @@ int main(int argc, char *argv[]){
     }
     sprintf(filename_buffer,"%s/model_init_weight.h5", conf.output_dir);
     sp_image_write(model_out,filename_buffer,0);
-    
+
     /* Create the matrix radius where the value of each pixel
      is the distance to the center. */
     sp_matrix *radius = sp_matrix_alloc(conf.model_side,conf.model_side);
@@ -154,14 +163,14 @@ int main(int argc, char *argv[]){
         }
         free(index_list);
     }
-    
+
     /* Create responsability matrix on the CPU and associated
      variables.*/
     real *respons = (real*) malloc(allocate_slice*N_images*sizeof(real));
     real total_respons = 0;
-    
+
     /*----------------  GPU VAR INIT START     -------------------------------*/
-    
+
     real * d_slices;
     cuda_allocate_slices(&d_slices,conf.model_side,slice_chunk);
     real * d_model;
@@ -173,11 +182,11 @@ int main(int argc, char *argv[]){
         cuda_normalize_model(model, d_model);
         cuda_normalize_model(model, d_model_updated);
     }*/
-    
+
     real * d_model_weight; //used to d_weight
     cuda_allocate_model(&d_model_weight,model_weight);
-    
-    
+
+
     /* List of all sampled rotations. Used in both expansion and
      compression. Does not change. */
     real *d_weights_rotation;
@@ -185,7 +194,7 @@ int main(int argc, char *argv[]){
     cuda_copy_weight_to_device(weights_rotation, d_weights_rotation, allocate_slice,taskid);
     real * d_rotations;
     cuda_allocate_rotations_chunk(&d_rotations,rotations,slice_start,slice_end);
-    
+
     real * d_x_coord;
     real * d_y_coord;
     real * d_z_coord;
@@ -193,25 +202,29 @@ int main(int argc, char *argv[]){
                          y_coordinates,  z_coordinates);
     int * d_mask;
     cuda_allocate_mask(&d_mask,mask);
-    
+
+    int* d_mask_scaling;
+    cuda_allocate_mask(&d_mask_scaling, mask_scaling);
+
+
     real * d_images;
     cuda_allocate_images(&d_images,images,N_images);
-    cuda_apply_single_mask(d_images, d_mask, N_2d, N_images);
-    
+    //cuda_apply_single_mask(d_images, d_mask, N_2d, N_images);
+
     /* Individual masks read from each diffraction pattern.
      Only used for the last iteration. */
     int * d_masks;
     cuda_allocate_masks(&d_masks, masks, N_images);
-    
+
     /* Array of all diffraction patterns with mask applied. */
     real * d_images_individual_mask;
     cuda_allocate_images(&d_images_individual_mask, images, N_images);
-    cuda_apply_masks(d_images, d_masks, N_2d, N_images);
-    
+    //cuda_apply_masks(d_images, d_masks, N_2d, N_images);
+
     /* Responsability matrix local*/
     real * d_respons;
     cuda_allocate_real(&d_respons,allocate_slice*N_images);
-    
+
     //scaling
     real * d_scaling;
     cuda_allocate_real(&d_scaling,N_images*allocate_slice);
@@ -220,34 +233,34 @@ int main(int argc, char *argv[]){
      algorithm. Never exists on the CPU. */
     real *d_weighted_power;
     cuda_allocate_real(&d_weighted_power,N_images);
-    
+
     /* The fit is a measure of how well the data matches the
      model that is more intuitive than the likelihood since
      it is in the [0, 1] range. */
     real *fit = (real*) malloc(N_images*sizeof(real));
     real *d_fit;
     cuda_allocate_real(&d_fit,N_images);
-    
+
     /* fit_best_rot is like fit but instead ov weighted average
      over all orientations, each image is just considered in its
      best fitting orientation. */
     real *fit_best_rot = (real*) malloc(N_images*sizeof(real));
     real *d_fit_best_rot;
     cuda_allocate_real(&d_fit_best_rot, N_images);
-    
+
     /* If calculate_r_free is used the active_images variable keeps
      track of which images are included an which are excluded. */
     int *d_active_images;
     cuda_allocate_int(&d_active_images,N_images);
     cuda_copy_int_to_device(active_images, d_active_images, N_images);
-    
+
     /* 3D array where each value is the distance to the center
      of that pixel. */
     real *d_radius;
     cuda_allocate_real(&d_radius, N_2d);
     cuda_copy_real_to_device(radius->data, d_radius, N_2d);
-    
-    
+
+
     /* Radial fit is the same as fit but instead of as a function
      of diffraction pattern index it is presented as a function
      of distance to the center. */
@@ -258,7 +271,7 @@ int main(int argc, char *argv[]){
     cuda_allocate_real(&d_radial_fit, round(conf.model_side/2));
     cuda_allocate_real(&d_radial_fit_weight,round(conf.model_side/2));
     real* best_respons = (real*) malloc(N_images*sizeof(real));
-    
+
     /* best_rotation stores the index of the rotation with the
      highest responsability for each diffraction pattern. */
     int *best_rotation = (int*) malloc(N_images*sizeof(int));
@@ -267,7 +280,7 @@ int main(int argc, char *argv[]){
     //from jing
     real *d_best_respons;
     cuda_allocate_real(&d_best_respons, N_images);
-    
+
     /* Open files that will be continuously written to during execution. */
     sprintf(filename_buffer, "%s/state.h5", conf.output_dir);
     hid_t state_file = open_state_file(filename_buffer);
@@ -296,12 +309,12 @@ int main(int argc, char *argv[]){
     real weight_map_radius, weight_map_falloff;
     real weight_map_radius_start = conf.model_side; // Set start radius to contain entire pattern
     real weight_map_radius_final = conf.model_side; // Set final radius to contain entire pattern
-    
-    
+
+
     real sigma;
     int current_chunk;
     int start_iteration =0;
-    
+
     // for distributed edition
     real * full_scaling= (real*) malloc(N_images* N_slices *sizeof(real));
     real * full_respons= (real*) malloc(N_images* N_slices *sizeof(real));
@@ -310,7 +323,7 @@ int main(int argc, char *argv[]){
     real *average_resp = (real*) malloc(N_slices*sizeof(real));
     real mean = cuda_model_average(d_model,N_model);
     /*-----------------------------------------------------------Do local init END-----------------------------------------------------------*/
-    
+
     /*------------------------------------ EMC Iterations start ----------------------------------------------------------*/
     //cout << "isDebug "<<conf.isDebug<< endl;
     for (int iteration = start_iteration; iteration < conf.number_of_iterations; iteration++) {
@@ -328,14 +341,14 @@ int main(int argc, char *argv[]){
         reset_to_zero(tmpbuf_images,N_images, sizeof(real));
         reset_to_zero(maxr, N_images, sizeof(real));
         reset_to_zero(sum_vector,N_images, sizeof(real));
-        
+
         /*---------------------- reset local variable done-------------------------*/
-        
+
         /* Sigma is a variable that describes the noise that is
          typically either constant or decreasing on every iteration. */
         sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
         real sum = cuda_model_average(d_model,N_model);
-        
+
         if(taskid == master){
             printf("\niteration %d\n", iteration);
             printf("model average is %f \n ", sum);
@@ -350,7 +363,7 @@ int main(int argc, char *argv[]){
         cuda_set_to_zero(d_fit,N_images);
         cuda_set_to_zero(d_radial_fit,conf.model_side/2);
         cuda_set_to_zero(d_radial_fit_weight,conf.model_side/2);
-        
+
         /* Find and output the best orientation for each diffraction pattern,
          i.e. the one with the highest responsability. */
         if (iteration == start_iteration && strcmp(conf.initial_rotations_file, "not used") ==0){
@@ -358,10 +371,10 @@ int main(int argc, char *argv[]){
                 printf("DEBUG... ROTFILE ISUSED%s %d\n\n", conf.initial_rotations_file,strcmp(conf.initial_rotations_file, "not used"));
             reset_to_zero(respons,N_images*allocate_slice, sizeof(real));
             cuda_set_to_zero(d_respons, N_images*allocate_slice);
-            
+
             reset_to_zero(best_respons,N_images, sizeof(real));
             cuda_set_to_zero(d_best_respons,N_images);
-            
+
             reset_to_zero(best_rotation,N_images, sizeof(int));
             cuda_copy_int_to_device(best_rotation, d_best_rotation, N_images);
 
@@ -375,7 +388,7 @@ int main(int argc, char *argv[]){
             cuda_calculate_best_rotation(d_respons, d_best_respons, d_best_rotation, N_images, allocate_slice);
             cuda_copy_real_to_host(best_respons,d_best_respons, N_images);
             cuda_copy_int_to_host(best_rotation,d_best_rotation, N_images);
-            
+
             MPI_Barrier(MPI_COMM_WORLD);
             Global_Allreduce( best_respons, maxr,  N_images,
                               MPI_EMC_PRECISION, MPI_MAX, MPI_COMM_WORLD);
@@ -390,7 +403,7 @@ int main(int argc, char *argv[]){
             MPI_Barrier(MPI_COMM_WORLD);
             Global_Allreduce( best_rotation,  index_ptr,  N_images,
                               MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-            
+
             MPI_Barrier(MPI_COMM_WORLD);
             memcpy(best_rotation,index_ptr, sizeof(int) * N_images);
             cuda_copy_int_to_device(best_rotation, d_best_rotation, N_images);
@@ -410,90 +423,8 @@ int main(int argc, char *argv[]){
         cuda_set_to_zero(d_fit,N_images);
         cuda_set_to_zero(d_fit_best_rot, N_images);
 
-        /*---------------------- Calculate fit start -------------------------*/
-        if(conf.calculate_fit){
-            for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
-                if (slice_start + slice_chunk >= slice_end) {
-                    current_chunk = slice_end - slice_start;
-                } else {
-                    current_chunk = slice_chunk;
-                }
-                int current_start = slice_start- slice_backup;
-                cuda_get_slices(model, d_model, d_slices, d_rotations, d_x_coord, d_y_coord, d_z_coord, current_start, current_chunk);
-                cuda_calculate_fit(d_slices, d_images, d_mask, d_scaling,
-                                   d_respons, d_fit, sigma, N_2d, N_images,
-                                   current_start, current_chunk);
-                cuda_calculate_fit_best_rot_local(d_slices, d_images, d_mask, d_scaling,
-                                                  d_best_rotation, d_fit_best_rot, N_2d, N_images,
-                                                  current_start, current_chunk, slice_backup);
-                
-                if (iteration % radial_fit_n == 0 && iteration != 0) {
-                    cuda_calculate_radial_fit(d_slices, d_images, d_mask,
-                                              d_scaling, d_respons, d_radial_fit,
-                                              d_radial_fit_weight, d_radius,
-                                              N_2d, conf.model_side, N_images, current_start,
-                                              current_chunk);
-                }//endif
-            }//endfor
-            reset_to_zero(fit_best_rot,N_images, sizeof(real));
-            reset_to_zero(sum_vector,N_images, sizeof(real));
-            reset_to_zero(maxr,N_images, sizeof(real));
-            cuda_copy_real_to_host(fit_best_rot, d_fit_best_rot, N_images);
-            cuda_copy_real_to_host(fit,d_fit,N_images);
-            
-            MPI_Barrier(MPI_COMM_WORLD);
-            Global_Allreduce( fit_best_rot, maxr,  N_images,
-                              MPI_EMC_PRECISION, MPI_MAX, MPI_COMM_WORLD);
-            
-            Global_Allreduce(fit, sum_vector,  N_images,
-                             MPI_EMC_PRECISION, MPI_SUM, MPI_COMM_WORLD);
-
-            MPI_Barrier(MPI_COMM_WORLD);
-            memcpy(fit,sum_vector,N_images*sizeof(real));
-            cuda_copy_real_to_device(fit, d_fit, N_images);
-            memcpy(fit_best_rot,maxr,N_images*sizeof(real));
-            cuda_copy_real_to_device(fit_best_rot, d_fit_best_rot, N_images);
-
-            if(taskid == master){
-                write_real_array(fit_file, fit,N_images);
-                write_real_array(fit_best_rot_file, fit_best_rot,N_images);
-            }
-            
-            /* Output the radial fit if it is calculated */
-            if ((iteration % radial_fit_n == 0 && iteration != 0)) {
-                /* The radial average needs to be normalized on the CPU before it is output. */
-                cuda_copy_real_to_host(radial_fit, d_radial_fit, conf.model_side/2);
-                cuda_copy_real_to_host(radial_fit_weight, d_radial_fit_weight, conf.model_side/2);
-                real *radial_fit_buf = (real*)malloc(sizeof(real)*conf.model_side/2);
-                real *radial_fit_weight_buf = (real*)malloc(sizeof(real)*conf.model_side/2);
-
-                MPI_Barrier(MPI_COMM_WORLD);
-                Global_Allreduce(radial_fit, radial_fit_buf,  conf.model_side/2,
-                                 MPI_EMC_PRECISION, MPI_SUM, MPI_COMM_WORLD);
-
-                Global_Allreduce(radial_fit_weight, radial_fit_weight_buf,  conf.model_side/2,
-                                 MPI_EMC_PRECISION, MPI_SUM, MPI_COMM_WORLD);
-                MPI_Barrier(MPI_COMM_WORLD);
-                cuda_copy_real_to_device(radial_fit, d_radial_fit, conf.model_side/2);
-                cuda_copy_real_to_device(radial_fit_weight, d_radial_fit_weight, conf.model_side/2);
-                for (int i = 0; i < conf.model_side/2; i++) {
-                    if (radial_fit_weight[i] > 0.0) {
-                        radial_fit[i] /= radial_fit_weight[i];
-                    } else {
-                        radial_fit[i] = 0.0;
-                    }
-                }
-                if (taskid == master)  write_real_array(radial_fit_file, radial_fit,conf.model_side/2);
-            }
-            /* This is the end of the "fit" calculation and output. */
-        }//endif conf.calculate_fit
-        
-        /*---------------------- Calculate fit end -------------------------*/
-        
-        
         /*---------------------- Calculate scaling start -------------------------*/
-        //printf(" cal scaling! \n\n");
-        
+
         if (conf.recover_scaling) {
             //printf("recover scaling \n\n");
             for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
@@ -505,11 +436,11 @@ int main(int argc, char *argv[]){
                 int current_start = slice_start- slice_backup;
                 cuda_get_slices(model, d_model, d_slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
                                 current_start   , current_chunk);
-                cuda_update_scaling_full(d_images, d_slices, d_mask, d_scaling, d_weight_map,
+                cuda_update_scaling_full(d_images, d_slices, d_mask_scaling, d_scaling, d_weight_map,
                                          N_2d, N_images, current_start, current_chunk, diff_type(conf.diff));
-                
+
             }
-            
+
             //printf(" write scaling! \n\n");
             cuda_copy_real_to_host(scaling, d_scaling, N_images*allocate_slice);
             cuda_copy_real_to_host(respons, d_respons, allocate_slice*N_images);
@@ -535,10 +466,11 @@ int main(int argc, char *argv[]){
 
         }
         else cuda_copy_real_to_device(scaling,d_scaling,allocate_slice*N_images);
-        
+
         /*---------------------- Calculate scaling end -------------------------*/
-        
-        
+
+        /*-----------------------------start respons normalization (distribution ) start-------------------------------*/
+
         cuda_set_to_zero(d_respons,N_images*allocate_slice);
         /* In this loop through the chunks the responsabilities are updated. */
         for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
@@ -554,14 +486,13 @@ int main(int argc, char *argv[]){
                                             sigma, d_scaling, d_respons, d_weights_rotation,
                                             N_2d, N_images, current_start,
                                             current_chunk,  diff_type(conf.diff));
-            
+
         }
         MPI_Barrier(MPI_COMM_WORLD);
         Global_Gatherv((void*)respons, recvcounts[taskid],
                        MPI_EMC_PRECISION, (void*) full_respons,
                        recvcounts,  dispal, master, MPI_COMM_WORLD);
 
-        /*-----------------------------start respons normalization (distribution ) start-------------------------------*/
         //cuda_copy_real_to_host(respons,d_respons,N_slices*N_images);
         cuda_max_vector(d_respons, N_images, allocate_slice,d_maxr);
         cuda_copy_real_to_host(maxr,d_maxr,N_images);
@@ -595,101 +526,17 @@ int main(int argc, char *argv[]){
             printf("DEBUG... TOT_probablity after normalization %g %g at taskid %d\n", total_respons, total_respons,taskid);
             printf("DEBUG... full_respons is  %f %f %f \n", full_respons[0], full_respons[N_images*allocate_slice-1], full_respons[N_images*N_slices-1]);
         }
-        
+
         /* Reset the compressed model */
         cuda_reset_model(model,d_model_updated);
         cuda_reset_model(model_weight,d_model_weight);
-        
-        
+
+
         /*-----------------------------end respons normalization (distribution ) done-------------------------------*/
-        /*-----------------------------start active image ---------------------------------------*/
-        /* Exclude images. Use the assumption that the diffraction patterns
-         with the lowest maximum responsability does not belong in the data.
-         Therefore these are excluded from the compression step. */
-        cuda_copy_real_to_host(respons,d_respons,N_images*allocate_slice);
-        if (conf.exclude_images == 1 && iteration > -1) {
-            compute_best_respons(full_respons, N_images, allocate_slice, best_respons);
-            Global_Allreduce( best_respons, maxr,  N_images,
-                              MPI_EMC_PRECISION, MPI_MAX, MPI_COMM_WORLD);
-            
-
-            /* Create a new best respons array to be sorted. This one only
-             contains the diffraction patterns not excluded by the R-free
-             calculation. */
-            real *best_respons_copy = (real*) malloc(N_images_included*sizeof(real));
-            int count = 0;
-            for (int i_image = 0; i_image < N_images; i_image++) {
-                best_respons[i_image] = maxr[i_image];
-                if (active_images[i_image] >= 0) {
-                    best_respons_copy[count] = best_respons[i_image];
-                    count++;
-                }
-            }
-            assert(count == N_images_included);
-
-            /* Sort the responsabilities and set the active image flag for
-             the worst diffraction patterns to 0. */
-            qsort(best_respons_copy, N_images_included, sizeof(real), compare_real);
-            real threshold = best_respons_copy[(int)((real)N_images_included*conf.exclude_images_ratio)];
-            for (int i_image = 0; i_image < N_images; i_image++) {
-                if (active_images[i_image] >= 0) {
-                    if (best_respons[i_image]  > threshold) {
-                        active_images[i_image] = 1;
-                    } else {
-                        active_images[i_image] = 0;
-                    }
-                }
-            }
-
-            /* Repeat the above two steps but for the excluded part. */
-            count = 0;
-            for (int i_image = 0; i_image < N_images; i_image++) {
-                if (active_images[i_image] < 0) {
-                    best_respons_copy[count] = best_respons[i_image];
-                    count++;
-                }
-            }
-            qsort(best_respons_copy, N_images-N_images_included, sizeof(real), compare_real);
-
-            threshold = best_respons_copy[(int)((real)(N_images-N_images_included)*conf.exclude_images_ratio)];
-            for (int i_image = 0; i_image < N_images; i_image++) {
-                if (active_images[i_image] < 0) {
-                    if (best_respons[i_image] > threshold) {
-                        active_images[i_image] = -1;
-                    } else {
-                        active_images[i_image] = -2;
-                    }
-                }
-            }
-
-            /* Write the list of active images to file. */
-            if(taskid ==master){
-                sprintf(filename_buffer, "%s/active_%.4d.h5", conf.output_dir, iteration);
-                write_1d_int_array_hdf5(filename_buffer, active_images, N_images);
-            }
-            free(best_respons_copy);
-        }
-        /* Aftr the active images list is updated it is copied to the GPU. */
+        /*-----------------------------start update slices ---------------------------------------*/
 
         cuda_copy_int_to_device(active_images, d_active_images, N_images);
 
-        /* Start update scaling second time (test) */
-        if (conf.recover_scaling) {
-            for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
-                if (slice_start + slice_chunk >= slice_end) {
-                    current_chunk = slice_end - slice_start;
-                } else {
-                    current_chunk = slice_chunk;
-                }
-                int current_start = slice_start- slice_backup;
-                cuda_get_slices(model, d_model, d_slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
-                                current_start   , current_chunk);
-                cuda_update_scaling_full(d_images, d_slices, d_mask, d_scaling,d_weight_map, N_2d, conf.number_of_images, current_start, current_chunk, diff_type(conf.diff));
-            }
-        }
-        else cuda_copy_real_to_device(scaling,d_scaling,allocate_slice*N_images);
-        /* End update scaling second time (test) */
-        
         /* start update model */
         cuda_reset_model(model,d_model_updated);
         cuda_reset_model(model_weight,d_model_weight);
@@ -719,7 +566,7 @@ int main(int argc, char *argv[]){
         d_model_tmp = d_model_updated;
         d_model_updated = d_model;
         d_model = d_model_tmp;
-        
+
         // collect model and model_weight back to the master node
         cuda_copy_model(model,d_model);
         cuda_copy_model(model_weight,d_model_weight);
@@ -736,7 +583,7 @@ int main(int argc, char *argv[]){
         memcpy(model_weight->data,model_weight_data,N_model*sizeof(real));
         cuda_copy_model_2_device(&d_model,model);
         cuda_copy_model_2_device(&d_model_weight,model_weight);
-        
+
         if (conf.isDebug == 1){
             sum = cuda_model_average(d_model,N_model);
             printf("model average is %g after adding up at %d\n", sum, taskid);
@@ -745,7 +592,7 @@ int main(int argc, char *argv[]){
          model by the model weights. */
         cuda_divide_model_by_weight(model, d_model, d_model_weight);
 
-        
+
         if (conf.recover_scaling){
             cuda_normalize_model_given_mean(model, d_model,mean);
         }
@@ -783,7 +630,7 @@ int main(int argc, char *argv[]){
         memcpy(modelP,model->data,sizeof(real)*N_model);
     }//END FOR ITERATION
     /* Close files that have been open throughout the anlysis. */
-    
+
     close_state_file(state_file);
     fclose(timeFile);
     fclose(likelihood);
@@ -797,7 +644,7 @@ int main(int argc, char *argv[]){
     if (conf.recover_scaling){
         close_scaling_file(scaling_dataset, scaling_file);
     }
-    
+
     /* Reset models for a final compression with individual masks. */
     cuda_reset_model(model,d_model_updated);
     cuda_reset_model(model_weight,d_model_weight);
@@ -819,7 +666,7 @@ int main(int argc, char *argv[]){
                                  model,d_model_updated, d_x_coord, d_y_coord,
                                  d_z_coord, &d_rotations[slice_start*4],
                 d_model_weight,images);
-        
+
     }
     cuda_copy_model(model, d_model_updated);
     cuda_copy_model(model_weight,d_model_weight);
@@ -937,6 +784,7 @@ int main(int argc, char *argv[]){
     MPI_Finalize();
     return 0;
 }
+
 
 
 

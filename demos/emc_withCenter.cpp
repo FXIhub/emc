@@ -576,8 +576,6 @@ int main(int argc, char *argv[]){
         Global_Allreduce(sum_vector,tmpbuf_images_ptr,N_images,MPI_EMC_PRECISION, MPI_SUM, MPI_COMM_WORLD);
         cuda_copy_real_to_device(tmpbuf_images_ptr,d_sum,N_images);
         cuda_norm_respons_sumexpf(d_respons,d_sum,maxr,N_images,allocate_slice);
-        //total_respons = cuda_total_respons(d_respons,respons,N_images*allocate_slice);
-        //cuda_copy_real_to_host(respons,d_respons,allocate_slice*N_images);
         MPI_Barrier(MPI_COMM_WORLD);
         Global_Gatherv((void*)respons, recvcounts[taskid],
                        MPI_EMC_PRECISION, (void*) full_respons,
@@ -672,22 +670,6 @@ int main(int argc, char *argv[]){
         /* Aftr the active images list is updated it is copied to the GPU. */
 
         cuda_copy_int_to_device(active_images, d_active_images, N_images);
-
-        /* Start update scaling second time (test) */
-        if (conf.recover_scaling) {
-            for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
-                if (slice_start + slice_chunk >= slice_end) {
-                    current_chunk = slice_end - slice_start;
-                } else {
-                    current_chunk = slice_chunk;
-                }
-                int current_start = slice_start- slice_backup;
-                cuda_get_slices(model, d_model, d_slices, d_rotations, d_x_coord, d_y_coord, d_z_coord,
-                                current_start   , current_chunk);
-                cuda_update_scaling_full(d_images, d_slices, d_mask, d_scaling,d_weight_map, N_2d, conf.number_of_images, current_start, current_chunk, diff_type(conf.diff));
-            }
-        }
-        else cuda_copy_real_to_device(scaling,d_scaling,allocate_slice*N_images);
         /* End update scaling second time (test) */
         
         /* start update model */
@@ -865,7 +847,11 @@ int main(int argc, char *argv[]){
         images = read_images(conf,masks);
         cuda_allocate_images(&d_images,images,N_images);
         cuda_allocate_masks(&d_masks,masks,N_images);
-        mask = read_mask(conf);
+        mask = sp_imatrix_alloc(conf.model_side,conf.model_side);;
+        for (int xx =0; xx<conf.model_side; xx++)
+            for (int yy =0; yy<conf.model_side; yy++)
+                sp_imatrix_set(mask,xx,yy,1);
+
         cuda_allocate_mask(&d_mask,mask);
         cuda_allocate_slices(&d_slices,conf.model_side,slice_chunk);
         model = sp_3matrix_alloc(conf.model_side,conf.model_side,conf.model_side);
