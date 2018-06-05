@@ -65,6 +65,7 @@ int read_configuration_file(const char *filename, Configuration *config_out)
     config_lookup_string(&config, "initial_rotations_file", &(config_out->initial_rotations_file));
     config_lookup_string(&config, "output_dir", &(config_out->output_dir));
 
+
     const char* tmp_string;
 
     config_lookup_string(&config,"diff_type",&tmp_string);
@@ -101,6 +102,17 @@ int read_configuration_file(const char *filename, Configuration *config_out)
     }
 
     // printf("conf diff type %d\n\n", config_out->diff);
+
+    config_lookup_string(&config,"less_binning_mask_file",&(config_out->less_binning_mask_file));
+    config_out->less_binning = getInt("less_binning",&config);
+    config_out->detector_size = getInt("detector_size",&config);
+    config_out->less_binning_model_side = getInt("less_binning_model_side",&config);
+    config_out->isEarlyStopOn = getInt("isEarlyStopOn",&config);
+    config_out->isLessBinningOn = getInt("isLessBinningOn",&config);
+    config_out->early_stop_threshold = getFloat("early_stop_threshold",&config);
+
+
+
     return 1;
 }
 

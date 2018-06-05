@@ -75,6 +75,13 @@ typedef struct{
     initial_model_type initial_model;
 
 
+    const char* less_binning_mask_file;
+    int less_binning;
+    int less_binning_model_side;
+    int detector_size;
+    int isEarlyStopOn;
+    int isLessBinningOn;
+    double early_stop_threshold;
 }Configuration;
 
 int read_configuration_file(const char *filename, Configuration *config_out);

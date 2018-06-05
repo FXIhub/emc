@@ -304,17 +304,6 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
         sprintf(filename_buffer,"%s%.4d.h5", conf.image_prefix, i);
         img = sp_image_read(filename_buffer,0);
         
-        /* Blur input image if specified in the configuration file. This
-         might might be useful for noisy data if the noise is not taken
-         into account by the diff_type. */
-        /*
-         if (conf.blur_image == 1) {
-         Image *tmp = sp_gaussian_blur(img,conf.blur_image_sigma);
-         sp_image_free(img);
-         img = tmp;
-         }
-         */
-        
         /* Allocate return arrays */
         images[i] = sp_matrix_alloc(conf.model_side,conf.model_side);
         masks[i] = sp_imatrix_alloc(conf.model_side,conf.model_side);
@@ -360,7 +349,7 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
                  don't mask out the pixel. */
                 if (mask_sum > 0) {
                  //for tmp use
-                    sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum*20);
+                    sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
                     sp_imatrix_set(masks[i],x,y,1);
                 } else {
                     sp_matrix_set(images[i],x,y,0.);

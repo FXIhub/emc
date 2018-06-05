@@ -353,3 +353,6 @@ launch_slicer.sh
 README.md
 debugger.sh
 demos/StochasticEMC.cu
+demos/emc_withCenter.cpp
+demos/boot_st.cpp
+demos/boot_st.cpp
