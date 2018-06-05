@@ -1,12 +1,12 @@
 #include "configuration.h"
 
-int getInt(char * name, config_t * config)
+int getInt(const char * name, config_t * config)
 {
     const config_setting_t *s = config_lookup(config, name);
     return config_setting_get_int(s);
 }
 
-double getFloat(char * name, config_t * config)
+double getFloat(const char * name, config_t * config)
 {
     const config_setting_t *s = config_lookup(config, name);
     return config_setting_get_float(s);

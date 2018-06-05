@@ -25,7 +25,7 @@ FIND_PACKAGE(HDF5 REQUIRED)
 FIND_PACKAGE(CUDA REQUIRED)
 FIND_PACKAGE(MPI REQUIRED)
 
-set(CUDA_NVCC_FLAGS "-arch=sm_20" "--relocatable-device-code=true")
+set(CUDA_NVCC_FLAGS "--relocatable-device-code=true")
 
 FIND_PACKAGE(GSL REQUIRED)
 

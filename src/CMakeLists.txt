@@ -7,7 +7,7 @@ include_directories(${LOCAL_INCLUDE})
 
 file(GLOB emc_C_source  emc/Common/*.cpp emc/Configurations/*.cpp emc/IOs/*.cpp emc/MPIs/*.cpp ) 
 file(GLOB emc_source  emc/CUDA/*.cu)
-set(CUDA_NVCC_FLAGS "-arch=sm_20" "--relocatable-device-code=true")
+set(CUDA_NVCC_FLAGS "--relocatable-device-code=true")
 SET(CUDA_SEPARABLE_COMPILATION ON)
 
 
