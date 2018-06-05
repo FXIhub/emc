@@ -19,6 +19,13 @@ void update_slices_kernel(real* images, real* slices, int* mask, real* respons,
                      real* rot, real* x_coord, real* y_coord, real* z_coord,
                      real* model, int slice_rows, int slice_cols, int model_x,
                      int model_y, int model_z);
+__global__
+void update_slices_true_poisson_kernel(real* images, real* slices, int* mask, real* respons,
+                     real* scaling, int* active_images, int N_images,
+                     int slice_start, int N_2d, real* slices_total_respons,
+                     real* rot, real* x_coord, real* y_coord, real* z_coord,
+                     real* model, int slice_rows, int slice_cols, int model_x,
+                     int model_y, int model_z);
 
 __global__
 void update_slices_final_kernel(real* images, real* slices, int* mask, real* respons,

@@ -87,7 +87,7 @@ void cuda_collapse_responsabilities(real *d_respons, int N_slices, int N_images)
 }
 
 
-real cuda_total_respons(real * d_respons, real * respons,int n){
+real cuda_total_respons(real * d_respons,int n){
     thrust::device_ptr<real> p(d_respons);
     x_log_x<real> unary_op;
     thrust::plus<real> binary_op;

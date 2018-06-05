@@ -15,14 +15,17 @@ extern "C" {
 #include <thrust/host_vector.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/fill.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/functional.h>
 #include <cufft.h>
 #include <emc_cuda_common.h>
 #include <emc_cuda_common_host.h>
 
 #define TNUM 256
 
-const real min_resp = -30.;
-const real min_tol =0;// 1e-10;
+const real min_resp = -20.;
+const real min_tol = 1e-10;
 /*
 #ifdef __cplusplus 
 }

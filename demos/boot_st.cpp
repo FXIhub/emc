@@ -335,11 +335,10 @@ int main(int argc, char *argv[]){
         }
         MPI_Barrier(MPI_COMM_WORLD);
         Broadcast_Images(images,conf.number_of_images,master);
+
         cuda_copy_images_2_device(&d_images,images,N_images);
         model_init(conf,model, model_weight,images,mask, x_coordinates, y_coordinates, z_coordinates);
         cuda_copy_model_2_device(&d_model,model);
-        //cuda_apply_masks(d_images, d_masks, N_2d, N_images);
-        //cuda_apply_single_mask_zeros(d_images, d_mask, N_2d, N_images); // used to be apply_single_mask
         MPI_Barrier(MPI_COMM_WORLD);
 
 
@@ -477,7 +476,7 @@ int main(int argc, char *argv[]){
             Global_Allreduce(maxr, tmpbuf_images,N_images,MPI_EMC_PRECISION,MPI_MAX, MPI_COMM_WORLD);
             cuda_copy_real_to_device(tmpbuf_images, d_maxr, N_images);
             cuda_respons_max_expf(d_respons,d_maxr,N_images, allocate_slice, d_sum);
-            total_respons = cuda_sum_likelihood( d_respons,allocate_slice*N_images);
+            total_respons = cuda_total_respons( d_respons,allocate_slice*N_images);
 
             cuda_copy_real_to_host(sum_vector,d_sum,N_images);
             MPI_Barrier(MPI_COMM_WORLD);

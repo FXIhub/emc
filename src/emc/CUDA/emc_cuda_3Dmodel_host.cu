@@ -13,6 +13,18 @@ real cuda_model_max(real * model, int model_size){
     real max = thrust::reduce(p, p+model_size, real(0), thrust::maximum<real>());
     return max;
 }
+
+real cuda_model_diff(real* d_model,real * d_model_updated,int N_model){
+    thrust::device_ptr<real> p(d_model);
+    thrust::device_ptr<real> p1(d_model_updated);
+    //thrust::transform(p, p + N_model, p1, p1,  absolute_difference<real>());
+    thrust::transform(p, p + N_model, p1, p1,  rel_difference<real>());
+
+    real sum_diff = thrust::reduce(p1, p1+N_model, real(0), thrust::plus<real>());
+
+    return sum_diff;
+}
+
 real cuda_model_average(real * model, int model_size) {
     real *d_average;
     cudaMalloc(&d_average, sizeof(real));
@@ -38,7 +50,17 @@ void cuda_normalize_model(sp_3matrix *model, real *d_model) {
     printf("model average before normalization = %g\n", model_average);
     //real model_sum = thrust::reduce(p, p+n, real(0), thrust::plus<real>());
     //model_sum /= (real) n;
-    thrust::transform(p, p+n,thrust::make_constant_iterator(10.0/model_average), p, thrust::multiplies<real>());
+    thrust::transform(p, p+n,thrust::make_constant_iterator(1.0/model_average), p, thrust::multiplies<real>());
+}
+
+
+void cuda_normalize_model_given_mean(sp_3matrix *model, real *d_model, double mean) {
+    int n = sp_3matrix_size(model);
+    thrust::device_ptr<real> p(d_model);
+    real model_average = cuda_model_average(d_model, sp_3matrix_size(model));
+    printf("model average before normalization = %g\n", model_average);
+    thrust::transform(p, p+n,thrust::make_constant_iterator(mean/model_average), p, thrust::multiplies<real>());
+
 }
 
 void cuda_output_device_model(real *d_model, char *filename, int side) {

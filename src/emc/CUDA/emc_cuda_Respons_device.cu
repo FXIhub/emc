@@ -80,12 +80,16 @@ void cuda_calculate_responsability_true_poisson (float *slice, float *image, int
       if ( slice[i]>0&&mask[i] != 0){ //should have the condition on
             real low =slice[i]>0? logf(slice[i]) :0;
             real lop = scaling>0?logf(scaling):0;
-            sum +=  image[i]*low +  image[i]*lop - scaling*slice[i];//*weight_map[i];
+
+            //sum += ( image[i]*low +  image[i]*lop - scaling*slice[i] )*weight_map[i];
+            //estimate ln n!=n ln n-n+1 the simplest version of Stirling's formula
+            real loi = image[i] >0?-image[i] * logf(image[i])  +image[i]-1:0;
+            sum += ( image[i]*low +  image[i]*lop - scaling*slice[i] +loi )*weight_map[i];
             count += weight_map[i];
       }
     }
     sum_cache[tid] = sum;
-    count_cache[tid] =1;// count;
+    count_cache[tid] =count;
 }
 
 
@@ -205,7 +209,7 @@ void calculate_responsabilities_kernel(float * slices, float * images, int * mas
     inblock_reduce(count_cache);
     if(tid == 0 ){
         if ( diff == true_poisson)
-            respons[(slice_start+i_slice)*N_images+i_image] =sum_cache[0];///count_cache[0];
+            respons[(slice_start+i_slice)*N_images+i_image] =sum_cache[0]/count_cache[0];
         else
             respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
     }

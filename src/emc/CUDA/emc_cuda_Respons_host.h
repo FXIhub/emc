@@ -15,7 +15,7 @@ void cuda_normalize_responsabilities_single(real *d_respons, int N_slices, int N
 void cuda_normalize_responsabilities(real * d_respons, int N_slices, int N_images);
 void cuda_collapse_responsabilities(real *d_respons, int N_slices, int N_images);
 void cuda_calculate_best_rotation(real *d_respons, real* d_best_respons, int *d_best_rotation, int N_images, int N_slices);
-real cuda_total_respons(real * d_respons, real * respons,int n);
+real cuda_total_respons(real * d_respons,int n);
 void cuda_respons_max_expf(real* d_respons, real* max, int N_images, int allocate_slices, real* d_sum);
 void cuda_norm_respons_sumexpf(real * d_respons,  real* d_sum, real* max, int N_images, int allocate_slices);
 #endif

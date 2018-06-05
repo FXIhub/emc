@@ -66,7 +66,7 @@ int main(int argc, char *argv[]){
     Quaternion *rotations;
     real *weights_rotation;
     const int N_slices = read_rotations_file(conf.rotations_file, &rotations, &weights_rotation);
-    
+
     /*------------------------------task devision respons MPI BUFFER------------------------------------*/
     int *lens = (int *)malloc(sizeof(int)*ntasks);
     int slice_start = taskid* N_slices/ntasks;
@@ -569,8 +569,7 @@ int main(int argc, char *argv[]){
         Global_Allreduce(maxr, tmpbuf_images,N_images,MPI_EMC_PRECISION,MPI_MAX, MPI_COMM_WORLD);
         cuda_copy_real_to_device(tmpbuf_images, d_maxr, N_images);
         cuda_respons_max_expf(d_respons,d_maxr,N_images, allocate_slice, d_sum);
-        total_respons = cuda_sum_likelihood( d_respons,allocate_slice*N_images);
-
+        total_respons = cuda_total_respons( d_respons,allocate_slice*N_images);
         cuda_copy_real_to_host(sum_vector,d_sum,N_images);
         MPI_Barrier(MPI_COMM_WORLD);
         Global_Allreduce(sum_vector,tmpbuf_images_ptr,N_images,MPI_EMC_PRECISION, MPI_SUM, MPI_COMM_WORLD);
@@ -753,7 +752,7 @@ int main(int argc, char *argv[]){
             cuda_copy_real_to_device(modelP, d_model_updated, N_model);
             real diff = cuda_model_diff(d_model,d_model_updated,N_model)/N_model;
             printf(" model different at iteration %d and %d is %f \n", iteration, iteration-1,diff);
-            if(diff<conf.early_stop_thr){
+            if(diff<conf.early_stop_threshold){
                 if(taskid ==master){
                     write_model(conf, conf.number_of_iterations, N_model, model,model_weight);
                     write_weight(conf, conf.number_of_iterations, N_model,model_weight);
@@ -841,17 +840,20 @@ int main(int argc, char *argv[]){
             conf.pixel_size = conf.pixel_size / conf.image_binning * conf.less_binning;
             conf.image_binning = conf.less_binning;
         }
+        conf.mask_file = conf.less_binning_mask_file;
         N_model = conf.model_side *conf.model_side *conf.model_side ;
         N_2d = conf.model_side *conf.model_side;
         cout << conf.model_side <<" " <<conf.image_binning <<" " << N_model<<" " <<conf.pixel_size <<endl;
         images = read_images(conf,masks);
+        mask = read_mask(conf);
+
         cuda_allocate_images(&d_images,images,N_images);
         cuda_allocate_masks(&d_masks,masks,N_images);
-        mask = sp_imatrix_alloc(conf.model_side,conf.model_side);;
+        /*mask = sp_imatrix_alloc(conf.model_side,conf.model_side);;
         for (int xx =0; xx<conf.model_side; xx++)
             for (int yy =0; yy<conf.model_side; yy++)
                 sp_imatrix_set(mask,xx,yy,1);
-
+        */
         cuda_allocate_mask(&d_mask,mask);
         cuda_allocate_slices(&d_slices,conf.model_side,slice_chunk);
         model = sp_3matrix_alloc(conf.model_side,conf.model_side,conf.model_side);

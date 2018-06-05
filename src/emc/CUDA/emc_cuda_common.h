@@ -20,6 +20,28 @@ template <typename T> struct x_log_x
 
 
 template<typename T>
+struct absolute_difference //: public unary_function<T,T>
+{
+  __host__ __device__ T operator()(const T &x, const T &y) const
+  {
+    return fabs(x-y);
+  }
+};
+
+
+template<typename T>
+struct rel_difference //: public unary_function<T,T>
+{
+  __host__ __device__ T operator()(const T &x, const T &y) const
+  {
+      if( x!=0)
+        return fabs(x-y)/fabs(x);
+      else
+        return 0;
+  }
+};
+
+template<typename T>
 __device__ void inblock_reduce(T * data){
     __syncthreads();
     for(unsigned int s=blockDim.x/2; s>0; s>>=1){

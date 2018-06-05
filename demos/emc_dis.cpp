@@ -569,7 +569,7 @@ int main(int argc, char *argv[]){
         Global_Allreduce(maxr, tmpbuf_images,N_images,MPI_EMC_PRECISION,MPI_MAX, MPI_COMM_WORLD);
         cuda_copy_real_to_device(tmpbuf_images, d_maxr, N_images);
         cuda_respons_max_expf(d_respons,d_maxr,N_images, allocate_slice, d_sum);
-        total_respons = cuda_sum_likelihood( d_respons,allocate_slice*N_images);
+        total_respons = cuda_total_respons( d_respons,allocate_slice*N_images);
 
         cuda_copy_real_to_host(sum_vector,d_sum,N_images);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -771,7 +771,7 @@ int main(int argc, char *argv[]){
             cuda_copy_real_to_device(modelP, d_model_updated, N_model);
             real diff = cuda_model_diff(d_model,d_model_updated,N_model)/N_model;
             printf(" model different at iteration %d and %d is %f \n", iteration, iteration-1,diff);
-            if(diff<conf.early_stop_thr){
+            if(diff<conf.early_stop_threshold){
                 if(taskid ==master){
                     write_model(conf, conf.number_of_iterations, N_model, model,model_weight);
                     write_weight(conf, conf.number_of_iterations, N_model,model_weight);

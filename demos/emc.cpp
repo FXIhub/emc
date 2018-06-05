@@ -729,7 +729,7 @@ int main(int argc, char **argv)
 
         /* Calculate and output likelihood, which is the sum of all
        responsabilities. */
-        total_respons = cuda_total_respons(d_respons,respons,N_images*N_slices);
+        total_respons = cuda_total_respons(d_respons,N_images*N_slices);
         printf("DEBUG... TOT_RESP %g\n", total_respons);
         fprintf(likelihood,"%g\n",total_respons);
         fflush(likelihood);

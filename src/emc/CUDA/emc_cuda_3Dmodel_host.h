@@ -15,6 +15,9 @@ void cuda_divide_model_by_weight(sp_3matrix * model, real * d_model, real * d_we
 void cuda_normalize_model(sp_3matrix *model, real *d_model);
 void cuda_output_device_model(real *d_model, char *filename, int side);
 void cuda_blur_model(real *d_model, const int model_side, const real sigma);
+void cuda_normalize_model_given_mean(sp_3matrix *model, real *d_model, double mean) ;
+real cuda_model_diff(real* d_model,real * d_model_updated,int N_model);
+
 /*
 #ifdef __cplusplus
 }

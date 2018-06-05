@@ -10,9 +10,9 @@ set( CUDA_SEPARABLE_COMPILATION ON)
 
 
 #cuda_compile(try_o try_performance.cu)
-cuda_add_executable(optEMC opt_emc.cu)
-cuda_add_cufft_to_target(optEMC)
-target_link_libraries(optEMC ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY} ${CUDA_curand_LIBRARY} emcLib ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES})
+#cuda_add_executable(optEMC opt_emc.cu)
+#cuda_add_cufft_to_target(optEMC)
+#target_link_libraries(optEMC ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY} ${CUDA_curand_LIBRARY} emcLib ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES})
 
 #cuda_add_executable(stoEMC StochasticEMC.cu)
 #cuda_add_cufft_to_target(stoEMC)
@@ -28,13 +28,13 @@ cuda_add_executable(emc_dis emc_dis.cpp)
 cuda_add_cufft_to_target(emc_dis)
 target_link_libraries(emc_dis "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
-cuda_add_executable(emc_double_mask emc_double_mask.cpp)
-cuda_add_cufft_to_target(emc_double_mask)
-target_link_libraries(emc_double_mask "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
+#cuda_add_executable(emc_double_mask emc_double_mask.cpp)
+#cuda_add_cufft_to_target(emc_double_mask)
+#target_link_libraries(emc_double_mask "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
-cuda_add_executable(emc_boot boot_st.cpp)
-cuda_add_cufft_to_target(emc_boot)
-target_link_libraries(emc_boot "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
+#cuda_add_executable(emc_boot boot_st.cpp)
+#cuda_add_cufft_to_target(emc_boot)
+#target_link_libraries(emc_boot "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
 cuda_add_executable(emc_Cen emc_withCenter.cpp)
 cuda_add_cufft_to_target(emc_Cen)
