@@ -8,6 +8,7 @@
 #include <emc_cuda.h>
 #include <emc_cuda_common.h>
 #include <emc_common.h>
+
 /*#ifdef __cplusplus 
 extern "C" {
 #endif
@@ -32,6 +33,11 @@ __device__ void cuda_insert_slice_interpolate(real *model, real *weight, real *s
                                    real *y_coordinates, real *z_coordinates, int slice_rows,
                                    int slice_cols, int model_x, int model_y, int model_z,
                                    int tid, int step);
+__device__ void cuda_insert_slice_interpolate_NN(real *model, real *weight, real *slice,
+                                  int * mask, real w, real *rot, real *x_coordinates,
+                                  real *y_coordinates, real *z_coordinates, int slice_rows,
+                                  int slice_cols, int model_x, int model_y, int model_z,
+                                  int tid, int step);
 
 __device__ void interpolate_model_set(real *model, real *model_weight,
                            int model_x, int model_y, int model_z,

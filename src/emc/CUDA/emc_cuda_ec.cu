@@ -10,6 +10,8 @@ extern "C" {
 #endif
 */
 /* updated to use rotations with an offset start. */
+
+
 __global__
 void get_slices_kernel(real * model, real * slices, real *rot, real *x_coordinates,
                        real *y_coordinates, real *z_coordinates, int slice_rows,
@@ -27,7 +29,6 @@ void get_slices_kernel(real * model, real * slices, real *rot, real *x_coordinat
 
 
 }
-
 
 __global__ 
 void cuda_test_interpolate_kernel(real *model, int side, real *return_value) {
@@ -48,6 +49,7 @@ void cuda_test_interpolate_kernel(real *model, int side, real *return_value) {
     return_value[0] = interpolate_model_get(model, side, side, side, interp_x, interp_y, interp_z);
     printf("interpolate at %g %g %g -> %g\n", interp_x, interp_y, interp_z, interpolate_model_get(model, side, side, side, interp_x, interp_y, interp_z));
 }
+
 __global__ void cuda_test_interpolate_set_kernel(real *model, real *weight, int side) {
     printf("enter kernel %d %d\n", blockIdx.x, threadIdx.x);
     for (int x = 0; x < side; x++) {
@@ -79,11 +81,19 @@ void insert_slices_kernel(real * images, real * slices, int * mask, real * respo
     int tid = threadIdx.x;
     int step = blockDim.x;
     real total_respons = slices_total_respons[i_slice];
+    if (INTERPOLATION_METHOD ==0)
+    {
+        cuda_insert_slice_interpolate_NN(model, weight, &slices[i_slice*N_2d], mask, total_respons,
+                &rot[4*i_slice], x_coord, y_coord, z_coord,
+                slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
+    }
+    else{
     if(total_respons > 1e-10f){
         cuda_insert_slice_interpolate(model, weight, &slices[i_slice*N_2d], mask, total_respons,
                 &rot[4*i_slice], x_coord, y_coord, z_coord,
                 slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
 
+    }
     }
 }
 

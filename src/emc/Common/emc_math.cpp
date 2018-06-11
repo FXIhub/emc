@@ -20,29 +20,34 @@ int compare_real(const void *pa, const void *pb) {
  These coordinates then only have to be rotated to get coordinates
  for expansion and compression. */
 void calculate_coordinates(int side, real pixel_size, real detector_distance, real wavelength,
-                           sp_matrix *x_coordinates,
-                           sp_matrix *y_coordinates, sp_matrix *z_coordinates) {
-    const int x_max = side;
-    const int y_max = side;
-    real radius_in_pixels, radius_real, radius_fourier, radius_angle, z_liftoff_fourier;
-    real x_in_pixels, y_in_pixels, z_in_pixels;
-        //tabulate angle later
-    for (int x = 0; x < x_max; x++) {
-        for (int y = 0; y < y_max; y++) {
-            radius_in_pixels = sqrt(pow((real)(x-x_max/2)+0.5,2) + pow((real)(y-y_max/2)+0.5,2));
-            radius_real = radius_in_pixels*pixel_size;
-            radius_angle = atan2(radius_real, detector_distance);
-            radius_fourier = sin(radius_angle)/wavelength;
-            z_liftoff_fourier = (1. - cos(radius_angle))/wavelength;
-            
-            x_in_pixels = (real)(x-x_max/2)+0.5;
-            y_in_pixels = (real)(y-y_max/2)+0.5;
-            z_in_pixels = z_liftoff_fourier/radius_fourier*radius_in_pixels;
-            sp_matrix_set(x_coordinates, x, y, x_in_pixels);
-            sp_matrix_set(y_coordinates, x, y, y_in_pixels);
-            sp_matrix_set(z_coordinates, x, y, z_in_pixels);
-        }
+               sp_matrix *x_coordinates, sp_matrix *y_coordinates, sp_matrix *z_coordinates)
+{
+  const int x_max = side;
+  const int y_max = side;
+
+  real radius_at_edge = sqrt(2.)/wavelength * sqrt(1. - cos(atan2(pixel_size * (side/2. - 0.5), detector_distance)));
+
+  real rescale_factor = side/2./radius_at_edge;
+
+  for (int x = 0; x < x_max; x++) {
+    for (int y = 0; y < y_max; y++) {
+      real x_pixels = x - x_max/2. + 0.5;
+      real y_pixels = y - y_max/2. + 0.5;
+      real x_meters = x_pixels * pixel_size;
+      real y_meters = y_pixels * pixel_size;
+      real radius_meters = sqrt(pow(x_meters, 2) + pow(y_meters, 2));
+      real scattering_angle = atan2(radius_meters, detector_distance);
+      real z_fourier = -1./wavelength * (1. - cos(scattering_angle));
+      real radius_fourier = sqrt(pow(1./wavelength, 2) - pow(1./wavelength - fabs(z_fourier), 2));
+
+      real x_fourier = x_meters * radius_fourier / radius_meters;
+      real y_fourier = y_meters * radius_fourier / radius_meters;
+
+      sp_matrix_set(x_coordinates, x, y, x_fourier*rescale_factor);
+      sp_matrix_set(y_coordinates, x, y, y_fourier*rescale_factor);
+      sp_matrix_set(z_coordinates, x, y, z_fourier*rescale_factor);
     }
+  }
 }
 
 /* Like the compression step but only insert one slice into the model. This

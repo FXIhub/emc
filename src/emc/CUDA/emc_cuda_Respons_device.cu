@@ -80,9 +80,6 @@ void cuda_calculate_responsability_true_poisson (float *slice, float *image, int
       if ( slice[i]>0&&mask[i] != 0){ //should have the condition on
             real low =slice[i]>0? logf(slice[i]) :0;
             real lop = scaling>0?logf(scaling):0;
-
-            //sum += ( image[i]*low +  image[i]*lop - scaling*slice[i] )*weight_map[i];
-            //estimate ln n!=n ln n-n+1 the simplest version of Stirling's formula
             real loi = image[i] >0?-image[i] * logf(image[i])  +image[i]-1:0;
             sum += ( image[i]*low +  image[i]*lop - scaling*slice[i] +loi )*weight_map[i];
             count += weight_map[i];

@@ -59,19 +59,21 @@ __global__ void update_slices_true_poisson_kernel(real* images, real* slices, in
     int tid = threadIdx.x;
     int step = blockDim.x;
     real total_respons = 0.0f;
-
+    //real cutoff = 100000;
     for (int i = tid; i < N_2d; i+=step) {
         real sum = 0.;
         real norm = 0;
         for (int i_image = 0; i_image < N_images; i_image++) {
             if (mask[i] != 0 && active_images[i_image] > 0) {
+                //if(images[i_image*N_2d+i]<cutoff){
                 sum += images[i_image*N_2d+i] *  respons[(slice_start+i_slice)*N_images+i_image];
                 norm +=   respons[(slice_start+i_slice)*N_images+i_image] * scaling[(slice_start+i_slice)*N_images+i_image];
+                //}
                 //total_respons += respons[(slice_start+i_slice)*N_images+i_image];
             }
         }
         if (norm > 1e-10f) {
-            slices[i_slice*N_2d+i] = sum / norm;
+            slices[i_slice*N_2d+i] = (sum / norm) ;
         } else {
             slices[i_slice*N_2d+i] = -1.;
         }

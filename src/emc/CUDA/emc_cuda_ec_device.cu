@@ -195,6 +195,66 @@ __device__ void cuda_insert_slice_interpolate(real *model, real *weight, real *s
     }
 }
 
+
+__device__ void cuda_insert_slice_interpolate_NN(real *model, real *weight, real *slice,
+                                                 int * mask, real w, real *rot, real *x_coordinates,
+                                                 real *y_coordinates, real *z_coordinates, int slice_rows,
+                                                 int slice_cols, int model_x, int model_y, int model_z,
+                                                 int tid, int step)
+{
+    const int x_max = slice_rows;
+    const int y_max = slice_cols;
+    //tabulate angle later
+    real new_x, new_y, new_z;
+    int round_x, round_y, round_z;
+    real m00 = rot[0]*rot[0] + rot[1]*rot[1] - rot[2]*rot[2] - rot[3]*rot[3];
+    real m01 = 2.0f*rot[1]*rot[2] - 2.0f*rot[0]*rot[3];
+    real m02 = 2.0f*rot[1]*rot[3] + 2.0f*rot[0]*rot[2];
+    real m10 = 2.0f*rot[1]*rot[2] + 2.0f*rot[0]*rot[3];
+    real m11 = rot[0]*rot[0] - rot[1]*rot[1] + rot[2]*rot[2] - rot[3]*rot[3];
+    real m12 = 2.0f*rot[2]*rot[3] - 2.0f*rot[0]*rot[1];
+    real m20 = 2.0f*rot[1]*rot[3] - 2.0f*rot[0]*rot[2];
+    real m21 = 2.0f*rot[2]*rot[3] + 2.0f*rot[0]*rot[1];
+    real m22 = rot[0]*rot[0] - rot[1]*rot[1] - rot[2]*rot[2] + rot[3]*rot[3];
+
+
+    for (int x = 0; x < x_max; x++) {
+        for (int y = tid; y < y_max; y+=step) {
+            //if (mask[y*x_max + x] == 1) {
+            //if (mask[y*x_max + x] == 1) {
+            if (mask[y*x_max + x] == 1 && slice[y*x_max + x] >= 0.0) {
+                /* This is just a matrix multiplication with rot */
+                new_x = m00*x_coordinates[y*x_max+x] + m01*y_coordinates[y*x_max+x] + m02*z_coordinates[y*x_max+x];
+                new_y =	m10*x_coordinates[y*x_max+x] + m11*y_coordinates[y*x_max+x] + m12*z_coordinates[y*x_max+x];
+                new_z = m20*x_coordinates[y*x_max+x] + m21*y_coordinates[y*x_max+x] + m22*z_coordinates[y*x_max+x];
+                /* changed the next lines +0.5 -> -0.5 (11 dec 2012)*/
+                round_x = lroundf(model_x/2.0f - 0.5f + new_x);
+                round_y = lroundf(model_y/2.0f - 0.5f + new_y);
+                round_z = lroundf(model_z/2.0f - 0.5f + new_z);
+
+                //printf(">>>>>round_x = %f", round_x);
+                if (round_x >= 0 && round_x < model_x &&
+                        round_y >= 0 && round_y < model_y &&
+                        round_z >= 0 && round_z < model_z) {
+                    /* this is a simple compile time check that can go bad at runtime, but such is life */
+#if __CUDA_ARCH__ >= 200
+                    atomicAdd(&model[round_z*model_x*model_y + round_y*model_x + round_x], w * slice[y*x_max + x]);
+                    atomicAdd(&weight[round_z*model_x*model_y + round_y*model_x + round_x], w);
+#else
+                    atomicFloatAdd(&model[round_z*model_x*model_y + round_y*model_x + round_x], w * slice[y*x_max + x]);
+                    atomicFloatAdd(&weight[round_z*model_x*model_y + round_y*model_x + round_x], w);
+#endif
+                    //	  model[(round_z*model_x*model_y + round_y*model_x + round_x)] += w * slice[y*x_max + x];
+                    //	  weight[(round_z*model_x*model_y + round_y*model_x + round_x)] += w;
+
+                }
+            }
+        }
+    }
+}
+
+
+
 __device__ void interpolate_model_set(real *model, real *model_weight, int model_x, int model_y, int model_z,
                                       real new_x, real new_y, real new_z, real value, real value_weight)
 {
