@@ -356,3 +356,4 @@ demos/StochasticEMC.cu
 demos/emc_withCenter.cpp
 demos/boot_st.cpp
 demos/boot_st.cpp
+demos/create_slice.cpp

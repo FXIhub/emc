@@ -4,7 +4,6 @@
 
 #ifndef EMC_CUDA_EC_H
 #define EMC_CUDA_EC_H
-
 #include <emc_cuda.h>
 #include <emc_cuda_common.h>
 #include <emc_common.h>
@@ -24,6 +23,10 @@ __device__ real interpolate_model_get(real *model, int model_x, int model_y,
 
 
 __device__ void cuda_get_slice_interpolate(real *model, real *slice, real *rot,
+                                real *x_coordinates, real *y_coordinates, real *z_coordinates,
+                                int slice_rows, int slice_cols, int model_x, int model_y, int model_z,
+                                int tid, int step);
+__device__ void cuda_get_slice_interpolate_NN(real *model, real *slice, real *rot,
                                 real *x_coordinates, real *y_coordinates, real *z_coordinates,
                                 int slice_rows, int slice_cols, int model_x, int model_y, int model_z,
                                 int tid, int step);
@@ -68,7 +71,13 @@ __global__ void insert_slices_kernel(real * images, real * slices, int * mask, r
                           int model_x, int model_y, int model_z);
 __global__ void    replace_slices_kernel(real* d_slices, real* d_average_slice,int* d_msk,int slice_chunk, int N_2d);
 
-
+__global__ void insert_slices_kernel_NN(real * images, real * slices, int * mask, real * respons,
+                          real * scaling, int N_images, int N_2d,
+                          real * slices_total_respons, real * rot,
+                          real * x_coord, real * y_coord, real * z_coord,
+                          real * model, real * weight,
+                          int slice_rows, int slice_cols,
+                          int model_x, int model_y, int model_z);
 //host functions
 /*
 #ifdef __cplusplus 

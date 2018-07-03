@@ -40,9 +40,9 @@ cuda_add_executable(emc_Cen emc_withCenter.cpp)
 cuda_add_cufft_to_target(emc_Cen)
 target_link_libraries(emc_Cen "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
-#cuda_add_executable(emc_pgs emc_pg_sel.cpp)
-#cuda_add_cufft_to_target(emc_pgs)
-#target_link_libraries(emc_pgs "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
+cuda_add_executable(emc_pgs emc_pg_sel.cpp)
+cuda_add_cufft_to_target(emc_pgs)
+target_link_libraries(emc_pgs "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
 
 #QusiOnline files

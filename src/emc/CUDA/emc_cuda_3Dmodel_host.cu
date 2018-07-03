@@ -40,14 +40,13 @@ void cuda_divide_model_by_weight(sp_3matrix * model, real * d_model, real * d_we
     int nblocks = (n+nthreads-1)/nthreads;
     cuda_divide_model_kernel<<<nblocks,nthreads>>>(d_model,d_weight,n);
     cudaThreadSynchronize();
-    cuda_mask_out_model_kernel<<<nblocks,nthreads>>>(d_model,d_weight,n);
+    //cuda_mask_out_model_kernel<<<nblocks,nthreads>>>(d_model,d_weight,n);
 }
 
 void cuda_normalize_model(sp_3matrix *model, real *d_model) {
     int n = sp_3matrix_size(model);
     thrust::device_ptr<real> p(d_model);
     real model_average = cuda_model_average(d_model, sp_3matrix_size(model));
-    printf("model average before normalization = %g\n", model_average);
     //real model_sum = thrust::reduce(p, p+n, real(0), thrust::plus<real>());
     //model_sum /= (real) n;
     thrust::transform(p, p+n,thrust::make_constant_iterator(1.0/model_average), p, thrust::multiplies<real>());
@@ -58,7 +57,6 @@ void cuda_normalize_model_given_mean(sp_3matrix *model, real *d_model, double me
     int n = sp_3matrix_size(model);
     thrust::device_ptr<real> p(d_model);
     real model_average = cuda_model_average(d_model, sp_3matrix_size(model));
-    printf("model average before normalization = %g\n", model_average);
     thrust::transform(p, p+n,thrust::make_constant_iterator(mean/model_average), p, thrust::multiplies<real>());
 
 }

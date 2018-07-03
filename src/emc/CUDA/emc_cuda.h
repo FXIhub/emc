@@ -26,7 +26,7 @@ extern "C" {
 
 const real min_resp = -20.;
 const real min_tol = 1e-10;
-#define INTERPOLATION_METHOD 1 //  0 = NEAREST 1 = LINEAR  2=MIX CUBIC LINEAR
+#define INTERPOLATION_METHOD 1//  0 = NEAREST 1 = LINEAR  2=MIX CUBIC LINEAR
 
 /*
 #ifdef __cplusplus 

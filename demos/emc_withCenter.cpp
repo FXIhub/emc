@@ -353,6 +353,12 @@ int main(int argc, char *argv[]){
         
         /* Find and output the best orientation for each diffraction pattern,
          i.e. the one with the highest responsability. */
+        real* nom = (real* ) malloc(sizeof(real) *N_images);
+        real* den = (real* ) malloc(sizeof(real) *N_images);
+        real* d_nom;
+        real* d_den;
+        cuda_allocate_real(&d_nom,N_images);
+        cuda_allocate_real(&d_den,N_images);
         if (iteration == start_iteration && strcmp(conf.initial_rotations_file, "not used") ==0){
             if(conf.isDebug == 1)
                 printf("DEBUG... ROTFILE ISUSED%s %d\n\n", conf.initial_rotations_file,strcmp(conf.initial_rotations_file, "not used"));
@@ -399,16 +405,14 @@ int main(int argc, char *argv[]){
                 write_best_quat(conf, iteration,rotations, best_rotation, N_images);
             }
         }
-        real* nom = (real* ) malloc(sizeof(real) *N_images);
-        real* den = (real* ) malloc(sizeof(real) *N_images);
-        real* d_nom;
-        real* d_den;
-        cuda_allocate_real(&d_nom,N_images);
-        cuda_allocate_real(&d_den,N_images);
+        cuda_set_to_zero(d_slices,N_2d*slice_chunk);
+        cuda_set_to_zero(d_scaling,N_images*slice_chunk);
+
         cuda_set_to_zero(d_nom,N_images);
         cuda_set_to_zero(d_den,N_images);
         cuda_set_to_zero(d_fit,N_images);
         cuda_set_to_zero(d_fit_best_rot, N_images);
+        cuda_reset_real(d_maxr, N_images);
 
         /*---------------------- Calculate fit start -------------------------*/
         if(conf.calculate_fit){
@@ -674,6 +678,8 @@ int main(int argc, char *argv[]){
         /* start update model */
         cuda_reset_model(model,d_model_updated);
         cuda_reset_model(model_weight,d_model_weight);
+        cuda_set_to_zero(d_slices,N_2d*slice_chunk);
+
         //cout <<"UPDATE MODEL!" <<endl;
         for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
             if (slice_start + slice_chunk >= slice_end) {
@@ -717,19 +723,18 @@ int main(int argc, char *argv[]){
         memcpy(model_weight->data,model_weight_data,N_model*sizeof(real));
         cuda_copy_model_2_device(&d_model,model);
         cuda_copy_model_2_device(&d_model_weight,model_weight);
-        
+         /* When all slice chunks have been compressed we need to divide the
+         model by the model weights. */
+        cuda_divide_model_by_weight(model, d_model, d_model_weight);
+        if (conf.recover_scaling){
+            cuda_normalize_model_given_mean(model, d_model,mean);
+        }
         if (conf.isDebug == 1){
             sum = cuda_model_average(d_model,N_model);
             printf("model average is %g after adding up at %d\n", sum, taskid);
         }
-        /* When all slice chunks have been compressed we need to divide the
-         model by the model weights. */
-        cuda_divide_model_by_weight(model, d_model, d_model_weight);
 
-        
-        if (conf.recover_scaling){
-            cuda_normalize_model_given_mean(model, d_model,mean);
-        }
+
         if (conf.blur_model) {
             cuda_blur_model(d_model, conf.model_side, conf.blur_model_sigma);
         }
@@ -779,9 +784,10 @@ int main(int argc, char *argv[]){
         close_scaling_file(scaling_dataset, scaling_file);
     }
     
-    /* Reset models for a final compression with individual masks. */
     cuda_reset_model(model,d_model_updated);
     cuda_reset_model(model_weight,d_model_weight);
+    cuda_set_to_zero(d_slices,N_2d*slice_chunk);
+
     /* Compress the model one last time for output. This time more
      of the middle data is used bu using individual masks. */
     for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
@@ -862,7 +868,6 @@ int main(int argc, char *argv[]){
         cuda_allocate_model(&d_model_weight,model);
         cuda_allocate_model(&d_model_updated,model);
         //cuda_allocate_model(&d_model_tmp,model);
-
         x_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
         y_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
         z_coordinates = sp_matrix_alloc(conf.model_side,conf.model_side);
@@ -873,6 +878,7 @@ int main(int argc, char *argv[]){
                              y_coordinates,  z_coordinates);
         cuda_reset_model(model,d_model_updated);
         cuda_reset_model(model_weight,d_model_weight);
+        cuda_set_to_zero(d_slices,N_2d*slice_chunk);
         /* Compress the model one last time for output. This time more
          of the middle data is used bu using individual masks. */
         for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
@@ -919,6 +925,56 @@ int main(int argc, char *argv[]){
         /* Copy the final result to the CPU */
         write_model(conf,9999, N_model, model, model_weight);
         write_weight(conf,9999, N_model, model_weight);
+
+        /*************************************TEST TEST TEST ********************************/
+        cuda_set_to_zero(d_slices,N_2d*slice_chunk);
+        cuda_reset_model(model,d_model_updated);
+        cuda_reset_model(model_weight,d_model_weight);
+        for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
+            if (slice_start + slice_chunk >= slice_end) {
+                current_chunk = slice_end - slice_start;
+            } else {
+                current_chunk = slice_chunk;
+            }
+            int current_start = slice_start- slice_backup;
+            if(conf.diff != true_poisson)
+                cuda_update_slices(d_images, d_slices, d_mask,
+                                   d_respons, d_scaling, d_active_images,
+                                   N_images, current_start, current_chunk, N_2d,
+                                   model,d_model_updated, d_x_coord, d_y_coord,
+                                   d_z_coord, &d_rotations[current_start*4],
+                        d_model_weight,images);
+            else{
+                cuda_update_true_poisson_slices_NN(d_images, d_slices, d_mask,
+                                                d_respons, d_scaling, d_active_images,
+                                                N_images, current_start, current_chunk, N_2d,
+                                                model,d_model_updated, d_x_coord, d_y_coord,
+                                                d_z_coord, &d_rotations[current_start*4],
+                        d_model_weight,images);
+            }
+
+        }
+        //model_data = (real*)malloc(N_model*sizeof(real));
+        //model_weight_data = (real*)malloc(N_model*sizeof(real));
+        cuda_copy_model(model, d_model_updated);
+        cuda_copy_model(model_weight,d_model_weight);
+        MPI_Barrier(MPI_COMM_WORLD);
+        Global_Allreduce(model->data,model_data, N_model, MPI_EMC_PRECISION, MPI_SUM, MPI_COMM_WORLD);
+        Global_Allreduce(model_weight->data,model_weight_data,N_model,MPI_EMC_PRECISION, MPI_SUM, MPI_COMM_WORLD);
+        memcpy(model->data,model_data,sizeof(real)*N_model);
+        memcpy(model_weight->data,model_weight_data,N_model*sizeof(real));
+        cuda_copy_model_2_device(&d_model_updated,model);
+        cuda_copy_model_2_device(&d_model_weight,model_weight);
+        cuda_divide_model_by_weight(model, d_model_updated, d_model_weight);
+        if (conf.recover_scaling){
+            cuda_normalize_model_given_mean(model, d_model_updated,mean);
+        }
+        cuda_copy_model(model, d_model_updated);
+        cuda_copy_model(model_weight, d_model_weight);
+
+        /* Copy the final result to the CPU */
+        write_model(conf,9998, N_model, model, model_weight);
+        write_weight(conf,9998, N_model, model_weight);
 
     }
 

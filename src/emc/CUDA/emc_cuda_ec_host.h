@@ -9,6 +9,7 @@
 extern "C"{
 #endif
 */
+
 void cuda_test_interpolate();
 void cuda_get_slices(sp_3matrix * model, real * d_model, real * d_slices, real * d_rot,
                      real * d_x_coordinates, real * d_y_coordinates,
