@@ -105,6 +105,7 @@ void calculate_fit_kernel(real *slices, real *images, int *mask,
     inblock_reduce(sum_cache);
     inblock_reduce(count_cache);
     if (tid == 0) {
+        if(count_cache[0]>0)
         atomicAdd(&fit[i_image], sum_cache[0]*respons[(slice_start+i_slice)*N_images+i_image] /count_cache[0]);
     }
 }

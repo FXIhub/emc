@@ -75,7 +75,7 @@ __global__ void update_slices_true_poisson_kernel(real* images, real* slices, in
         if (norm > 1e-10f) {
             slices[i_slice*N_2d+i] = (sum / norm) ;
         } else {
-            slices[i_slice*N_2d+i] = -1.;
+            slices[i_slice*N_2d+i] = 0.;
         }
     }
 

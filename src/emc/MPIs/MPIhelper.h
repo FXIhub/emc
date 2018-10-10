@@ -11,6 +11,7 @@ void Global_Gatherv(const void *, int , MPI_Datatype , void *, const int *, cons
 
 void Broadcast_Model(sp_3matrix *model, int taskid);
 void Broadcast_3matrix(sp_3matrix *ma, int taskid);
+void MPI_Broadcast_int_list(int* lst, int N_images,int root);
 
 
 #endif // MPIHELPER_H

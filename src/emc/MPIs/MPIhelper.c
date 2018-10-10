@@ -164,6 +164,8 @@ void MPI_Broadcast_Images(sp_matrix ** images, int N_images,int root){
 }
 
 
+
+
 void MPI_Broadcast_Mask(sp_imatrix * mask, int root){
     int* tmp = mask->data;
     printf("broadcasting mask!");

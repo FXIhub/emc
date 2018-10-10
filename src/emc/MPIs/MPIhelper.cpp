@@ -34,3 +34,8 @@ void Broadcast_3matrix(sp_3matrix *ma, int root){
     MPI_Bcast(tmp, (ma->x)*(ma->y)*(ma->z),MPI_INT, root,MPI_COMM_WORLD);
     ma->data = tmp;
 }
+
+void MPI_Broadcast_int_list(int* lst, int N_images,int root){
+    MPI_Bcast(lst,N_images,MPI_INT,root,MPI_COMM_WORLD);
+    printf("broadcasting list done!\n");
+}

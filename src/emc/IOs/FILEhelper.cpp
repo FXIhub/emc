@@ -119,5 +119,8 @@ void write_final_model(Configuration conf, int N_model, sp_3matrix *model,sp_3ma
     sp_image_write(model_out,filename_buffer,0);
 }
 
-
+int close_file(FILE* f)
+{
+    return fclose(f);
+}
 

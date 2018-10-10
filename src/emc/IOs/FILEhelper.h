@@ -25,5 +25,6 @@ void write_weight(Configuration conf, int iteration, int N_model, sp_3matrix *we
 void write_time(FILE* file, double exeTime, int iteration);
 void write_quat(FILE* fl, Quaternion* rotations, int best_rotation);
 void write_time_by_step(FILE* file, double exeTime, int iteration,const char* step);
+int close_file(FILE* f);
 
 #endif // FILE_HELPER_H

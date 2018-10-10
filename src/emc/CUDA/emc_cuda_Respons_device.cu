@@ -77,11 +77,14 @@ void cuda_calculate_responsability_true_poisson (float *slice, float *image, int
     const int i_max = N_2d;
     real count = 0;
     for (int i = tid; i < i_max; i+=step) {
-      if ( slice[i]>0&&mask[i] != 0){ //should have the condition on
-            real low =slice[i]>0? logf(slice[i]) :0;
+      if ( slice[i]>0&&mask[i] != 0 && image[i]>0){ //should have the condition on
+            real low = logf(slice[i]);
             real lop = scaling>0?logf(scaling):0;
-            real loi = image[i] >0?-image[i] * logf(image[i])  +image[i]-1:0;
-            sum += ( image[i]*low +  image[i]*lop - scaling*slice[i] +loi )*weight_map[i];
+            //{\displaystyle \ln n!\approx n\ln n-n+{\tfrac {1}{6}}\ln(8n^{3}+4n^{2}+n+{\tfrac {1}{30}})+{\tfrac {1}{2}}\ln \pi }.
+            real loi = image[i] * logf(image[i])  -image[i] + 0.5*logf(2*3.141592653*image[i]) +
+                                   1/(12*image[i]) -1/(360*pow(image[i],3)) +1/(1260*pow(image[i],5) -
+                                   1/(1680*pow(image[i],7)));
+            sum += ( image[i]*low +  image[i]*lop - scaling*slice[i] - loi )*weight_map[i];
             count += weight_map[i];
       }
     }

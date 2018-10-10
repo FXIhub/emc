@@ -27,6 +27,8 @@ sp_matrix **read_images_cxi(const char *filename, const char *image_identifier, 
                             const int number_of_images, const int image_side, const int binning_factor,
                             sp_imatrix **list_of_masks);
 sp_matrix **read_images(Configuration conf, sp_imatrix **masks);
+sp_matrix **read_images_by_list(Configuration conf, sp_imatrix **masks,int* lst);
+
 sp_imatrix *read_mask(Configuration conf);
 void write_run_info(char *filename, Configuration conf, int random_seed);
 hid_t open_state_file(char *filename);

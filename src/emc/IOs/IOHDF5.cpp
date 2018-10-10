@@ -285,6 +285,81 @@ sp_matrix **read_images_cxi(const char *filename, const char *image_identifier, 
 }
 
 
+sp_matrix **read_images_by_list(Configuration conf, sp_imatrix **masks, int* lst)
+{
+    sp_matrix **images = (sp_matrix**)malloc(conf.number_of_images*sizeof(sp_matrix *));
+    //masks = malloc(conf.number_of_images*sizeof(sp_imatrix *));
+    Image *img;
+    real *intensities = (real*)malloc(conf.number_of_images*sizeof(real));
+    char filename_buffer[PATH_MAX];
+
+    for (int i = 0; i < conf.number_of_images; i++) {
+        intensities[i] = 1.0;
+    }
+
+    for (int i = 0; i < conf.number_of_images; i++) {
+        sprintf(filename_buffer,"%s%.4d.h5", conf.image_prefix, lst[i]);
+        img = sp_image_read(filename_buffer,0);
+
+        /* Allocate return arrays */
+        images[i] = sp_matrix_alloc(conf.model_side,conf.model_side);
+        masks[i] = sp_imatrix_alloc(conf.model_side,conf.model_side);
+
+        /* The algorithm can't handle negative data so if we have negative
+         values they are simply set to 0. */
+        for (int pixel_i = 0; pixel_i < sp_image_size(img); pixel_i++) {
+            if (sp_real(img->image->data[pixel_i]) < 0.) {
+                sp_real(img->image->data[pixel_i]) = 0.;
+            }
+        }
+
+        /* Downsample images and masks by nested loops of all
+         downsampled pixels and then all subpixels. */
+        real pixel_sum, pixel_this;
+        int mask_sum, mask_this;
+        int transformed_x, transformed_y;
+        for (int x = 0; x < conf.model_side; x++) {
+            for (int y = 0; y < conf.model_side; y++) {
+                pixel_sum = 0.0;
+                mask_sum = 0;
+                /* Step through all sub-pixels and add up values */
+                for (int xb = 0; xb < conf.image_binning; xb++) {
+                    for (int yb = 0; yb < conf.image_binning; yb++) {
+                        transformed_x = sp_image_x(img)/2 - (conf.model_side/2)*conf.image_binning + x*conf.image_binning + xb;
+                        transformed_y = sp_image_y(img)/2 - (conf.model_side/2)*conf.image_binning + y*conf.image_binning + yb;
+                        if (transformed_x >= 0 && transformed_x < sp_image_x(img) &&
+                                transformed_y >= 0 && transformed_y < sp_image_y(img)) {
+                            pixel_this = sp_cabs(sp_image_get(img, transformed_x, transformed_y, 0)) ;
+                            mask_this = sp_image_mask_get(img,  transformed_x, transformed_y, 0);
+                        } else {
+                            pixel_this = 0.;
+                            mask_this = 0;
+                        }
+                        if (mask_this > 0) {
+                            pixel_sum += pixel_this;
+                            mask_sum += 1;
+                        }
+                    }
+                }
+                /* As long as there were at least one subpixel contributin to the
+                 pixel (that is that was not masked out) we include the data and
+                 don't mask out the pixel. */
+                if (mask_sum > 0) {
+                 //for tmp use
+                    sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
+                    sp_imatrix_set(masks[i],x,y,1);
+                } else {
+                    sp_matrix_set(images[i],x,y,0.);
+                    sp_imatrix_set(masks[i],x,y,0);
+                }
+            }
+        }
+        sp_image_free(img);
+    }
+    return images;
+}
+
+
 /* Read images in spimage format and read the individual masks. The
  masks pointer should be allocated before calling, it is not
  allocated by this function. */
