@@ -17,11 +17,9 @@ real cuda_model_max(real * model, int model_size){
 real cuda_model_diff(real* d_model,real * d_model_updated,int N_model){
     thrust::device_ptr<real> p(d_model);
     thrust::device_ptr<real> p1(d_model_updated);
-    //thrust::transform(p, p + N_model, p1, p1,  absolute_difference<real>());
-    thrust::transform(p, p + N_model, p1, p1,  rel_difference<real>());
-
+    thrust::transform(p, p + N_model, p1, p1,  absolute_difference<real>());
+    //thrust::transform(p, p + N_model, p1, p1,  rel_difference<real>());
     real sum_diff = thrust::reduce(p1, p1+N_model, real(0), thrust::plus<real>());
-
     return sum_diff;
 }
 

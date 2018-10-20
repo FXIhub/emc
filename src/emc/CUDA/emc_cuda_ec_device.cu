@@ -39,7 +39,7 @@ __device__ void cuda_get_slice(real *model, real *slice,
                     round_z > 0 && round_z < model_z) {
                 slice[y*x_max+x] = model[round_z*model_x*model_y + round_y*model_x + round_x];
             }else{
-                slice[y*x_max+x] = -1.0f;
+                slice[y*x_max+x] = 0;//-1.0f;
             }
         }
     }
@@ -122,12 +122,15 @@ __device__ real interpolate_model_get(real *model, int model_x, int model_y, int
             }
         }
         if (interp_weight > 0.) {
-            return interp_sum / interp_weight;
+            //nv = interp_sum / interp_weight;
+            return interp_sum / interp_weight;  
         } else {
-            return -1.0f;
+            //nv = 0.0f;
+            return 0.0f;//-1.0f;
         }
     } else {
-        return -1.0f;
+        return 0.0f;// -1.0f;
+       // nv =0.0f;
     }
 }
 
@@ -166,7 +169,7 @@ __device__ void cuda_get_slice_interpolate_NN(real *model, real *slice, real *ro
                     round_z > 0 && round_z < model_z) {
                 slice[y*x_max+x] = model[round_z*model_x*model_y + round_y*model_x + round_x];
             }else{
-                slice[y*x_max+x] = -1.0f;
+                slice[y*x_max+x] = 0.0f;//-1.0f;
             }
     }
     }

@@ -28,6 +28,8 @@ void cuda_allocate_coords(real ** d_x, real ** d_y, real ** d_z, sp_matrix * x,
                           sp_matrix * y, sp_matrix * z);
 
 void cuda_allocate_weight_map(real **, int );
+void cuda_set_real_array(real **d_array, int n, real value);
+
 void cuda_copy_weight_to_device(real *x, real *d_x, int n, int taskid);
 void cuda_reset_real(real *d_real, int len);
 void cuda_copy_real(real *dst, real *src, int n);

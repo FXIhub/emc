@@ -24,9 +24,9 @@ cuda_add_cufft_to_target(emc)
 target_link_libraries(emc "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
 
-cuda_add_executable(emc_dis emc_dis.cpp)
-cuda_add_cufft_to_target(emc_dis)
-target_link_libraries(emc_dis "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
+#cuda_add_executable(emc_dis emc_dis.cpp)
+#cuda_add_cufft_to_target(emc_dis)
+#target_link_libraries(emc_dis "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
 #cuda_add_executable(emc_double_mask emc_double_mask.cpp)
 #cuda_add_cufft_to_target(emc_double_mask)
@@ -40,10 +40,21 @@ cuda_add_executable(emc_Cen emc_withCenter.cpp)
 cuda_add_cufft_to_target(emc_Cen)
 target_link_libraries(emc_Cen "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
-cuda_add_executable(emc_pgs emc_pg_sel.cpp)
-cuda_add_cufft_to_target(emc_pgs)
-target_link_libraries(emc_pgs "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
+#cuda_add_executable(emc_R emc_withC_randImage.cpp)
+#cuda_add_cufft_to_target(emc_R)
+#target_link_libraries(emc_R "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
+#random rotation, forced the last patterns always in the bootstrap
+#cuda_add_executable(emc_RF emc_withC_randImageF.cpp)
+#cuda_add_cufft_to_target(emc_RF)
+#target_link_libraries(emc_RF "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
+
+#cuda_add_executable(emc_pgs emc_pg_sel.cpp)
+#cuda_add_cufft_to_target(emc_pgs)
+#target_link_libraries(emc_pgs "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
+cuda_add_executable(emc_bestslices emc_GetSlices_byRotationH5.cpp)
+cuda_add_cufft_to_target(emc_bestslices)
+target_link_libraries(emc_bestslices "-dlink"  ${SPIMAGE_LIBRARIES} ${HDF5_LIBRARIES} emcLib)
 
 #QusiOnline files
 #cuda_add_executable(Qusi1 QusiOnline_EMC_V1.cpp)

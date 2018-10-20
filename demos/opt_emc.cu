@@ -713,6 +713,7 @@ int main(int argc, char *argv[]){
             int current_start = slice_start- slice_backup;
             if(conf.isDebug == 1){
                 //calculate Wij then call insert slices
+                // W_ij = \sum_k P_jk K_ik / sum_j P_jk phi_jk
                 //cublasStatus_t cublasSgemm(cublasHandle_t handle,  transa,  transb, int m, int n, int k,  *alpha,
                 //const float *A, int lda, const float *B, int ldb, const float *beta,float  *C, int ldc)
                 //op ( A ) m × k , op ( B ) k × n and C m × n
@@ -741,7 +742,7 @@ int main(int argc, char *argv[]){
                         d_model_weight,images);
 
             }else{
-                cuda_update_slices(d_images, d_slices, d_mask,
+                cuda_update_slices_poisson(d_images, d_slices, d_mask,
                                    d_respons, d_scaling, d_active_images,
                                    N_images, current_start, current_chunk, N_2d,
                                    model,d_model_updated, d_x_coord, d_y_coord,
@@ -811,6 +812,7 @@ int main(int argc, char *argv[]){
     fclose(fit_file);
     fclose(fit_best_rot_file);
     fclose(radial_fit_file);
+    fclose(timeFileStep);
     if (conf.calculate_r_free) {
         fclose(r_free);
     }

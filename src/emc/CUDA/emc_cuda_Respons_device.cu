@@ -77,15 +77,23 @@ void cuda_calculate_responsability_true_poisson (float *slice, float *image, int
     const int i_max = N_2d;
     real count = 0;
     for (int i = tid; i < i_max; i+=step) {
-      if ( slice[i]>0&&mask[i] != 0 && image[i]>0){ //should have the condition on
-            real low = logf(slice[i]);
-            real lop = scaling>0?logf(scaling):0;
+      //if ( slice[i]>0.0f && mask[i] != 0 && image[i]>=0.0f  && scaling>0.0f){ //should have the condition on
+        real phiW = scaling*slice[i];
+        if (  mask[i] != 0  && phiW > 1e-10){ //should have the condition on
+  
+            //real low = slice[i]>0? logf(slice[i]):-1000;
+            //real lop = scaling>0?logf(scaling):-1000;   
+            //real low = slice[i]>0? logf(slice[i]):0;
+            //real lop = scaling>0?logf(scaling):0;
             //{\displaystyle \ln n!\approx n\ln n-n+{\tfrac {1}{6}}\ln(8n^{3}+4n^{2}+n+{\tfrac {1}{30}})+{\tfrac {1}{2}}\ln \pi }.
-            real loi = image[i] * logf(image[i])  -image[i] + 0.5*logf(2*3.141592653*image[i]) +
+            /*real loi = image[i] * logf(image[i])  -image[i] + 0.5*logf(2*3.141592653*image[i]) +
                                    1/(12*image[i]) -1/(360*pow(image[i],3)) +1/(1260*pow(image[i],5) -
-                                   1/(1680*pow(image[i],7)));
-            sum += ( image[i]*low +  image[i]*lop - scaling*slice[i] - loi )*weight_map[i];
-            count += weight_map[i];
+                                   1/(1680*pow(image[i],7)));*/
+            //sum += ( image[i]*low +  image[i]*lop - scaling*slice[i] - loi );//*weight_map[i];
+            //phiW = phiW >1e-1? phiW:1e-1;
+
+            sum += floor(image[i])*logf(phiW) - phiW;
+            count += 1; 
       }
     }
     sum_cache[tid] = sum;
@@ -209,7 +217,7 @@ void calculate_responsabilities_kernel(float * slices, float * images, int * mas
     inblock_reduce(count_cache);
     if(tid == 0 ){
         if ( diff == true_poisson)
-            respons[(slice_start+i_slice)*N_images+i_image] =sum_cache[0]/count_cache[0];
+            respons[(slice_start+i_slice)*N_images+i_image] = sum_cache[0]/weight_map[0];
         else
             respons[(slice_start+i_slice)*N_images+i_image] = -sum_cache[0]/2.0/count_cache[0]/pow(sigma,2);
     }
@@ -378,15 +386,16 @@ __global__ void cuda_respons_max_expf_kernel(real* respons,real* d_tmp,real* max
     cache[tid] = 0;
 
     for (int i_slice = tid; i_slice < N_slices; i_slice+= step) {
-        respons[i_slice*N_images+i_image] =respons[i_slice*N_images+i_image] - max[i_image];
+        respons[i_slice*N_images+i_image] = respons[i_slice*N_images+i_image] - max[i_image];
     }
     for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
-        if (respons[i_slice*N_images+i_image] > min_resp) {
+        //if (respons[i_slice*N_images+i_image] > min_resp) {
             respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
             cache[tid] += respons[i_slice*N_images+i_image];
-        } else {
-            respons[i_slice*N_images+i_image] = 0.0f;
-        }
+       // }
+       // else {
+       //  respons[i_slice*N_images+i_image] = 0.0f;
+      // }
     }
     __syncthreads();
     inblock_reduce(cache);
@@ -399,10 +408,10 @@ __global__ void cuda_norm_respons_sumexpf_kernel(real * respons,  real* d_sum, r
     int step = blockDim.x;
     for (int i_slice = tid; i_slice < allocate_slices; i_slice += step) {
         //real tmp = expf(respons[i_slice*N_images + i_image] -d_sum[i_image]);
-        //if(tmp > -1.0e10f)
+        //if(  tmp> -1.0e10f)
         respons [i_slice*N_images + i_image] =  respons [i_slice*N_images + i_image] / d_sum[i_image];
         //else
-        //respons [i_slice*N_images + i_image] =0;
+        //respons [i_slice*N_images + i_image] =0.0f;
     }
 }
 

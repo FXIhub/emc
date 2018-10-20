@@ -295,6 +295,16 @@ void cuda_allocate_weight_map(real **d_weight_map, int image_side) {
     thrust::fill(p, p+image_side*image_side, real(1));
 }
 
+void cuda_set_real_array(real **d_array, int n, real value) {
+    thrust::device_ptr<real> p(*d_array);
+    thrust::fill(p, p+n, value);
+    cudaError_t status = cudaGetLastError();
+    if(status != cudaSuccess){
+        printf("CUDA Error (cuda_set_real_array: copy): %s\n",cudaGetErrorString(status));
+    }
+
+}
+
 void cuda_copy_weight_to_device(real *x, real *d_x, int n, int taskid){
     int y=taskid * n;
     cudaMemcpy(d_x,&(x[y]),n*sizeof(real),cudaMemcpyHostToDevice);

@@ -103,6 +103,7 @@ void insert_slice(sp_3matrix *model, sp_3matrix *weight, sp_matrix *slice,
                     round_z >= 0 && round_z < sp_3matrix_z(model)) {
                     sp_3matrix_set(model,round_x,round_y,round_z,
                                    sp_3matrix_get(model,round_x,round_y,round_z)+w*sp_matrix_get(slice,x,y));
+                    //sp_3matrix_set(weight,round_x,round_y,round_z,sp_3matrix_get(weight,round_x,round_y,round_z)+w);                    
                     sp_3matrix_set(weight,round_x,round_y,round_z,sp_3matrix_get(weight,round_x,round_y,round_z)+w);
                 }
             }// end of if

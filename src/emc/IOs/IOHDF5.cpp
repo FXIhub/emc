@@ -346,7 +346,8 @@ sp_matrix **read_images_by_list(Configuration conf, sp_imatrix **masks, int* lst
                  don't mask out the pixel. */
                 if (mask_sum > 0) {
                  //for tmp use
-                    sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
+//                    sp_matrix_set(images[i],x,y,int(pixel_sum));                    
+                    sp_matrix_set(images[i],x,y,floor(pixel_sum/(real)mask_sum*conf.image_binning));
                     sp_imatrix_set(masks[i],x,y,1);
                 } else {
                     sp_matrix_set(images[i],x,y,0.);
@@ -424,7 +425,9 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
                  don't mask out the pixel. */
                 if (mask_sum > 0) {
                  //for tmp use
-                    sp_matrix_set(images[i],x,y,pixel_sum/(real)mask_sum);
+                    sp_matrix_set(images[i],x,y,floor(pixel_sum/(real)mask_sum*(real)conf.image_binning));                    
+                    //sp_matrix_set(images[i],x,y,(pixel_sum/(real)mask_sum));
+                    //sp_matrix_set(images[i],x,y,int(pixel_sum));                    
                     sp_imatrix_set(masks[i],x,y,1);
                 } else {
                     sp_matrix_set(images[i],x,y,0.);
@@ -572,6 +575,10 @@ void close_state_file(hid_t file_id) {
  pointers and returns the number of rotations. */
 int read_rotations_file(const char *filename, Quaternion **rotations, real **weights) {
     hid_t file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (file_id ==-1){
+        printf("Fail to open rotation file, exit program!\n");
+        exit(-1);
+    }
     hid_t dataset_id = H5Dopen1(file_id, "/rotations");
     hid_t space_id = H5Dget_space(dataset_id);
     hsize_t dims[2];
@@ -591,7 +598,7 @@ int read_rotations_file(const char *filename, Quaternion **rotations, real **wei
          memcpy(this_quaternion->q, &input_array[i_slice*5], 4*sizeof(real));
          (*rotations)[i_slice] = this_quaternion;
          (*weights)[i_slice] = input_array[i_slice*5+4];
-         */
+         */       
         Quaternion this_quaternion;
         memcpy(this_quaternion.q, &input_array[i_slice*5], 4*sizeof(real));
         (*rotations)[i_slice] = this_quaternion;
