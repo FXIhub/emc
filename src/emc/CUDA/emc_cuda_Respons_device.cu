@@ -387,16 +387,17 @@ __global__ void cuda_respons_max_expf_kernel(real* respons,real* d_tmp,real* max
 
     for (int i_slice = tid; i_slice < N_slices; i_slice+= step) {
         respons[i_slice*N_images+i_image] = respons[i_slice*N_images+i_image] - max[i_image];
+        cache[tid] += expf(respons[i_slice*N_images+i_image]);
     }
-    for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
+    /*for (int i_slice = tid; i_slice < N_slices; i_slice+=step) {
         //if (respons[i_slice*N_images+i_image] > min_resp) {
             respons[i_slice*N_images+i_image] = expf(respons[i_slice*N_images+i_image]);
-            cache[tid] += respons[i_slice*N_images+i_image];
+            cache[tid] += (respons[i_slice*N_images+i_image]);
        // }
        // else {
        //  respons[i_slice*N_images+i_image] = 0.0f;
       // }
-    }
+    }*/
     __syncthreads();
     inblock_reduce(cache);
     d_sum[i_image] = cache[0];
@@ -406,12 +407,14 @@ __global__ void cuda_norm_respons_sumexpf_kernel(real * respons,  real* d_sum, r
     int i_image = blockIdx.x;
     int tid = threadIdx.x;
     int step = blockDim.x;
-    for (int i_slice = tid; i_slice < allocate_slices; i_slice += step) {
-        //real tmp = expf(respons[i_slice*N_images + i_image] -d_sum[i_image]);
-        //if(  tmp> -1.0e10f)
-        respons [i_slice*N_images + i_image] =  respons [i_slice*N_images + i_image] / d_sum[i_image];
-        //else
-        //respons [i_slice*N_images + i_image] =0.0f;
+    for (int i_slice = tid; i_slice < allocate_slices; i_slice += step) {        
+        // respons [i_slice*N_images + i_image] / d_sum[i_image];
+        //real tmp = expf(respons[i_slice*N_images + i_image] -logf(d_sum[i_image]));
+        /*if(  tmp> 1.0e-10f)
+        respons [i_slice*N_images + i_image] =tmp;
+        else
+        respons [i_slice*N_images + i_image] =0.0f;*/
+        respons [i_slice*N_images + i_image] = expf(respons[i_slice*N_images + i_image] -logf(d_sum[i_image]));
     }
 }
 

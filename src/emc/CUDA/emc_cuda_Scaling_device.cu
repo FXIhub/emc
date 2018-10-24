@@ -68,8 +68,8 @@ __device__ real calculate_scaling_true_poisson(real *image, real *slice, int *ma
     sum_cache[tid] = 0.;
     weight_cache[tid] = 0.;
     for (int i = tid; i < N_2d; i+=step) {
-        if (mask[i] > 0 && slice[i] > 1.e-10 && image[i] >1e-10) {        
-        //if (mask[i] > 0) {
+        //if (mask[i] > 0 && slice[i] > 1.e-10 && image[i] >1e-10) {        
+        if (mask[i] > 0) {
             //sum_cache[tid] += (image[i])* (image[i]);
             //weight_cache[tid] += slice[i]* (image[i]);
             sum_cache[tid] += image[i];

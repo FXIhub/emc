@@ -90,19 +90,19 @@ void insert_slices_kernel(real * images, real * slices, int * mask, real * respo
     real total_respons = slices_total_respons[i_slice];
     if (INTERPOLATION_METHOD ==0)
     {
-        if(total_respons > 1e-10f){
+        //if(total_respons > 1e-10f){
             cuda_insert_slice_interpolate_NN(model, weight, &slices[i_slice*N_2d], mask, total_respons,
                     &rot[4*i_slice], x_coord, y_coord, z_coord,
                     slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
-        }
+        //}
     }
     else{
-        if(total_respons > 1e-10f){
+        //if(total_respons > 1e-10f){
             cuda_insert_slice_interpolate(model, weight, &slices[i_slice*N_2d], mask, total_respons,
                     &rot[4*i_slice], x_coord, y_coord, z_coord,
                     slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
 
-        }
+       // }
     }
 }
 
@@ -113,9 +113,7 @@ __global__
 void     replace_slices_kernel(real* d_slices, real* d_average_slice,int* d_msk,int slice_chunk, int N_2d){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < slice_chunk*N_2d) {
-        //d_slices[i] = d_slices[i]>0?d_slices[i]:d_average_slice[i%N_2d];
         d_slices[i] = d_msk[i%N_2d] ==0?-1:d_slices[i];
-
     }
 }
 
@@ -135,11 +133,11 @@ void insert_slices_kernel_NN(real * images, real * slices, int * mask, real * re
     int step = blockDim.x;
     real total_respons = slices_total_respons[i_slice];
 
-    if(total_respons > 1e-10f){
+    //if(total_respons > 1e-10f){
         cuda_insert_slice_interpolate_NN(model, weight, &slices[i_slice*N_2d], mask, total_respons,
                 &rot[4*i_slice], x_coord, y_coord, z_coord,
                 slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
-    }
+    //}
 
 }
 
