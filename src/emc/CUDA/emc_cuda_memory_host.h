@@ -35,7 +35,6 @@ void cuda_reset_real(real *d_real, int len);
 void cuda_copy_real(real *dst, real *src, int n);
 void cuda_mem_free(real * d);
 void cuda_copy_model_2_device (real ** d_model, sp_3matrix * model);
-
 void cuda_copy_rotations_chunk(real ** d_rotations, Quaternion * rotations, int start, int end);
 
 #endif

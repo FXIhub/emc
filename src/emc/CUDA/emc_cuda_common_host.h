@@ -3,6 +3,7 @@
 
 int compare(const void *a, const void *b);
 void cuda_max_vector(real* d_matrix, int N_images, int N_slices, real* d_maxr);
-void cuda_vector_divide(real* nom, real* den, int N);
+void cuda_matrix_scalar(real* d_matrix, int N_images, int N_slices, real d_scalar);
+
 
 #endif

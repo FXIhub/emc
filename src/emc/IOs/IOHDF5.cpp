@@ -424,10 +424,14 @@ sp_matrix **read_images(Configuration conf, sp_imatrix **masks)
                  pixel (that is that was not masked out) we include the data and
                  don't mask out the pixel. */
                 if (mask_sum > 0) {
-                 //for tmp use
+                 //for tmp use                   
+                    //sp_matrix_set(images[i],x,y,(pixel_sum/(real)mask_sum*(real)conf.image_binning*(real)conf.image_binning));                    
                     sp_matrix_set(images[i],x,y,floor(pixel_sum/(real)mask_sum*(real)conf.image_binning));                    
+                     //sp_matrix_set(images[i],x,y,(pixel_sum/(real)mask_sum*(real)conf.image_binning));                    
+
+                    //sp_matrix_set(images[i],x,y,floor(pixel_sum/(real)mask_sum*(real)conf.image_binning));                    
                     //sp_matrix_set(images[i],x,y,(pixel_sum/(real)mask_sum));
-                    //sp_matrix_set(images[i],x,y,int(pixel_sum));                    
+                    //sp_matrix_set(images[i],x,y,floor(pixel_sum));                    
                     sp_imatrix_set(masks[i],x,y,1);
                 } else {
                     sp_matrix_set(images[i],x,y,0.);

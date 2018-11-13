@@ -50,7 +50,7 @@ __device__ real calculate_scaling_relative(real *image, real *slice, int *mask, 
     sum_cache[tid] = 0.;
     weight_cache[tid] = 0;
     for (int i = tid; i < N_2d; i+=step) {
-        if (mask[i] > 0 && slice[i] > 1.e-10) {
+        if (mask[i] > 0 && slice[i] > 1.e-15) {
             sum_cache[tid] += image[i]*image[i]/(slice[i]*slice[i]) * weight_map[i];
             weight_cache[tid] += image[i]/slice[i] * weight_map[i];
         }
@@ -70,10 +70,12 @@ __device__ real calculate_scaling_true_poisson(real *image, real *slice, int *ma
     for (int i = tid; i < N_2d; i+=step) {
         //if (mask[i] > 0 && slice[i] > 1.e-10 && image[i] >1e-10) {        
         if (mask[i] > 0) {
-            //sum_cache[tid] += (image[i])* (image[i]);
-            //weight_cache[tid] += slice[i]* (image[i]);
-            sum_cache[tid] += image[i];
-            weight_cache[tid] += slice[i];
+            //sum_cache[tid] += floor(image[i]);
+            //weight_cache[tid] += floor(slice[i]);
+            sum_cache[tid] += ceil(image[i]);
+            weight_cache[tid] += ceil(slice[i]);
+            //sum_cache[tid] += (image[i]);
+            //weight_cache[tid] += (slice[i]);
         }
     }
     inblock_reduce(sum_cache);

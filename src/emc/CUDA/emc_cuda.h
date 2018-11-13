@@ -18,6 +18,7 @@ extern "C" {
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/functional.h>
+#include <thrust/transform.h>
 #include <cufft.h>
 #include <emc_cuda_common.h>
 #include <emc_cuda_common_host.h>

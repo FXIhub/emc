@@ -41,6 +41,9 @@ struct rel_difference //: public unary_function<T,T>
   }
 };
 
+
+
+
 template<typename T>
 __device__ void inblock_reduce(T * data){
     __syncthreads();
@@ -101,6 +104,8 @@ __device__ inline void atomicFloatAdd(float *address, float val)
 }
 
 __global__ void cuda_calculate_max_vectors_kernel(real* respons, int N_images, int N_slices, real* d_maxr);
-__global__ void cuda_vector_divide_kernel(real * nom, real * den, int n);
+
+__global__ void cuda_matrix_scalar_kernel(real* mat, int Nx, int Ny, real scalar);
+
 
 #endif

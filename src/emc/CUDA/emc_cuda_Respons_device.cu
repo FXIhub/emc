@@ -78,8 +78,11 @@ void cuda_calculate_responsability_true_poisson (float *slice, float *image, int
     real count = 0;
     for (int i = tid; i < i_max; i+=step) {
       //if ( slice[i]>0.0f && mask[i] != 0 && image[i]>=0.0f  && scaling>0.0f){ //should have the condition on
-        real phiW = scaling*slice[i];
-        if (  mask[i] != 0  && phiW > 1e-10){ //should have the condition on
+        //real phiW = scaling*floor(slice[i]);
+    
+        real phiW = scaling*ceil(slice[i]);
+
+        if (  mask[i] > 0 && phiW > 0){ //should have the condition on
   
             //real low = slice[i]>0? logf(slice[i]):-1000;
             //real lop = scaling>0?logf(scaling):-1000;   
@@ -91,8 +94,8 @@ void cuda_calculate_responsability_true_poisson (float *slice, float *image, int
                                    1/(1680*pow(image[i],7)));*/
             //sum += ( image[i]*low +  image[i]*lop - scaling*slice[i] - loi );//*weight_map[i];
             //phiW = phiW >1e-1? phiW:1e-1;
-
-            sum += floor(image[i])*logf(phiW) - phiW;
+            sum += ceil(image[i])*logf(phiW) - phiW;
+            //sum += floor(image[i])*logf(phiW) - phiW;
             count += 1; 
       }
     }
@@ -398,8 +401,8 @@ __global__ void cuda_respons_max_expf_kernel(real* respons,real* d_tmp,real* max
        //  respons[i_slice*N_images+i_image] = 0.0f;
       // }
     }*/
-    __syncthreads();
     inblock_reduce(cache);
+     //__syncthreads();
     d_sum[i_image] = cache[0];
 }
 

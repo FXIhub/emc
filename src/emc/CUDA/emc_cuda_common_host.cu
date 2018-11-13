@@ -11,13 +11,14 @@ void cuda_max_vector(real* d_matrix, int N_images, int N_slices, real* d_maxr){
     }
 }
 
-void cuda_vector_divide(real* nom, real* den, int N){
-    int nblocks = N;
+void cuda_matrix_scalar(real* d_matrix, int N_images, int N_slices, real d_scalar){
+    int nblocks = N_images;
     int nthreads= TNUM;
-    cuda_vector_divide_kernel <<<nblocks, nthreads>>> (nom, den, N);
+    // printf("In cuda_max_vector  %d %d\n", N_images,N_slices);
+    cuda_matrix_scalar_kernel <<<nblocks, nthreads>>>(d_matrix,N_images,N_slices,d_scalar);
     cudaError_t status = cudaGetLastError();
     if(status != cudaSuccess){
-        printf("CUDA Error (Res max vector): %s\n",cudaGetErrorString(status));
+        printf("CUDA Error (cuda_matrix_scalar): %s\n",cudaGetErrorString(status));
     }
 }
 

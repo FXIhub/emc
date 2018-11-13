@@ -21,15 +21,12 @@ __global__ void cuda_calculate_max_vectors_kernel(real* respons, int N_images, i
     d_maxr[i_image]=max;
 }
 
-__global__
-void cuda_vector_divide_kernel(real * nom, real * den, int n){
-    int i = threadIdx.x + blockIdx.x*blockDim.x;
-    if (i < n) {
-        if(den[i] > 0.0f){
-            nom[i] /= den[i];
-        }else{
-            nom[i] = -1.f;
-        }
+__global__ void cuda_matrix_scalar_kernel(real* mat, int Nx, int Ny, real scalar){
+    int i_image = blockIdx.x;
+    int tid = threadIdx.x;
+    int step = blockDim.x;
+    for(int i_slice = tid;i_slice < Ny;i_slice += step){
+        mat[i_slice*Nx+i_image] *= scalar;
     }
-    __syncthreads();
+    
 }

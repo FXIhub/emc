@@ -102,7 +102,7 @@ void insert_slices_kernel(real * images, real * slices, int * mask, real * respo
                     &rot[4*i_slice], x_coord, y_coord, z_coord,
                     slice_rows, slice_cols, model_x, model_y, model_z, tid, step);
 
-       // }
+       //}
     }
 }
 

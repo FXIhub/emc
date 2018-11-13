@@ -37,7 +37,10 @@ __device__ void cuda_get_slice(real *model, real *slice,
             if (round_x > 0 && round_x < model_x &&
                     round_y > 0 && round_y < model_y &&
                     round_z > 0 && round_z < model_z) {
-                slice[y*x_max+x] = model[round_z*model_x*model_y + round_y*model_x + round_x];
+                        if (model[round_z*model_x*model_y + round_y*model_x + round_x] >0)
+                            slice[y*x_max+x] = model[round_z*model_x*model_y + round_y*model_x + round_x];
+                        else
+                            slice[y*x_max+x] = 0;
             }else{
                 slice[y*x_max+x] = 0;//-1.0f;
             }
@@ -121,7 +124,7 @@ __device__ real interpolate_model_get(real *model, int model_x, int model_y, int
                 }
             }
         }
-        if (interp_weight > 0.) {
+        if (interp_weight > 0. && interp_sum >0.) {
             //nv = interp_sum / interp_weight;
             return interp_sum / interp_weight;  
         } else {

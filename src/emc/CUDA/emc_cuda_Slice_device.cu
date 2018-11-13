@@ -66,22 +66,21 @@ __global__ void update_slices_true_poisson_kernel(real* images, real* slices, in
         for (int i_image = 0; i_image < N_images; i_image++) {
             if (mask[i] != 0 && active_images[i_image] > 0) {
                 //if(images[i_image*N_2d+i]<cutoff){
-                sum += images[i_image*N_2d+i] *  respons[(slice_start+i_slice)*N_images+i_image];
+                sum += (images[i_image*N_2d+i]) *  respons[(slice_start+i_slice)*N_images+i_image];
                 norm +=   respons[(slice_start+i_slice)*N_images+i_image] * scaling[(slice_start+i_slice)*N_images+i_image];
                 //}
                 //total_respons += respons[(slice_start+i_slice)*N_images+i_image];
             }
         }
-        if (norm > 1e-10f) {
+        if (norm > 0) {
             slices[i_slice*N_2d+i] = (sum / norm) ;
         } else {
             slices[i_slice*N_2d+i] = 0.;
         }
     }
-
     for (int i_image = 0; i_image < N_images; i_image++) {
         if (active_images[i_image] > 0) {
-            total_respons += respons[(slice_start+i_slice)*N_images+i_image] ;
+            total_respons += respons[(slice_start+i_slice)*N_images+i_image];
         }
     }
     if(tid == 0){
@@ -113,10 +112,10 @@ void update_slices_final_kernel(real* images, real* slices, int* mask, real* res
                 count += respons[(slice_start+i_slice)*N_images+i_image];
             }
         }
-        if (count > 1.0e-10) {
+        if (count > 1.0e-15) {
             slices[i_slice*N_2d+i] = sum/count;
         } else {
-            slices[i_slice*N_2d+i] = -1.0;
+            slices[i_slice*N_2d+i] = 0;
         }
     }
     for (int i_image = 0; i_image < N_images; i_image++) {

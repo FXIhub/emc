@@ -211,6 +211,8 @@ void cuda_allocate_scaling_full(real **d_scaling, int N_images, int N_slices) {
     }
 }
 
+
+
 void cuda_copy_slice_chunk_to_host(real * slices, real * d_slices, int slice_start, int slice_chunk, int N_2d){
     cudaEvent_t k_begin;
     cudaEvent_t k_end;

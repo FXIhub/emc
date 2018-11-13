@@ -262,6 +262,8 @@ int main(int argc, char *argv[]){
     cuda_reset_real(d_respons, N_images*allocate_slice);
     real *average_resp = (real*) malloc(N_slices*sizeof(real));
     real mean = cuda_model_average(d_model,N_model);
+    real sum_pre = mean;
+    
     /*-----------------------------------------------------------Do local init END-----------------------------------------------------------*/
     
     /*------------------------------------ EMC Iterations start ----------------------------------------------------------*/
@@ -286,9 +288,11 @@ int main(int argc, char *argv[]){
         
         /* Sigma is a variable that describes the noise that is
          typically either constant or decreasing on every iteration. */
-        sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
+        //sigma = conf.sigma_final + (conf.sigma_start-conf.sigma_final)*exp(-iteration/(float)conf.sigma_half_life*log(2.));
         sigma = conf.sigma_start- (conf.sigma_start-conf.sigma_final)/(conf.sigma_half_life*2)*iteration;
         sigma = sigma>conf.sigma_final?sigma:conf.sigma_final;
+
+        if (conf.sigma_final == conf.sigma_start) sigma = conf.sigma_final;
 
         //printf("sigma = %g sigma_start = %g sigma_final = %g th = %g \n",sigma,conf.sigma_start,conf.sigma_final, conf.early_stop_threshold);
         real sum = cuda_model_average(d_model,N_model);
@@ -381,7 +385,11 @@ int main(int argc, char *argv[]){
                                          N_2d, N_images, current_start, current_chunk, diff_type(conf.diff));
                 
             }
-            
+            real sum_cur = cuda_model_average(d_model, N_model);
+            real sc = sum_pre / sum_cur;
+            cuda_matrix_scalar(d_scaling,allocate_slice,conf.number_of_images,sc);
+             //       cuda_max_vector(d_respons, N_images, allocate_slice,d_maxr);
+
             //printf(" write scaling! \n\n");
             cuda_copy_real_to_host(scaling, d_scaling, N_images*allocate_slice);
             cuda_copy_real_to_host(respons, d_respons, allocate_slice*N_images);
@@ -492,6 +500,7 @@ int main(int argc, char *argv[]){
         cuda_reset_model(model_weight,d_model_weight);
         cuda_set_to_zero(d_slices,N_2d*slice_chunk);
 
+        sum_pre = cuda_model_average(d_model,N_model);
         //cout <<"UPDATE MODEL!" <<endl;
         for (slice_start = slice_backup; slice_start < slice_end; slice_start += slice_chunk) {
             if (slice_start + slice_chunk >= slice_end) {
@@ -535,6 +544,7 @@ int main(int argc, char *argv[]){
         memcpy(model_weight->data,model_weight_data,N_model*sizeof(real));
         cuda_copy_model_2_device(&d_model,model);
         cuda_copy_model_2_device(&d_model_weight,model_weight);
+       
         
          /* When all slice chunks have been compressed we need to divide the
          model by the model weights. */
@@ -546,7 +556,6 @@ int main(int argc, char *argv[]){
             sum = cuda_model_average(d_model,N_model);
             printf("model average is %g after adding up at %d\n", sum, taskid);
         }
-
 
         if (conf.blur_model) {
             cuda_blur_model(d_model, conf.model_side, conf.blur_model_sigma);
@@ -569,7 +578,7 @@ int main(int argc, char *argv[]){
         {
             cuda_copy_real_to_device(modelP, d_model_updated, N_model);
             real diff = cuda_model_diff(d_model,d_model_updated,N_model)/N_model;
-            printf(" model different at iteration %d and %d is %f \n", iteration, iteration-1,diff);
+            printf(" model different at iteration %d and %d is %f and threshold is %f \n", iteration, iteration-1,diff, conf.early_stop_threshold);
             if(diff<conf.early_stop_threshold){
                 if(taskid ==master){
                     write_model(conf, conf.number_of_iterations, N_model, model,model_weight);
@@ -625,9 +634,7 @@ int main(int argc, char *argv[]){
     cuda_copy_model_2_device(&d_model,model);
     cuda_copy_model_2_device(&d_model_weight,model_weight);
     cuda_divide_model_by_weight(model, d_model, d_model_weight);
-    if (conf.recover_scaling){
-        cuda_normalize_model_given_mean(model, d_model,mean);
-    }
+
     cuda_copy_model(model, d_model);
     cuda_copy_model(model_weight, d_model_weight);
 
@@ -731,9 +738,6 @@ int main(int argc, char *argv[]){
         cuda_copy_model_2_device(&d_model_updated,model);
         cuda_copy_model_2_device(&d_model_weight,model_weight);
         cuda_divide_model_by_weight(model, d_model_updated, d_model_weight);
-        /*if (conf.recover_scaling){
-            cuda_normalize_model_given_mean(model, d_model_updated,mean);
-        }*/
         cuda_copy_model(model, d_model_updated);
         cuda_copy_model(model_weight, d_model_weight);
 
